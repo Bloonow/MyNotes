@@ -211,6 +211,10 @@ $$
 一个示例如下所示，假设矩阵以C语言的行主序方式存储。
 
 ```c++
+#include <stdio.h>
+#include <cuda.h>
+#include <cublas_v2.h>
+
 __global__ void dis_matrix(double *d_M, int eles) {
     for (int i = 0; i < eles; i++) printf("%.1f\t", d_M[i]); printf("\n");
 }
@@ -218,9 +222,9 @@ __global__ void dis_matrix(double *d_M, int eles) {
 int main(int argc, char* argv[]) {
     cublasHandle_t handle;
     cublasCreate(&handle);
-    const int M = 2;
-    const int K = 3;
-    const int N = 4;
+    int M = 2;
+    int K = 3;
+    int N = 4;
     
     double *A = (double*)malloc(sizeof(double) * M * K);
     double *B = (double*)malloc(sizeof(double) * K * N);
@@ -371,6 +375,10 @@ $$
 一个示例如下所示，假设矩阵以C语言的行主序方式存储。
 
 ```c++
+#include <stdio.h>
+#include <cuda.h>
+#include <cublas_v2.h>
+
 __global__ void dis_matrix(double *d_M, int eles) {
     for (int i = 0; i < eles; i++) printf("%.1f\t", d_M[i]); printf("\n");
 }
@@ -378,10 +386,10 @@ __global__ void dis_matrix(double *d_M, int eles) {
 int main(int argc, char* argv[]) {
     cublasHandle_t handle;
     cublasCreate(&handle);
-    const int M = 2;
-    const int K = 3;
-    const int N = 4;
-    const int batchCount = 2;
+    int M = 2;
+    int K = 3;
+    int N = 4;
+    int batchCount = 2;
     
     double **A = (double**)malloc(sizeof(double*) * batchCount);
     double **B = (double**)malloc(sizeof(double*) * batchCount);
@@ -558,6 +566,10 @@ $$
 一个示例如下所示，假设矩阵以C语言的行主序方式存储。
 
 ```c++
+#include <stdio.h>
+#include <cuda.h>
+#include <cublas_v2.h>
+
 __global__ void dis_matrix(double *d_M, int eles) {
     for (int i = 0; i < eles; i++) printf("%.1f\t", d_M[i]); printf("\n");
 }
@@ -565,10 +577,10 @@ __global__ void dis_matrix(double *d_M, int eles) {
 int main(int argc, char* argv[]) {
     cublasHandle_t handle;
     cublasCreate(&handle);
-    const int M = 2;
-    const int K = 3;
-    const int N = 4;
-    const int batchCount = 2;
+    int M = 2;
+    int K = 3;
+    int N = 4;
+    int batchCount = 2;
     
     double *A = (double*)malloc(sizeof(double) * M * K * batchCount);
     double *B = (double*)malloc(sizeof(double) * K * N * batchCount);
@@ -768,10 +780,14 @@ cublasStatus_t cublasSetWorkspace(
 对于cublasLtMatmul()函数的一个使用示例如下所示。
 
 ```c++
+#include <stdio.h>
+#include <cuda.h>
+#include <cublasLt.h>
+
 int main(int argc, char *argv[]) {
-    const int M = 2;
-    const int K = 3;
-    const int N = 4;
+    int M = 2;
+    int K = 3;
+    int N = 4;
 
     float *h_A = (float*)malloc(sizeof(float) * M * K);
     float *h_B = (float*)malloc(sizeof(float) * K * N);
@@ -905,11 +921,15 @@ typedef enum {
 此处，通过矩阵布局属性控制，实现批量的矩阵乘加操作的代码如下所示。
 
 ```c++
+#include <stdio.h>
+#include <cuda.h>
+#include <cublasLt.h>
+
 int main(int argc, char *argv[]) {
-    const int M = 2;
-    const int K = 3;
-    const int N = 2;
-    const int32_t batch = 2;
+    int M = 2;
+    int K = 3;
+    int N = 2;
+    int32_t batch = 2;
     float *h_A = (float*)malloc(sizeof(float) * M * K * batch);  // X, input
     float *h_B = (float*)malloc(sizeof(float) * K * N);          // W, weight
     float *h_C = (float*)malloc(sizeof(float) * 1 * N);          // B, bias
@@ -949,10 +969,10 @@ int main(int argc, char *argv[]) {
     cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
     cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
     cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
-    const int64_t Astride = M * K;
-    const int64_t Bstride = 0;
-    const int64_t Cstride = 0;
-    const int64_t Dstride = M * N;
+    int64_t Astride = M * K;
+    int64_t Bstride = 0;
+    int64_t Cstride = 0;
+    int64_t Dstride = M * N;
     cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Astride, sizeof(int64_t));
     cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Bstride, sizeof(int64_t));
     cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Cstride, sizeof(int64_t));
@@ -988,4 +1008,209 @@ A       =       0.0     1.0     2.0     3.0     4.0     5.0     0.0     1.0     
 B       =       0.0     1.0     2.0     3.0     4.0     5.0
 C       =       0.0     0.1
 D       =       10.0    13.1    28.0    40.1    10.0    13.1    28.0    40.1
+```
+
+# cuFFT
+
+快速傅里叶变换（FFT，Fast Fourier Transform）是一种分治算法，用于高效计算复数或实数的离散傅立叶变换，它是计算物理和通用信号处理中最重要和最广泛使用的数值算法之一。而FFTW是最流行、最高效的基于CPU的FFT库之一。
+
+cuFFT库包含四个API，具体为：(1)cuFFT API，标准FFT的CUDA运行时实现；(2)cuFFTXt API，将FFT计算扩展到单节点多GPU环境；(3)cuFFTMp API，将FFT计算扩展到多节点分布式环境；(4)cuFFTDx API，在CUDA核函数中执行FFT计算，用于算子融合以降低全局访存开销，属于MathDx的一部分，需要单独下载。
+
+cuFFT API是FFT在CUDA运行时的实现，由两个独立的库组成，即cuFFT和cuFFTW，其中cuFFT库旨在于NVIDIA GPU上提供高性能，cuFFTW库作为FFTW库的移植版本提供，使FFTW用户能够快速上手cuFFT库。
+
+cuFFT库支持以下功能：
+
+- 提供针对任意输入规模的$O(n\log n)$时间复杂度的算法，对于可以分解为$2^a\times3^b\times5^c\times7^d$​形式的输入规模，cuFFT算法性能是高度优化的，且质因数越小性能越快，为2的次幂时性能最好。
+- 支持半精度（16位浮点）、单精度（32位浮点）、双精度（64位浮点）数据类型，较低精度的转换具有较高的性能。
+- 支持复数和实数的输入和输出，实数输入或输出比复数需要更少的计算和数据，并且通常具有更快的求解时间。支持的类型有，C2C（complex to complex）复数输入到复数输出，R2C（real to complex）实数输入到复数输出，C2R（complex to real）复数输入到实数输出。
+- 支持一维、二维、三维变换，同时执行多个1D、2D、3D变换时，批量变换比单个变换具有更高的性能。
+- 支持就地（in-place）变换和异地（out-of-place）变换。支持任意维度之内和之间的元素跨步布局。支持跨多个GPU执行变换。在CUDA流上执行，支持异步计算和数据移动。
+
+离散傅立叶变换（DFT）映射时域复值向量$x_k$，将之转换为频域表示，由下式给出，
+$$
+X_k = \sum_{n=0}^{N-1} x_n e^{-2\pi i\cdot\frac{nk}{N}}
+$$
+其中，$X_k$​​是相同大小的复值向量。该过程成为正向傅里叶变换，如果指数e之上的幂的符号变为正号+，则过程是逆向傅里叶变换，注意，在离散傅里叶逆变换的公式中，需要除以N作标准化，上式中并没有体现出来，这点需要特别注意。根据N的值不同，会采用不同算法以获得最佳性能。
+
+在许多实际应用中，输入向量是实值，可以证明，在这种情况下，输出满足Hermite对称性（$X_k=X^H_{N-k}$）。反之，对于满足Hermite对称性的复值输入，逆变换将是纯实值的。cuFFT利用这种冗余，仅使用Hermite向量的前半部分。复数到实数的C2R变换接受Hermite复数输入，对于一维信号，这需要索引为0的元素为实数（如果N为偶数则$\frac{N}{2}$索引元素也应为实数），对于D维信号，这意味着$x(n_1,n_2,\cdots,n_d)=x^H(N_1-n_1,N_2-n_2,\cdots,N_d-n_d)$​，否则变换的行为是未定义的。
+
+DFT可以使用矩阵向量乘法实现，需要$O(N^2)$​时间复杂度。
+
+不过，cuFFT采用[Cooley-Tukey](http://en.wikipedia.org/wiki/Cooley-Tukey_FFT_algorithm)算法实现来减少所需操作的数量，以优化特定变换规模下的性能。该算法将DFT矩阵表示为稀疏构建块（sparse building block）矩阵的乘积，cuFFT实现以2、3、5、7为基数的构建块，因此，任何能够分解为$2^a\times3^b\times5^c\times7^d$​形式（其中a、b、c、d为非负整数）的输入规模都由cuFFT库提供了优化。此外，对于所有采用[2,128)之间质数的构建块，也有特定优化，当长度无法分解为[2,128)之间质数幂的倍数时，使用[Bluestein](http://en.wikipedia.org/wiki/Bluestein's_FFT_algorithm)算法。由于Bluestein实现对每个输出点比Cooley-Tukey实现需要更多的计算，因此Cooley-Tukey算法的准确性更好，纯Cooley-Tukey算法的相对误差按$\log_2(N)$的比例增长，其中N为参与变换的元素数目。
+
+cuFFT库位于cufft.h头文件中，它仿照FFTW接口建模，提供一种称为plan的配置机制，使用内部构建块来优化基于给定配置和GPU硬件的傅里叶变换。然后，当调用执行函数时，实际的变换将按照plan执行。该方法优点是，一旦用户创建plan，库就会保留多次执行该plan所需的任何状态，而无需重新计算配置。
+
+## 执行配置
+
+cuFFT使用cufftHandle句柄类型存储plan配置，可使用cufftCreate()函数创建一个句柄，并使用cufftDestroy()函数释放一个句柄。在句柄上可使用如下一些函数创建plan配置。对任何cuFFT函数的第一个调用会导致cuFFT内核的初始化，如果GPU上没有足够的可用内存，此操作可能会失败。
+
+```c++
+cufftResult cufftPlan1d(cufftHandle *plan, int nx, cufftType type, int batch);
+cufftResult cufftPlan2d(cufftHandle *plan, int nx, int ny, cufftType type);
+cufftResult cufftPlan3d(cufftHandle *plan, int nx, int ny, int nz, cufftType type);
+cufftResult cufftPlanMany(
+    cufftHandle *plan, int rank, int *n,
+    int *inembed, int istride, int idist,
+    int *onembed, int ostride, int odist,
+    cufftType type, int batch
+);
+cufftResult cufftMakePlanMany(
+    cufftHandle plan, int rank, int *n,
+    int *inembed, int istride, int idist,
+    int *onembed, int ostride, int odist,
+    cufftType type, int batch, size_t *workSize
+);
+```
+
+执行特定大小和类型的变换可能需要几个处理阶段。生成变换的plan配置后，cuFFT会得出需要执行的内部步骤，可能包括多个内核启动、内存复制等。
+
+接下来即可调用诸如cufftExecC2C()的执行函数，该函数将按照plan定义的配置执行变换。
+
+```c++
+#define CUFFT_FORWARD -1  // Forward FFT
+#define CUFFT_INVERSE  1  // Inverse FFT
+cufftResult cufftExecC2C(cufftHandle plan, cufftComplex *idata, cufftComplex *odata, int direction);
+cufftResult cufftExecR2C(cufftHandle plan, cufftReal *idata, cufftComplex *odata);
+cufftResult cufftExecC2R(cufftHandle plan, cufftComplex *idata, cufftReal *odata);
+cufftResult cufftExecZ2Z(cufftHandle plan, cufftDoubleComplex *idata, cufftDoubleComplex *odata, int direction);
+cufftResult cufftExecD2Z(cufftHandle plan, cufftDoubleReal *idata, cufftDoubleComplex *odata);
+cufftResult cufftExecZ2D(cufftHandle plan, cufftDoubleComplex *idata, cufftDoubleReal *odata);
+```
+
+在最坏的情况下，cuFFT库会分配$8\times\text{batch}\times n[0]\times\cdots\times n[\text{rank}-1]$个元素的空间，元素可以是cufftComplex或cufftDoubleComplex数据类型，其中，batch是并行执行的变换批量，rank是数据的维度，n[]是存储每个维度上维数的数组。根据plan配置，可能会使用更少的内存。在某些特定情况下，临时空间分配可以低至$1\times\text{batch}\times n[0]\times\cdots\times n[\text{rank}-1]$个元素。
+
+cuFFT库的plan配置可能会使用额外的缓冲区存储中间结果，所有（在CPU和GPU内存上的）中间缓冲区分配都在生成plan配置的期间进行，当plan配置被释放时，这些缓冲区被释放。当手动指定plan配置的工作缓冲区空间时，可使用cufftEstimateXXX()函数获取特定plan配置的缓冲区空间大小，使用cufftSetWorkArea()函数设置缓冲区空间。或者，可以使用cufftSetAutoAllocation()函数设置是否自动分配缓冲区。
+
+此外，可指定FFT在异步流Stream上执行，使用cudaStreamCreateWithFlags()函数可创建一个流，使用cufftSetStream()函数可为plan配置指定所使用的流对象。
+
+## 数据类型与布局
+
+在cuFFT库中，数据类型与布局严格取决于plan配置和变换类型，如下所示。
+
+```c++
+typedef float cufftReal;
+typedef double cufftDoubleReal;
+typedef cuComplex cufftComplex;
+typedef cuDoubleComplex cufftDoubleComplex;
+typedef enum cufftType_t {
+    CUFFT_R2C = 0x2a,     // Real to Complex (interleaved)
+    CUFFT_C2R = 0x2c,     // Complex (interleaved) to Real
+    CUFFT_C2C = 0x29,     // Complex to Complex, interleaved
+    CUFFT_D2Z = 0x6a,     // Double to Double-Complex
+    CUFFT_Z2D = 0x6c,     // Double-Complex to Double
+    CUFFT_Z2Z = 0x69      // Double-Complex to Double-Complex
+} cufftType;
+```
+
+一般情况下，C2C变换的输入输出具有相同数目的元素，而R2C和C2R变换的输入元素数目和输出元素数目并不相等（因为Hermite对称性）。当R2C或C2R输入输出元素数目不一致时，异地（out-of-place）变换会创建适当大小的单独数组，而就地（in-place）变换则需要采用padded填充布局。由于Hermite对称性，R2C和C2R变换仅需要信号阵列的一半元素进行操作。
+
+多维傅里叶变换将d维数组$x_\mathbf{n},\mathbf{n}=(n_1,n_2,\cdots,n_n)$映射到频域数组，由下式给出，
+$$
+X_\mathbf{k} = \sum_{n=0}^{N-1} x_\mathbf{n} e^{-2\pi i\cdot\mathbf{\frac{nk}{N}}}
+$$
+其中，求和符号$\sum\limits_{n=0}^{N-1}$表示嵌套求和$\sum\limits_{n_1=0}^{N_1-1}\sum\limits_{n_2=0}^{N_2-1}\cdots\sum\limits_{n_d=0}^{N_d-1}$，矢量$\mathbf{\frac{nk}{N}}=\frac{n_1k_1}{N_1}+\frac{n_2k_2}{N_2}+\cdots+\frac{n_dk_d}{N_d}$，注意，在离散傅里叶逆变换的公式中，需要除以$\mathbf{N}$作标准化，上式中并没有体现出来，这点需要特别注意。与一维情况类似，实值输入数据的频域表示满足Hermite对称性，这意味着$x(n_1,n_2,\cdots,n_d)=x^H(N_1-n_1,N_2-n_2,\cdots,N_d-n_d)$。
+
+| Dims | FFT Type | input data size                         | output data size                        |
+| ---- | -------- | --------------------------------------- | --------------------------------------- |
+| 1D   | C2C      | $N$, cufftComplex                       | $N$, cufftComplex                       |
+| 1D   | R2C      | $N$, cufftReal                          | $\frac{N}{2}+1$, cufftComplex           |
+| 1D   | C2R      | $\frac{N}{2}+1$, cufftComplex           | $N$, cufftReal                          |
+| 2D   | C2C      | $N_1N_2$, cufftComplex                  | $N_1N_2$, cufftComplex                  |
+| 2D   | R2C      | $N_1N_2$, cufftReal                     | $N_1(\frac{N_2}{2}+1)$, cufftComplex    |
+| 2D   | C2R      | $N_1(\frac{N_2}{2}+1)$, cufftComplex    | $N_1N_2$, cufftReal                     |
+| 3D   | C2C      | $N_1N_2N_3$, cufftComplex               | $N_1N_2N_3$, cufftComplex               |
+| 3D   | R2C      | $N_1N_2N_3$, cufftReal                  | $N_1N_2(\frac{N_3}{2}+1)$, cufftComplex |
+| 3D   | C2R      | $N_1N_2(\frac{N_3}{2}+1)$, cufftComplex | $N_1N_2N_3$, cufftReal                  |
+
+R2C隐式地是正向变换，对于就地执行，输入数据需要填充到N/2+1个复数元素。C2R隐式地是逆向变换，对于就地执行，输入数据假定为N/2+1个复数元素。
+
+高级数据布局（advanced data layout）特性允许仅对输入数据的一部分进行转换，或者仅计算输出数据的一部分，可以通过cufftPlanMany()函数或cufftMakePlanMany()函数中的输入数据或输出数据的nembed、stride、dist参数进行设置。
+
+```c++
+cufftResult cufftPlanMany(
+    cufftHandle *plan, int rank, int *n,
+    int *inembed, int istride, int idist,
+    int *onembed, int ostride, int odist,
+    cufftType type, int batch
+);
+```
+
+参数idist和odist，表示批量数据元素中，同一元素位置在两个批次之间的距离，也即一个批次的数据元素的数目。
+
+参数istride和ostride，表示最内层维度轴上，两个数据元素之间的距离，为1时则表示数据元素连续存储。
+
+参数inembed和onembed，表示数据元素在每个维度轴上的维数，即每个维度轴上的元素数目，使用索引0表示第一个维度轴（最外层），使用索引rank-1表示最后一个维度轴（最内层）。参数nembed[rank-1]表示最内层维度上采用stride跨步后有效元素的数目，而总数据的个数为nembed[rank-1]与stride之积。参数nembed[0]表示最外层维度上数据元素的数目，但提供的dist参数可以更高效取代该参数的功能，故通常忽略nembed[0]参数。
+
+参数n，表示完整数据元素在每个维度轴上的维数，即上述的$N_1N_2N_3$等值。值得注意的是，数据每个维度轴上的维数都应该小于等于inembed和onembed参数所指定的值。
+
+使用高级数据布局时，需要使用正确的元素数据类型，即cufftReal、cufftComplex、cufftDoubeReal、cufftDoubleComplex类型。值得注意的是，将inembed参数或onembed参数设置为NULL是一种特殊情况，将采用与n相同的值作为实参，这与基本数据布局相同，并且其他高级布局参数如stride或dist将被忽略。
+
+设批量数据中批量索引为batch，数据索引为[x,y,z]的元素，在采用高级数据布局时，实际访问的数据地址如下所示。
+
+```c++
+data[batch * dist + (x * nembed[1] * nembed[2] + y * nembed[2] + z) * stride]
+```
+
+## 使用示例
+
+对于cufftExecR2C()和cufftExecC2R()函数的一个使用示例如下所示。
+
+```c++
+#include <stdio.h>
+#include <cuda.h>
+#include <cufft.h>
+
+__global__ void scale_kernel(cufftComplex* data, float factor, const int count) {
+    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < count) {
+        data[tid].x *= factor;
+        data[tid].y *= factor;
+    }
+}
+
+int main(int argc, char *argv[]) {
+    int batch = 8;
+    int N1 = 256, N2 = 128;
+    cufftReal *h_input = (cufftReal*)malloc(batch * N1 * N2 * sizeof(cufftReal));
+    cufftReal *h_reslut = (cufftReal*)malloc(batch * N1 * N2 * sizeof(cufftReal));
+    for (int i = 0; i < batch * N1 * N2; i++) h_input[i] = i * 1.f / batch;
+    cufftReal *input, *result;
+    cufftComplex *intermediate;
+    cudaMalloc((cufftReal**)(&input), batch * N1 * N2 * sizeof(cufftReal));
+    cudaMalloc((cufftReal**)(&result), batch * N1 * N2 * sizeof(cufftReal));
+    cudaMalloc((cufftComplex**)(&intermediate), batch * N1 * (N2 / 2 + 1) * sizeof(cufftComplex));
+    cudaMemcpy(input, h_input, batch * N1 * N2 * sizeof(cufftReal), cudaMemcpyHostToDevice);
+
+    int N[2] = {N1, N2};
+    cufftHandle plan2D_r2c, plan2D_c2r;
+    cufftCreate(&plan2D_r2c);
+    cufftCreate(&plan2D_c2r);
+    cufftPlanMany(&plan2D_r2c, 2, N, nullptr, 1, N1 * N2, nullptr, 1, N1 * (N2 / 2 + 1), CUFFT_R2C, batch);
+    cufftPlanMany(&plan2D_c2r, 2, N, nullptr, 1, N1 * (N2 / 2 + 1), nullptr, 1, N1 * N2, CUFFT_C2R, batch);
+    cufftExecR2C(plan2D_r2c, input, intermediate);
+    // 因为傅里叶逆变换需要除以N，故在变换之前先进行标准化，也可以在变换之后进行标准化
+    scale_kernel<<<(batch * N1 * (N2 / 2 + 1) + 127) / 128, 128>>>(
+        intermediate, 1.f / (N1 * N2), batch * N1 * (N2 / 2 + 1)
+    );
+    cufftExecC2R(plan2D_c2r, intermediate, result);
+    cufftDestroy(plan2D_r2c);
+    cufftDestroy(plan2D_c2r);
+
+    bool all_same = true;
+    cudaMemcpy(h_reslut, result, batch * N1 * N2 * sizeof(cufftReal), cudaMemcpyDeviceToHost);
+    for (int i = 0; i < batch * N1 * N2; i++) {
+        if (abs(h_input[i] - h_reslut[i]) > 1.e-3) {
+            all_same = false;
+            break;
+        }
+    }
+    printf("The data are %s.\n", all_same ? "all same" : "not all same");
+
+    cudaFree(input);
+    cudaFree(result);
+    cudaFree(intermediate);
+    free(h_input);
+    free(h_reslut);
+    return 0;
+}
 ```
