@@ -24,7 +24,7 @@ CUDA开发工具套装中有很多有用的库，涵盖线性代数、图像处�
 
 但是，对于某些特定问题，使用库函数得到的性能不一定能胜过自己的实现。例如，Thrust和cuBLAS库中的很多功能是很容易实现的，有时一个计算任务通过编写一个核函数就能完成，而使用这些库却可能需要调用几个函数，从而增加全局内存的访问量。此时，用这些库就有可能得到比较差的性能。
 
-# Thrust库
+# Thrust
 
 Thrust是一个实现了众多基本并行算法的C++模板库，类似于C++的标准模板库（standard template library，STL），该库自动包含在CUDA工具箱中。这是一个模板库，仅仅由一些头文件组成，在使用该库的某个功能时，包含需要的头文件即可。该库中的所有类型与函数都在命名空间thrust中定义，都以thrust::开头。
 
@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
 
 如果程序中大量使用了Thrust库提供的功能，那么直接使用设备矢量存储数据是比较好的方法；而如果程序中大部分代码都是手写的核函数，只是偶尔使用Thrust库提供的功能，那么使用设备内存指针是比较好的方法。
 
-# cuBLAS库
+# cuBLAS
 
 cuBLAS是BLAS在CUDA运行时的实现，其全称是basic linear algebra subroutines，即基本线性代数子程序。这一套子程序最早是在CPU中通过Fortran语言实现的，所以后来的各种实现都带有Fortran风格，其与C风格最大的区别就是，Fortran中的多维数组是列主序存储的。
 
@@ -657,7 +657,7 @@ C[0]    =       20.0    56.0    23.0    68.0    26.0    80.0    29.0    92.0
 C[1]    =       344.0   488.0   365.0   518.0   386.0   548.0   407.0   578.0
 ```
 
-# cuBLASLt库
+# cuBLASLt
 
 cuBLASLt库是一个新的专用于执行GeMM（General Matrix-to-Matrix multiply）操作的轻量级库，它提供了灵活的API接口。它支持更灵活的矩阵数据布局，输入类型，计算类型，还可以通过编程参数灵活选择算法的实现和启发式方法。用户只需指定一次GeMM操作的选项集合，就可以将其重复应用于不同的输入。
 
@@ -1185,14 +1185,15 @@ int main(int argc, char *argv[]) {
     cufftHandle plan2D_r2c, plan2D_c2r;
     cufftCreate(&plan2D_r2c);
     cufftCreate(&plan2D_c2r);
+    // 构建plan配置
     cufftPlanMany(&plan2D_r2c, 2, N, nullptr, 1, N1 * N2, nullptr, 1, N1 * (N2 / 2 + 1), CUFFT_R2C, batch);
     cufftPlanMany(&plan2D_c2r, 2, N, nullptr, 1, N1 * (N2 / 2 + 1), nullptr, 1, N1 * N2, CUFFT_C2R, batch);
-    cufftExecR2C(plan2D_r2c, input, intermediate);
+    cufftExecR2C(plan2D_r2c, input, intermediate);   // 正变换
     // 因为傅里叶逆变换需要除以N，故在变换之前先进行标准化，也可以在变换之后进行标准化
     scale_kernel<<<(batch * N1 * (N2 / 2 + 1) + 127) / 128, 128>>>(
         intermediate, 1.f / (N1 * N2), batch * N1 * (N2 / 2 + 1)
     );
-    cufftExecC2R(plan2D_c2r, intermediate, result);
+    cufftExecC2R(plan2D_c2r, intermediate, result);  // 逆变换
     cufftDestroy(plan2D_r2c);
     cufftDestroy(plan2D_c2r);
 
