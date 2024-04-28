@@ -183,8 +183,6 @@ sudo systemctl enable display-manager   # 启用图形界面
 
 对于Windows平台来说，图形化界面是在Windows内核中实现的，是操作系统内核的一部分。而对于类Unix系统来说，其内核中并无图形化界面的实现，类Unix系统的图形化界面只是一个应用程序，这些图形化界面的实现底层通常是基于X协议（X protocol）的，也即X协议是类UNIX操作系统用来实现图形界面的，目前是X11版本。
 
-> freedesktop.org以前称为X Desktop Group（XDG），是一个致力于基于X11等桌面环境互操作性和共享基础技术的项目，该项目制定了互操作性规范，并定义了一系列XDG_XXX环境变量，许多工具和应用程序默认使用这些变量。
-
 <img src="使用Linux操作系统.assets/X协议.png" style="zoom:50%;" />
 
 其中，X Server负责管理显示相关的输入输出设备的交互，它负责接受输入设备（键盘鼠标）的动作，并将其告知基于X Client的应用程序，同时负责将图形写入输出设备（显卡等），以进行屏幕画面的绘制与显示。而基于X Client的应用程序，则接受X Server传递的动作事件等，进行程序业务逻辑的处理，并将需要显示的图形告知X Server来显示。
@@ -238,6 +236,10 @@ export DISPLAY=10.10.10.101:0.0  # Local Host IP (No this comment)
 ```
 
 此时，使用VS Code连接远程服务器，执行GUI代码时，即可将图形显示在本地。
+
+> freedesktop.org以前称为X Desktop Group（XDG），是一个致力于基于X11等桌面环境互操作性和共享基础技术的项目，该项目制定了互操作性规范，并定义了一系列XDG_XXX环境变量，许多工具和应用程序默认使用这些变量。
+>
+> 在用户家目录中的\$HOME/.config/user-dirs.dirs文件中，XDG配置了一些环境变量，用于指定用户家目录中的一些诸如Desktop、Downloads之类的文件夹，可以修改这些环境变量以更改相应的文件夹。
 
 # SSH
 

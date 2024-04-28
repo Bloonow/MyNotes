@@ -173,7 +173,9 @@ MIME标头通过在每个逻辑行的开头使用冒号分隔的标签来实现�
 - 动态链接（dynamic linking）信息；
 - 调试（debugging）信息。
 
-链接器可以根据定义节时指定的规则来组合不同目标文件中的节，目标文件之间共享的节存在约定，例如在DOS中，有不同的内存模型指定特殊节的名称以及它们是否可以组合。调试信息的调试数据格式可以是目标文件格式的组成部分（如COFF），也可以是可与多种目标格式一起使用的半独立格式，例如STABS（Symbol TABle Strings）或DWARF。
+链接器可以根据定义节时指定的规则来组合不同目标文件中的节，目标文件之间共享的节存在约定，例如在DOS中，有不同的内存模型指定特殊节的名称以及它们是否可以组合。
+
+调试信息的调试数据格式可以是目标文件格式的组成部分（如COFF），也可以是可与多种目标格式一起使用的半独立格式，例如STABS（Symbol TABle Strings）或DWARF（Debugging With Attributed Record Formats）。
 
 ## Executable File
 
