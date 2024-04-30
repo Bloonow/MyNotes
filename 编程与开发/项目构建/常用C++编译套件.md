@@ -26,7 +26,7 @@ gcc [filenames] [options]
 
 ![](常用C++编译套件.assets/GCC编译阶段.png)
 
-预处理（PreProcessing）由.c、.cpp、.h文件生成.i文件。所做的操作：包含#include头文件，展开宏定义，替换条件编译，删除注释、空白、空行。使用`-E`选项指示GCC仅对源文件进行预处理。
+预处理（PreProcessing）由.c、.cpp、.h文件生成.i或.ii文件，其中.i为C源文件预处理后的输出，.ii为C++源文件预处理后的输出。所做的操作：包含#include头文件，展开宏定义，替换条件编译，删除注释、空白、空行。使用`-E`选项指示GCC仅对源文件进行预处理。
 
 ```shell
 gcc -E demo.c -o demo.i
