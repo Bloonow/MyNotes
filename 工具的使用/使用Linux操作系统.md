@@ -420,7 +420,7 @@ vim编辑器可以通过安装插件来增加很多强大的功能，有一些�
 
 # Emacs编辑器
 
-Emacs是专为POSIX操作系统设计的文本编辑器，在Linux平台上可使用sudo apt install emacs命令安装。Emacs编辑器在内存缓冲区中处理数据，并将整个控制台窗口作为编辑区域。
+Emacs是专为POSIX操作系统设计的文本编辑器，在Linux平台上可使用sudo apt install emacs命令安装。相比于Vim编辑器，Emacs编辑器默认扩展更多命令，支持直接在编辑器中对源代码进行编辑、调试等。
 
 ## Emacs命令
 
@@ -428,35 +428,48 @@ Emacs是专为POSIX操作系统设计的文本编辑器，在Linux平台上可�
 
 <img src="使用Linux操作系统.assets/Emacs.png" style="zoom:50%;" />
 
-上图显示Emacs在终端命令行中的界面。所占据的整个终端的界面被称为Frame；最上方是示菜单栏（Menu Bar），包括File、Edit、Options等下拉菜单，使用F10键打开下拉菜单（对应menu-bar-open命令），或使用M-`键从下方展开菜单界面（对应tmm-menubar命令）；最下方是回显区（Echo Area），用以打印各种简短的信息，例如正在输入的命令按键。
+上图显示Emacs在终端命令行中的界面。占据整个终端Frame被称为一个Frame；终端最中间的显示界面被称为Window，或称为主缓冲区（main buffer），用于显示编辑内容；最上方是示菜单栏（Menu Bar），包括File、Edit、Options等下拉菜单，使用F10键打开下拉菜单（对应menu-bar-open命令），或使用M-`键从下方展开菜单界面（对应tmm-menubar命令）；最下方第二行的灰色行是Emacs的状态栏，称为Mode Line区域，用于显示当前状态；最下方一行是回显区（Echo Area），或称为迷你缓冲区（mini buffer），用以显示各种简短的信息，例如正在输入的命令按键。
 
 Emacs通过命令快捷键进行交互，所谓命令即是Emacs中使用Elisp（Emacs Lisp）语言定义的一些函数，这些函数可以完成特定功能，例如，将光标上移一行对应着previous-line命令，一切操作都对应一个命令，而快捷键的本质是在调用这些命令。在Emacs编辑器界面及其文档中，使用连词符-表示同时按下，例如，使用C-x表示Ctrl+X按键，使用M-x表示Alt+X按键，使用S-x表示Shift+X按键，使用C-M-x表示Ctrl+Alt+X按键；而不使用连词符则表示依次按下，例如，C-h t表示先按下Ctrl+H键，松开后再按下T键。
 
-使用M-x键，可切换至命令模式，用于在回显区输入并执行相应命令；使用set-variable命令可以设置指定变量的值；使用customize-variable命令可以修改指定变量的值。使用C-g键，可终止正在输入或正在执行的命令。使用C-x C-s保存文件；使用C-x C-c退出Emacs编辑器。
+使用M-x键，可切换至命令模式，用于在回显区输入并执行相应命令，使用Tab键可进行提示与补全；使用customize-variable命令可以修改变量的值；使用set-variable命令可以临时设置变量的值。使用C-g键，可终止正在输入或正在执行的命令。使用C-x C-s保存文件；使用C-x C-c退出Emacs编辑器。
 
 ![](使用Linux操作系统.assets/Emacs RefCard.png)
 
-默认情况下，Emacs会在当前目录下以文件名称加\~的形式备份文件，可以将make-backup-files变量设置为nil来取消备份，设置为t启用备份。
+在Emacs内使用C-x C-f键可打开指定路径的文件，使用C-x C-s保存当前编辑的文件。实际上，一个打开的文件对应一个Buffer缓冲区，缓冲区的名称会显示在Mode Line中间，通常是文件名称本身。当打开第二个文件时，第一个文件的缓冲区会被切入后台，而第二个文件的缓冲区则会占据当前Window窗格。Emacs总会有一个默认打开的Buffer缓冲区，名称叫做scratch草稿缓冲区，用于编辑一些临时信息。
 
-## Emacs模式
+使用C-x C-b键会弹出一个名称为Buffer List的Window窗格，其中列出当前所打开的Buffer缓冲区，使用光标选中即可切换到目标缓冲区。使用C-x b键可选择一个Buffer缓冲区；使用C-x k键关闭一个Buffer缓冲区。使用C-x o键切换光标到不同的Window窗格，使用C-x 0键关闭当前Window窗格。
 
-Emacs的核心之一就是模式（mode），一个模式对应着一组环境，不同模式采用不同的配置，用于不同的场景。例如，编写C++代码对应C++-mode模式，编写Python代码对应python-mode模式。在不同的编程语言的模式中，编译、执行的方式都是不同的，故而只需事先定义好模式，即可在使用过程中方便切换各种需求场景。
-
-Emacs模式分为主模式（major mode）和次模式（minor mode）两类。主模式默认根据Buffer缓冲区的文件类型（后缀名称）来选择，主模式的名字会显示在Mode line上。最基本的主模式是Fundamental mode，即没有进行任何配置的模式。使用M-x键，手动输入相应的模式名称即可切换模式。
-
-一个Buffer只能对应一个主模式，例如，Emacs打开.cpp文件时，会将Buffer自动设置成C++-mode，最直观的区别是Emacs为不同编程语言的源码提供不同的语法高亮。同一个Buffer可以有多个次模式，次模式可以进一步调整、增加一些配置。通常来说，插件都是依靠次模式来起作用的。当安装插件时，插件官网会提示如何设置这个插件，其中大多都会使用次模式。
-
-Emacs总会有一个默认打开的Buffer缓冲区，名称叫做scratch草稿缓冲区，用于编辑一些临时信息。
-
-
-
-
-
-GUD！！！！！！！！！！
+在Buffer List缓冲区列表中，缓冲区名称之前的\*星号表示该缓冲区是Emacs用于输出信息的缓冲区，并不是由打开文件产生的；名称之前的%百分号表示该缓冲区被修改过且没有被保存。
 
 ## Emacs配置
 
-Emacs Lisp是世界上第二古老的高级编程语言Lisp专为Emacs打造的方言，ELisp编程语言用于为Emacs编写逻辑，Emacs的底层和绝大部分插件都是用Elisp语言编写的。Elisp使用`;;`双分号开启一行注释。
+Emacs Lisp是世界上第二古老的高级编程语言Lisp专为Emacs打造的方言，ELisp编程语言用于为Emacs编写逻辑，Emacs的底层和绝大部分插件都是用Elisp语言编写的。Elisp使用`;`分号开启一行注释，使用.el作为文件后缀名称。
+
+Lisp编程语言是List Processing的缩写，器核心是List列表。在Lisp中，每一对小括号是一个列表，列表元素用空格分隔。在执行Lisp时，会把列表的第一个元素作为函数名，后面元素作为函数的参数。元素可以是一个词，也可以是另一个列表，从而支持嵌套。
+
+例如，表达式2+(3-4)可写为如下形式，其中+和-都是预先定义的函数。
+
+```lisp
+(+ 2 (- 3 4))
+```
+
+在Lisp中使用defun关键字定义函数，使用setq关键字设置变量，一个示例如下。此外，Lisp使用关键字let界定一组变量的作用域，使用if、when、unless等条件语句，使用关键字t（或non-nil）表示真值true，使用关键字nil表示空null。
+
+```lisp
+(defun ivy-set-prompt (caller prompt-fn)
+    (setq ivy--prompts-list
+          (plist-put ivy--prompts-list caller prompt-fn)))
+```
+
+上述时ivy插件中的一个示例，其等价的Python形式代码如下，下述示例无意义，只是用于解释Lisp语法。
+
+```python
+def ivy_set_prompt(caller, prompt_fn):
+    ivy__prompts_list = plist_put(ivy__prompts_list, caller, prompt_fn)
+```
+
+特殊的，操作符quote（或简写为一个`'`单引号）来获得字符序列本身，即什么也不做。例如，表达式(+ 1 2)返回3作为值，而'(+ 1 2)则返回字符序列(+ 1 2)，什么也没有执行。例如，'ivy-set-prompt则将函数名称ivy-set-prompt返回，而不是执行该函数。此外，在括号前使用quote时表示括号界定一个数组，而不是函数执行，例如'(Apple Banana Cherry)表示一个数组。
 
 Emacs配置文件是一个包含ELisp源码的文件，描述Emacs应当以什么样的方式启动，在Emacs启动时会执行其中的代码。当启动Emacs时，会依次寻找以下配置文件，一旦找到其中之一，便不再继续寻找之后的配置文件。
 
@@ -467,3 +480,32 @@ Emacs配置文件是一个包含ELisp源码的文件，描述Emacs应当以什�
 ~/.config/emacs/init.el
 ```
 
+一些基本的\$HOME/.emacs配置内容如下所示。
+
+```lisp
+(setq make-backup-files nil)                 ; 关闭文件自动备份
+(column-number-mode t)                       ; 在Mode Line上显示列号
+(global-display-line-numbers-mode 1)         ; 显示行号
+(global-auto-revert-mode t)                  ; 当另一程序修改文件时，让Emacs及时刷新Buffer
+(delete-selection-mode t)                    ; 选中文本后输入文本会替换文本，更符合使用逻辑
+```
+
+除在诸如.emacs的配置文件中使用(setq name value)设置变量之外，Emacs还提供一些命令辅助管理变量，使用customize命令集合（如customize-variable等）修改变量的值，使用set-variable命令临时设置变量的值。实际上，使用辅助命令修改变量时，Emacs会将所设置的变量写入到配置文件中，如下所示修改make-backup-files变量。
+
+<img src="使用Linux操作系统.assets/Emacs Customize Variable.png" style="zoom:50%;" />
+
+上述图片中，使用[]方括号界定的字符序列，或使用下划线强调的字符序列，将光标移动到其上，按下Enter回车即可执行相关操作，如同使用鼠标点击按钮一样。黄色高亮区域为可编辑区域，可键入文本字符序列，而其他区域则为只读区域，不可修改。
+
+Emacs支持使用插件扩展功能，插件被放置在固定的仓库网站上，目前最大的插件仓库是[MELPA](https://melpa.org/#/)，默认插件仓库是GNU ELPA。
+
+## Emacs模式
+
+Emacs的核心之一就是模式（mode），一个模式对应着一组环境，不同模式采用不同的配置，用于不同的场景。例如，编写C++代码对应C++-mode模式，编写Python代码对应python-mode模式。在不同的编程语言的模式中，编译、执行的方式都是不同的，故而只需事先定义好模式，即可在使用过程中方便切换各种需求场景。
+
+Emacs模式分为主模式（major mode）和次模式（minor mode）两类。主模式默认根据Buffer缓冲区的文件类型（后缀名称）来选择，主模式的名字会显示在Mode Line上。最基本的主模式是Fundamental mode，即没有进行任何配置的模式。使用M-x键，手动输入相应的模式名称即可切换模式。
+
+一个Buffer只能对应一个主模式，例如，Emacs打开.cpp文件时，会将Buffer自动设置成C++-mode，最直观的区别是Emacs为不同编程语言的源码提供不同的语法高亮。同一个Buffer可以有多个次模式，次模式可以进一步调整、增加一些配置。通常来说，插件都是依靠次模式来起作用的。当安装插件时，插件官网会提示如何设置这个插件，其中大多都会使用次模式。
+
+大统一调试器GUD（Grand Unified Debugger），是Emacs编辑器的一个模式，用于在Emacs中运行诸如GDB之类的调试器，使用户无需离开编辑器就可以对代码进行调试。
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
