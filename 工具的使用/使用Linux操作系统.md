@@ -327,15 +327,15 @@ Host connection_name
   IdentityFile $HOME/.ssh/id_rsa
 ```
 
-# Linux编辑器
+# Vim编辑器
 
-vi编辑器是Unix系统最初的编辑器，它使用控制台图形模式来模拟文本编辑窗口，允许在文件中查看、移动、插入、编辑、替换文本。GNU项目在移植vi时，对其进行了一些改进，并命名为vi improved，简称vim。除vim编辑器之外，还有一些常用的编辑器，例如Emacs编辑器、Nano编辑器等。
+vi编辑器是Unix系统最初的编辑器，它使用控制台图形模式来模拟文本编辑窗口，允许在文件中查看、移动、插入、编辑、替换文本。GNU项目在移植vi时，对其进行了一些改进，并命名为vi improved，简称vim。vim编辑器在内存缓冲区中处理数据，并将整个控制台窗口作为编辑区域。
 
 ## vim工作模式
 
-vim编辑器在内存缓冲区中处理数据，并将整个控制台窗口作为编辑区域。通过vim命令并指定要编辑文件的名称即可启动vim编辑器，若未指定文件名或文件不存在，vim在保存时会创建文件。
+通过vim命令即可启动vim编辑器，可指定要编辑文件的名称，若未指定文件名或文件不存在，vim在保存时会创建文件。
 
-<img src="使用Linux操作系统.assets/vim.png" style="zoom:50%;" />
+<img src="使用Linux操作系统.assets/vim.png" style="zoom: 50%;" />
 
 默认的vim编辑窗口显示文件内容（如果有内容的话），如果文件内容未占据整个屏幕，vim会在非文件内容行放置一个`~`波浪线；同时，vim在底部显示一条信息行，会显示所编辑文件的信息，如果文件是新建的，则会显示[New File]信息。
 
@@ -418,16 +418,52 @@ set cindent        " 针对C语言的自动缩进
 
 vim编辑器可以通过安装插件来增加很多强大的功能，有一些常用的插件管理器。[Vundle](https://github.com/VundleVim/Vundle.vim)是一个简单易用的插件管理器，通过简单的配置文件就可以管理插件。[vim-plug](https://github.com/junegunn/vim-plug)是一个轻量级、快速、异步的插件管理器，支持并行安装插件。
 
-## Emacs编辑器
+# Emacs编辑器
 
-Emacs是专为POSIX操作系统设计的文本编辑器，在Linux平台上可使用sudo apt install emacs命令安装。使用emacs命令即可打开编辑器界面，可通过指定文件名称以直接打开给定文件；值得注意的是，在支持图形界面的系统中，默认打开Emacs的图形界面版本，若想只在终端命令行界面CLI中打开，可使用-nw选项。在Emacs中，使用连词符-表示同时按下，例如，使用C-x表示Ctrl+X按键，使用M-x表示Alt+X按键，使用S-x表示Shift+X按键，使用C-M-x表示Ctrl+Alt+X按键；而不使用连词符则表示依次按下，例如，C-h t表示先按下Ctrl+H键，松开后再按下T键。
+Emacs是专为POSIX操作系统设计的文本编辑器，在Linux平台上可使用sudo apt install emacs命令安装。Emacs编辑器在内存缓冲区中处理数据，并将整个控制台窗口作为编辑区域。
 
-Emacs通过命令进行交互，所谓命令即是Emacs中使用Elisp语言定义的一些函数，这些函数可以完成特定功能，例如，将光标上移一行对应着previous-line命令，一切操作都对应一个命令，而快捷键的本质是在调用这些命令。通过M-x键，可以输入命令函数名称，来执行对应的命令。通过C-g键，可终止正在输入会执行的命令。使用C-x C-s保存文件，使用C-x C-c退出Emacs编辑器。
+## Emacs命令
+
+通过emacs命令即可启动Emacs编辑器，可指定要编辑文件的名称，若未指定文件名或文件不存在，Emacs在保存时会创建文件。值得注意的是，在支持图形界面的系统中，emacs命令默认会打开Emacs的图形界面版本，若想只在终端命令行界面CLI中打开，可使用emacs -nw命令。
 
 <img src="使用Linux操作系统.assets/Emacs.png" style="zoom:50%;" />
 
-上图显示Emacs在终端命令行中的界面。所占据的整个终端的界面被称为Frame；最上方为菜单栏（Menu Bar），包括File、Edit、Options等下拉菜单，使用F10键打开下拉菜单（对应menu-bar-open命令），或使用M-`键从下方展开菜单界面（对应tmm-menubar命令）；最下方为回显区（Echo Area），用以打印各种简短的信息，例如正在输入的命令按键。
+上图显示Emacs在终端命令行中的界面。所占据的整个终端的界面被称为Frame；最上方是示菜单栏（Menu Bar），包括File、Edit、Options等下拉菜单，使用F10键打开下拉菜单（对应menu-bar-open命令），或使用M-`键从下方展开菜单界面（对应tmm-menubar命令）；最下方是回显区（Echo Area），用以打印各种简短的信息，例如正在输入的命令按键。
 
-<img src="使用Linux操作系统.assets/Emacs Ref Card 1.png" style="zoom: 25%;" />
+Emacs通过命令快捷键进行交互，所谓命令即是Emacs中使用Elisp（Emacs Lisp）语言定义的一些函数，这些函数可以完成特定功能，例如，将光标上移一行对应着previous-line命令，一切操作都对应一个命令，而快捷键的本质是在调用这些命令。在Emacs编辑器界面及其文档中，使用连词符-表示同时按下，例如，使用C-x表示Ctrl+X按键，使用M-x表示Alt+X按键，使用S-x表示Shift+X按键，使用C-M-x表示Ctrl+Alt+X按键；而不使用连词符则表示依次按下，例如，C-h t表示先按下Ctrl+H键，松开后再按下T键。
 
-<img src="使用Linux操作系统.assets/Emacs Ref Card 2.png" style="zoom:25%;" />
+使用M-x键，可切换至命令模式，用于在回显区输入并执行相应命令；使用set-variable命令可以设置指定变量的值；使用customize-variable命令可以修改指定变量的值。使用C-g键，可终止正在输入或正在执行的命令。使用C-x C-s保存文件；使用C-x C-c退出Emacs编辑器。
+
+![](使用Linux操作系统.assets/Emacs RefCard.png)
+
+默认情况下，Emacs会在当前目录下以文件名称加\~的形式备份文件，可以将make-backup-files变量设置为nil来取消备份，设置为t启用备份。
+
+## Emacs模式
+
+Emacs的核心之一就是模式（mode），一个模式对应着一组环境，不同模式采用不同的配置，用于不同的场景。例如，编写C++代码对应C++-mode模式，编写Python代码对应python-mode模式。在不同的编程语言的模式中，编译、执行的方式都是不同的，故而只需事先定义好模式，即可在使用过程中方便切换各种需求场景。
+
+Emacs模式分为主模式（major mode）和次模式（minor mode）两类。主模式默认根据Buffer缓冲区的文件类型（后缀名称）来选择，主模式的名字会显示在Mode line上。最基本的主模式是Fundamental mode，即没有进行任何配置的模式。使用M-x键，手动输入相应的模式名称即可切换模式。
+
+一个Buffer只能对应一个主模式，例如，Emacs打开.cpp文件时，会将Buffer自动设置成C++-mode，最直观的区别是Emacs为不同编程语言的源码提供不同的语法高亮。同一个Buffer可以有多个次模式，次模式可以进一步调整、增加一些配置。通常来说，插件都是依靠次模式来起作用的。当安装插件时，插件官网会提示如何设置这个插件，其中大多都会使用次模式。
+
+Emacs总会有一个默认打开的Buffer缓冲区，名称叫做scratch草稿缓冲区，用于编辑一些临时信息。
+
+
+
+
+
+GUD！！！！！！！！！！
+
+## Emacs配置
+
+Emacs Lisp是世界上第二古老的高级编程语言Lisp专为Emacs打造的方言，ELisp编程语言用于为Emacs编写逻辑，Emacs的底层和绝大部分插件都是用Elisp语言编写的。Elisp使用`;;`双分号开启一行注释。
+
+Emacs配置文件是一个包含ELisp源码的文件，描述Emacs应当以什么样的方式启动，在Emacs启动时会执行其中的代码。当启动Emacs时，会依次寻找以下配置文件，一旦找到其中之一，便不再继续寻找之后的配置文件。
+
+```
+~/.emacs
+~/.emacs.el
+~/.emacs.d/init.el
+~/.config/emacs/init.el
+```
+

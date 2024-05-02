@@ -95,7 +95,7 @@ Slurm支持三种作业提交方式，即批处理作业模式、交互式作业
 
 需要注意的是，如果salloc命令中没有指定相应脚本或可执行文件，则默认选择/bin/sh终端，用户获得一个合适环境变量的shell环境。salloc和sbatch最主要的区别是salloc命令资源请求被满足时，直接在提交作业的节点执行相应任务，而sbatch则当资源请求被满足时，在分配的第一个节点上执行相应任务。
 
-![](使用Slurm调度作业.assets/slurm commands.png)
+![](使用Slurm调度作业.assets/Slurm Summary.jpg)
 
 # Hardware Resource Support
 
