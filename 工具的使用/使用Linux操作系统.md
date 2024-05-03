@@ -498,7 +498,7 @@ Emacs配置文件是一个包含ELisp源码的文件，描述Emacs应当以什�
 
 Emacs支持使用插件扩展功能，插件被放置在固定的仓库网站上，目前最大的插件仓库是[MELPA](https://melpa.org/#/)，默认插件仓库是GNU ELPA。
 
-## Emacs模式
+## Emacs模式与GDB调试
 
 Emacs的核心之一就是模式（mode），一个模式对应着一组环境，不同模式采用不同的配置，用于不同的场景。例如，编写C++代码对应C++-mode模式，编写Python代码对应python-mode模式。在不同的编程语言的模式中，编译、执行的方式都是不同的，故而只需事先定义好模式，即可在使用过程中方便切换各种需求场景。
 
@@ -506,6 +506,10 @@ Emacs模式分为主模式（major mode）和次模式（minor mode）两类。�
 
 一个Buffer只能对应一个主模式，例如，Emacs打开.cpp文件时，会将Buffer自动设置成C++-mode，最直观的区别是Emacs为不同编程语言的源码提供不同的语法高亮。同一个Buffer可以有多个次模式，次模式可以进一步调整、增加一些配置。通常来说，插件都是依靠次模式来起作用的。当安装插件时，插件官网会提示如何设置这个插件，其中大多都会使用次模式。
 
-大统一调试器GUD（Grand Unified Debugger），是Emacs编辑器的一个模式，用于在Emacs中运行诸如GDB之类的调试器，使用户无需离开编辑器就可以对代码进行调试。
+大统一调试器GUD（Grand Unified Debugger）是Emacs编辑器的一个模式，用于在Emacs中运行诸如GDB之类的调试器，使用户无需离开编辑器就可以对代码进行调试。
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+按下M-x键，可以直接使用gdb命令，此时会在回显区出现gdb -i=mi executable_file提示，或使用gud-gdb命令，此时会在回显区出现gdb --fullname executable_file提示，指定可执行文件名称即可启动GDB进行调试。其中-i=mi选项指定GDB的MI接口，专用于一些IDE集成。运行GDB调试时，Emacs编辑器会自动开启一个Window窗格显示源代码，在源代码上标识出相关调试信息。
+
+在Emacs编辑器的GDB调试状态下，按下M-x键，输入gdb-之后使用Tab键显示命令提示，可查看当前模式下可使用的GDB调试命令，若不存在GDB相关命令，可使用gdb-enable-debug命令启用GDB调试模式，此时便会显示许多可用的gdb-开头的调试命令。例如，使用gdb-many-windows命令可以切换多窗口调试模式，使用gdb-restore-windows命令可以恢复默认的窗格布局等。一个示例如下所示。
+
+<img src="使用Linux操作系统.assets/Emacs GDB.png" style="zoom:50%;" />
