@@ -462,7 +462,7 @@ int grid_size = (len + block_size - 1) / block_size;  // 推荐
 正如在C++可有malloc()函数动态分配主机内存，在CUDA中，可由cudaMalloc()函数动态分配设备内存，函数原型如下。
 
 ```c++
-extern __host__ __cudart_builtin__ cudaError_t CUDARTAPI cudaMalloc(void **devPtr, size_t size);
+extern __host__ __cudart_builtin__ cudaError_t cudaMalloc(void **devPtr, size_t size);
 ```
 
 - devPtr参数，待分配设备内存的指针。
@@ -484,7 +484,7 @@ typedef __device_builtin__ enum cudaError cudaError_t;
 用cudaMalloc()函数分配的设备内存，需要使用cudaFree()函数释放，函数原型如下。
 
 ```c++
-extern __host__ __cudart_builtin__ cudaError_t CUDARTAPI cudaFree(void *devPtr);
+extern __host__ __cudart_builtin__ cudaError_t cudaFree(void *devPtr);
 ```
 
 此外，从计算能力2.0开始，CUDA还允许在核函数内部用malloc()和free()动态地分配与释放一定数量的全局内存。一般情况下，这样容易导致较差的程序性能，不建议使用。
@@ -492,7 +492,7 @@ extern __host__ __cudart_builtin__ cudaError_t CUDARTAPI cudaFree(void *devPtr);
 在分配设备内存后，就可以使用CUDA运行时的cudaMemcpy()，进行主机内存和设备内存之间的数据交换，将源地址的一定字节的数据，复制到目标地址，函数原型如下。
 
 ```c++
-extern __host__ cudaError_t CUDARTAPI cudaMemcpy(void *dst, const void *src, size_t count, enum cudaMemcpyKind kind);
+extern __host__ cudaError_t cudaMemcpy(void *dst, const void *src, size_t count, enum cudaMemcpyKind kind);
 ```
 
 - dst参数，目标地址，可以是主机地址，也可以是设备地址。
@@ -1232,15 +1232,15 @@ cudaMemcpy(d_dst, d_src, sizeof(double) * N, cudaMemcpyDeviceToDevice);
 在处理**逻辑上**的两维或三维问题时，还可以用cudaMallocPitch()和cudaMalloc3D()函数分配逻辑上的多维内存，用cudaMemcpy2D()和cudaMemcpy3D()复制数据，释放时依然用cudaFree()函数。其语法格式如下所示。
 
 ```c++
-extern __host__ __cudart_builtin__ cudaError_t CUDARTAPI cudaMalloc(void **devPtr, size_t size);
-extern __host__ cudaError_t CUDARTAPI cudaMallocPitch(void **devPtr, size_t *pitch, size_t width, size_t height);
-extern __host__ cudaError_t CUDARTAPI cudaMalloc3D(struct cudaPitchedPtr* pitchedDevPtr, struct cudaExtent extent);
-extern __host__ __cudart_builtin__ cudaError_t CUDARTAPI cudaFree(void *devPtr);
+extern __host__ __cudart_builtin__ cudaError_t cudaMalloc(void **devPtr, size_t size);
+extern __host__ cudaError_t cudaMallocPitch(void **devPtr, size_t *pitch, size_t width, size_t height);
+extern __host__ cudaError_t cudaMalloc3D(struct cudaPitchedPtr* pitchedDevPtr, struct cudaExtent extent);
+extern __host__ __cudart_builtin__ cudaError_t cudaFree(void *devPtr);
 
-extern __host__ cudaError_t CUDARTAPI cudaMemcpy(void *dst, const void *src, size_t count, enum cudaMemcpyKind kind);
-extern __host__ cudaError_t CUDARTAPI cudaMemcpy2D(
+extern __host__ cudaError_t cudaMemcpy(void *dst, const void *src, size_t count, enum cudaMemcpyKind kind);
+extern __host__ cudaError_t cudaMemcpy2D(
     void *dst, size_t dpitch, const void *src, size_t spitch, size_t width, size_t height, enum cudaMemcpyKind kind);
-extern __host__ cudaError_t CUDARTAPI cudaMemcpy3D(const struct cudaMemcpy3DParms *p);
+extern __host__ cudaError_t cudaMemcpy3D(const struct cudaMemcpy3DParms *p);
 ```
 
 以上所有的设备全局内存都称为**线性内存（linear memory）**，在CUDA中还有一种内部构造的对用户不透明的（not transparent）全局内存，称为CUDA Array，它是的数据排列方式不对用户公开，专为纹理拾取服务。
@@ -1261,10 +1261,10 @@ __device__ int ARR[N];
 在核函数中，可直接对设备全局内存上的全局变量进行访问；而在主机函数中则不能直接访问设备全局内存上的全局变量，但可使用cudaMemcpyFromSymbol()函数和cudaMemcpyToSymbol()函数，对全局内存上\_\_device\_\_变量进行（跨设备）拷贝或赋值，其语法格式如下。
 
 ```c++
-extern __host__ cudaError_t CUDARTAPI cudaMemcpyFromSymbol(
+extern __host__ cudaError_t cudaMemcpyFromSymbol(
     void *dst, const void *symbol, size_t count, size_t offset __dv(0), 
     enum cudaMemcpyKind kind __dv(cudaMemcpyDeviceToHost));
-extern __host__ cudaError_t CUDARTAPI cudaMemcpyToSymbol(
+extern __host__ cudaError_t cudaMemcpyToSymbol(
     const void *symbol, const void *src, size_t count, size_t offset __dv(0), 
     enum cudaMemcpyKind kind __dv(cudaMemcpyHostToDevice));
 ```
