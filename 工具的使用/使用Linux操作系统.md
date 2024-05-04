@@ -179,6 +179,13 @@ sudo systemctl disable display-manager  # 禁用图形界面
 sudo systemctl enable display-manager   # 启用图形界面
 ```
 
+若Linux系统不存在图形界面，则在Ubuntu上可使用如下命令安装图形界面。
+
+```shell
+sudo apt install xinit
+sudo apt install ubuntu-desktop
+```
+
 # X协议
 
 对于Windows平台来说，图形化界面是在Windows内核中实现的，是操作系统内核的一部分。而对于类Unix系统来说，其内核中并无图形化界面的实现，类Unix系统的图形化界面只是一个应用程序，这些图形化界面的实现底层通常是基于X协议（X protocol）的，也即X协议是类UNIX操作系统用来实现图形界面的，目前是X11版本。
