@@ -18,7 +18,7 @@ GCC的基本语法如下。需要注意的是，对于一个命令选项如`-D`�
 gcc [filenames] [options]
 ```
 
-### 1. GCC编译阶段
+## 编译阶段
 
 在使用GCC编译源文件时，具体地可分为如下图所示的四个阶段。
 
@@ -54,7 +54,7 @@ gcc demo.o -o demo.exe
 gcc demo.c -o demo.exe
 ```
 
-### 2. 编译选项
+## 编译选项
 
 下面介绍一些常用的编译选项。
 
@@ -145,7 +145,7 @@ gcc dome.c -o dome.exe -Wl,-rpath=/path/to
 gcc demo.c -o demo.exe -I MPI/Include -L MPI/Lib/x64 -wl,rpath=MPI/Lib/x64 -l msmpi
 ```
 
-### 3. GNU二进制工具
+# GNU二进制工具
 
 GNU二进制工具（GNU Binary Utilities）是用于创建和管理二进制程序、目标文件、库、分析数据、汇编源代码的编程工具集。通常与编译器如GCC、构建工具如make、调试工具如gdb一起使用。通过使用libbfd二进制文件描述器库（Binary File Descriptor library），多数GNU二进制工具支持多种目标文件格式。其中libbfd是GNU项目支持各种格式目标文件并进行可移植操作的主要机制，目前已支持约50种文件格式和25种指令集架构。
 
@@ -499,8 +499,6 @@ Dynamic section at offset 0x2e80 contains 18 entries:
 
 显式调用，不使用动态库头文件，而使用加载动态库的API，在代码指定位置，手动根据动态库路径，手动加载动态库中的某个函数或符号，无需为GCC和环境变量指定动态库路径；此时必须手动加载后才能使用动态库中的函数和符号。显式调用是一种程序插件的概念，随用随加载，不用不加载。
 
-### 1. 隐式使用.so库函数
-
 隐式使用.so文件，需要在代码中包含动态库的头文件，编写的主程序main.c如下所示。
 
 ```c
@@ -522,8 +520,6 @@ int main(int argc, char* argv[]) {
 gcc -c main.c -o main.o
 gcc main.o -o main.exe -l cal -L . -Wl,-rpath=./
 ```
-
-### 2. 显式使用.so库函数
 
 显式在代码中直接加载.so文件，无需为GCC指定动态库的链接路径，也无需将路径添加到环境变量中，因为是在代码中手动指定动态库的路径。
 
