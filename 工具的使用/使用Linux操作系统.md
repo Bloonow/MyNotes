@@ -420,7 +420,7 @@ vim编辑器可以通过安装插件来增加很多强大的功能，有一些�
 
 # Emacs编辑器
 
-Emacs是专为POSIX操作系统设计的文本编辑器，在Linux平台上可使用sudo apt install emacs命令安装。相比于Vim编辑器，Emacs编辑器默认扩展更多命令，支持直接在编辑器中对源代码进行编辑、调试等。
+Emacs是专为POSIX操作系统设计的文本编辑器，目前广使用的是GNU Emacs版本，在Linux平台上可使用sudo apt install emacs命令安装。相比于Vim编辑器，Emacs编辑器默认扩展更多命令，支持直接在编辑器中对源代码进行编辑、调试等。
 
 ## Emacs命令
 
@@ -498,7 +498,7 @@ Emacs配置文件是一个包含ELisp源码的文件，描述Emacs应当以什�
 
 Emacs支持使用插件扩展功能，插件被放置在固定的仓库网站上，目前最大的插件仓库是[MELPA](https://melpa.org/#/)，默认插件仓库是GNU ELPA。
 
-## Emacs模式与GDB调试
+## Emacs模式
 
 Emacs的核心之一就是模式（mode），一个模式对应着一组环境，不同模式采用不同的配置，用于不同的场景。例如，编写C++代码对应C++-mode模式，编写Python代码对应python-mode模式。在不同的编程语言的模式中，编译、执行的方式都是不同的，故而只需事先定义好模式，即可在使用过程中方便切换各种需求场景。
 
@@ -506,10 +506,20 @@ Emacs模式分为主模式（major mode）和次模式（minor mode）两类。�
 
 一个Buffer只能对应一个主模式，例如，Emacs打开.cpp文件时，会将Buffer自动设置成C++-mode，最直观的区别是Emacs为不同编程语言的源码提供不同的语法高亮。同一个Buffer可以有多个次模式，次模式可以进一步调整、增加一些配置。通常来说，插件都是依靠次模式来起作用的。当安装插件时，插件官网会提示如何设置这个插件，其中大多都会使用次模式。
 
-大统一调试器GUD（Grand Unified Debugger）是Emacs编辑器的一个模式，用于在Emacs中运行诸如GDB之类的调试器，使用户无需离开编辑器就可以对代码进行调试。
+## Emacs-GUD调试
 
-按下M-x键，可以直接使用gdb命令，此时会在回显区出现gdb -i=mi executable_file提示，或使用gud-gdb命令，此时会在回显区出现gdb --fullname executable_file提示，指定可执行文件名称即可启动GDB进行调试。其中-i=mi选项指定GDB的MI接口，专用于一些IDE集成。运行GDB调试时，Emacs编辑器会自动开启一个Window窗格显示源代码，在源代码上标识出相关调试信息。
+GUD（Grand Unified Debugger）是Emacs编辑器的主要调试模式，处理与GDB、JDB、PDB等调试器的交互，用于在Emacs中运行诸如GDB之类的调试器，使用户无需离开编辑器就可以对代码进行调试。
 
-在Emacs编辑器的GDB调试状态下，按下M-x键，输入gdb-之后使用Tab键显示命令提示，可查看当前模式下可使用的GDB调试命令，若不存在GDB相关命令，可使用gdb-enable-debug命令启用GDB调试模式，此时便会显示许多可用的gdb-开头的调试命令。例如，使用gdb-many-windows命令可以切换多窗口调试模式，使用gdb-restore-windows命令可以恢复默认的窗格布局等。一个示例如下所示。
+Emacs使用的调试模式最初由Eric Raymond在1992年编写，也即Emacs项目的emacs/lisp/progmodes/gud.el配置文件，用于Emacs 22.1之前的版本。该模式包括两个缓冲区（故而无法显示由其它模式提供的额外信息），一个是GUD缓冲区（GUD buffer），可像在命令行上一样输入GDB命令；另一个是源缓冲区（source buffer），用于显示当前执行的文件代码，并使用=>指向当前执行的代码行。GUD模式使用--fullname选项，这启用GDB调试器--annotate=1级别的注释。
+
+> GDB使用--annotate选项，设置GDB的注释（annotation）级别，用于决定GDB所输出的提示信息（例如当前文件名称、行号、地址等）。其中，--annotate=0是普通级别；--annotate=1将GDB作为GNU Emacs子进程运行；--annotate=2已弃用，被GDB/MI技术所取代；--annotate=3是控制GDB程序所能使用的最大级别。
+
+不久之后，Tom Lord和Jim Kingdon编写了一种专用于GDB的模式，命名为gdba.el配置文件，但并未合并入Emacs项目。gdba.el模式源自于gud.el，但设计为仅与GDB一起使用，并随GDB一起发布，后来被GDB项目废弃。Lord和Kingdon为GDB添加更多的注释，以便诸如Emacs的前端可以更好地获取执行状态，也即使用--annotate=2级别的注释。这允许Emacs显示更多信息，包括调用堆栈、当前堆栈的局部变量、任何断点的状态等。
+
+再后来，作为用户接口以运行GDB的gdb-mi.el模式被开发，也即Emacs项目的emacs/lisp/progmodes/gdb-mi.el配置文件，用于Emacs 21.4之后的版本。该模式使用GDB调试器的-i=mi选项，以使用GDG/MI接口技术。
+
+使用M-x gud-gdb命令将启动GUD调试模式，其会在回显区提示gdb --fullname executable_file命令，使用M-x gdb命令将启动GDB-MI模式，其会在回显区提示gdb -i=mi executable_file命令；指定命令中的可执行文件名称即可启动GDB调试。
+
+在Emacs编辑器的GDB调试状态下，按下M-x键，输入gdb-之后使用Tab键显示命令提示，可查看当前模式下可使用的GDB调试命令。例如，使用gdb-many-windows命令可以切换多窗口调试模式，使用gdb-restore-windows命令可以恢复默认的窗格布局等。一个示例如下所示。
 
 <img src="使用Linux操作系统.assets/Emacs GDB.png" style="zoom:50%;" />

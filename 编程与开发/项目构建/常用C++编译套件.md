@@ -221,8 +221,6 @@ gdb [option] executable_file
 
 使用--args选项，可以在可执行文件之后为程序指定命令行参数；使用--core=COREFILE选项分析核心转储文件；使用--exec=EXECFILE选项指定可执行文件；使用--pid=PID选项指定要附加到的进程；使用--directory=DIR指定源文件搜索目录；使用--tui选项指定使用文本用户界面（text user interface）进行调试。
 
-此外，使用--fullname选项时，可以将GDB的输出信息用于Emacs编辑器的GDB接口，以在Emacs编辑器中使用GDB调试器进行调试。
-
 ## 常用调试命令与示例
 
 在GDB调试模式下，一些常用的命令如下所示，更详细命令可使用help命令查看，或键入apropos命令以查询与给定字符串相匹配的命令。
