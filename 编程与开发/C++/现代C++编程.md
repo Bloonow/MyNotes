@@ -2108,7 +2108,7 @@ int main() {
 
 ## 程序段
 
-目标文件（.obj）中的段（section or segment）指的是一个命名的数据块（named block of data），在程序的进程结构中，它作为一个单元（unit）加载到内存中。在MSVC环境下，可以使用dumpbin.exe查看.obj目标文件的结构。
+目标文件（.obj）中的段（section or segment）指的是一个命名的数据块（named block of data），在程序的进程结构中，它作为一个单元（unit）加载到内存中。在MSVC环境下，可以使用dumpbin.exe查看.obj目标文件的结构；在Unix环境下，可使用objdump工具查看目标文件的结构。
 
 ### alloc_text
 

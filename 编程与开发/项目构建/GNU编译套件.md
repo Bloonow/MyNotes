@@ -171,10 +171,12 @@ GNU二进制工具（GNU Binary Utilities）是用于创建和管理二进制程
 nm命令用于显示一个给定文件（目标文件、可执行文件、库文件等）的符号信息，包括三列信息，分别是符号地址或偏移、符号类型、符号名称。
 
 ```shell
-nm [option] [path]
+nm [option] path
 ```
 
-在显示信息中，缩写所表示的符号类型如下表所示。
+其中，使用-C选项或--demangle选项对混淆（mangling）代码进行解码，使得C++代码更具可读性，可指定参数选择解码风格，例如none、auto、gun-v3、java、gnat、dlang、rust等值；使用-D选项或--dynamic选项显示动态符号，用于动态库目标；使用-f选项或--format选项指定显示风格，可选bsd、sysv、posix等值；使用-p或--no-sort选项以按照符号在源文件中出现的顺序显示，不按符号名称排序。
+
+在nm命令所显示的信息中，类型缩写所表示的符号类型如下表所示，更多详细类型可查看nm命令的手册。
 
 | 符号类型 | 描述                                                         |
 | -------- | ------------------------------------------------------------ |
@@ -187,15 +189,89 @@ nm [option] [path]
 | T, t     | 全局、局部代码符号；该符号位于代码段中；通常是指函数定义     |
 | U        | 未定义符号，该符号在当前编译单元中未定义，而在其他编译单元中定义 |
 
-!!!
+```c++
+int global_var;
+static int static_var;
+static int static_function() { return 0; }
+int global_function(int p) {
+    static int local_static_var_init = 15;
+    return p + local_static_var_init;
+}
+#ifdef __cplusplus
+extern "C"
+#endif
+void non_mangled_function() {}
+int main(int argc, char *argv[]) {
+    global_var = 1;
+    static_var = 2;
+    return 0;
+}
+```
 
+```shell
+g++ -c a.cpp -o a.o
+nm -C -p a.o
+```
 
+```
+0000000000000004 b static_var
+0000000000000000 t static_function()
+0000000000000000 d global_function(int)::local_static_var_init
+0000000000000000 B global_var
+000000000000000f T global_function(int)
+0000000000000027 T non_mangled_function
+0000000000000032 T main
+```
 
+## objdump
 
+objdump命令用于显示目标文件的信息，以可读的形式打印二进制文件的内容，使用--help选项列出帮助文档，使用--info选项列出所支持的处理器架构。
 
+```shell
+objdump option path
+```
 
+该命令有一些必须选项，用于指定所要显示的目标文件中的信息，如下所示。
 
+| 选项                             | 描述                                                         |
+| -------------------------------- | ------------------------------------------------------------ |
+| -a, --archive-headers            | 显示归档文件的文件头信息，归档文件由ar命令创建               |
+| -f, --file-headers               | 显示文件头信息                                               |
+| -h, --headers, --section-headers | 显示节头（section header）的信息                             |
+| -r, --reloc                      | 显示重定位条目                                               |
+| -R, --dynamic-reloc              | 显示动态重定位条目，仅对于动态目标文件有意义，例如某些动态共享库 |
+| -t, --syms                       | 显示符号表条目                                               |
+| -T, --dynamic-syms               | 显示动态符号表条目，仅对于动态目标文件有意义，例如某些动态共享库 |
+| -x, --all-headers                | 显示所有可用的头信息，等价于-a -f -h -r -t同时指定           |
+| -s, --full-contents              | 显示节的完整内容，所有的非空的节（section）都会被显示        |
+| -d, --disassemble                | 显示可执行节（executable section）的汇编语句，将机器指令反汇编成汇编代码 |
+| -D, --disassemble-all            | 显示所有节的汇编语句，将机器指令反汇编成汇编代码             |
+| -S, --source                     | 反汇编时尽可能使用源代码表示，隐含-d选项                     |
+| -g, --debugging                  | 显示调试信息                                                 |
+| -G, --stabs                      | 显示STABS信息                                                |
+| -W, --dwarf                      | 显示DWARF信息                                                |
 
+objdump命令除一些必须选项之外，还有一些可选的参数选项。例如，使用-C选项或--demangle选项对混淆（mangling）代码进行解码，使得C++代码更具可读性，可指定参数选择解码风格，例如none、auto、gun-v3、java、gnat、dlang、rust等值；使用-j选项或--section选项指定仅显示给定节的信息。
+
+```shell
+objdump --section=.text -S -C a.o | grep "<main>" -A20
+```
+
+```
+0000000000000032 <main>:
+  32:   f3 0f 1e fa             endbr64 
+  36:   55                      push   %rbp
+  37:   48 89 e5                mov    %rsp,%rbp
+  3a:   89 7d fc                mov    %edi,-0x4(%rbp)
+  3d:   48 89 75 f0             mov    %rsi,-0x10(%rbp)
+  41:   c7 05 00 00 00 00 01    movl   $0x1,0x0(%rip)        # 4b <main+0x19>
+  48:   00 00 00 
+  4b:   c7 05 00 00 00 00 02    movl   $0x2,0x0(%rip)        # 55 <main+0x23>
+  52:   00 00 00 
+  55:   b8 00 00 00 00          mov    $0x0,%eax
+  5a:   5d                      pop    %rbp
+  5b:   c3                      ret    
+```
 
 # Clang/LLVM
 
