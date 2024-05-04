@@ -523,3 +523,5 @@ Emacs使用的调试模式最初由Eric Raymond在1992年编写，也即Emacs项
 在Emacs编辑器的GDB调试状态下，按下M-x键，输入gdb-之后使用Tab键显示命令提示，可查看当前模式下可使用的GDB调试命令。例如，使用gdb-many-windows命令可以切换多窗口调试模式，使用gdb-restore-windows命令可以恢复默认的窗格布局等。一个示例如下所示。
 
 <img src="使用Linux操作系统.assets/Emacs GDB.png" style="zoom:50%;" />
+
+值得注意的是，使用gdb -i=mi executable_file启动GDB调试时，可能会出现警告'set target-async', an alias for the command 'set mi-async', is deprecated，对set mi-async的别名set target-async已弃用，需要直接使用set mi-async命令。

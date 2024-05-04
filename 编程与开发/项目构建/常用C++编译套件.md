@@ -221,6 +221,8 @@ gdb [option] executable_file
 
 使用--args选项，可以在可执行文件之后为程序指定命令行参数；使用--core=COREFILE选项分析核心转储文件；使用--exec=EXECFILE选项指定可执行文件；使用--pid=PID选项指定要附加到的进程；使用--directory=DIR指定源文件搜索目录；使用--tui选项指定使用文本用户界面（text user interface）进行调试。
 
+需要注意的是，GDB在启动时会读取一些配置，其顺序为，用户\$HOME/.gdbinit配置文件、命令行选项参数、当前工作目录下的.gdbinit配置文件。对于.gdbinit配置文件来说，GDB会将文件中的内容当成GDB命令执行，可用于配置一些GDB设置。
+
 ## 常用调试命令与示例
 
 在GDB调试模式下，一些常用的命令如下所示，更详细命令可使用help命令查看，或键入apropos命令以查询与给定字符串相匹配的命令。
