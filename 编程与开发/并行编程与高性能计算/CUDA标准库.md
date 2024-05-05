@@ -229,31 +229,41 @@ int main(int argc, char* argv[]) {
     double *A = (double*)malloc(sizeof(double) * M * K);
     double *B = (double*)malloc(sizeof(double) * K * N);
     double *C = (double*)malloc(sizeof(double) * M * N);
-    for (int i = 0; i < M * K; i++) A[i] = i;  // 行主序(M,K)矩阵，仅逻辑上转置，可看成列主序(K,M)矩阵
-    for (int i = 0; i < K * N; i++) B[i] = i;  // 行主序(K,N)矩阵，仅逻辑上转置，可看成列主序(N,K)矩阵
-    for (int i = 0; i < M * N; i++) C[i] = 0;  // 行主序(M,N)矩阵，仅逻辑上转置，可看成列主序(N,M)矩阵
+    for (int i = 0; i < M * K; i++) A[i] = i;  // 行主序(M,K)矩阵，可看成列主序(K,M)矩阵
+    for (int i = 0; i < K * N; i++) B[i] = i;  // 行主序(K,N)矩阵，可看成列主序(N,K)矩阵
+    for (int i = 0; i < M * N; i++) C[i] = 0;  // 行主序(M,N)矩阵，可看成列主序(N,M)矩阵
     printf("A\t=\t"); for (int i = 0; i < M * K; i++) printf("%.1f\t", A[i]); printf("\n");
     printf("B\t=\t"); for (int i = 0; i < K * N; i++) printf("%.1f\t", B[i]); printf("\n");
 
+    double alpha = 1.0;
+    double beta = 0.0;
     double *d_A, *d_B, *d_C;
     cudaMalloc(&d_A, sizeof(double) * M * K);
     cudaMalloc(&d_B, sizeof(double) * K * N);
     cudaMalloc(&d_C, sizeof(double) * M * N);
     // cublasSetMatrix(M, K, sizeof(double), A, M, d_A, M);  // 列主序(M,K)的情况
     // cublasSetMatrix(K, N, sizeof(double), B, K, d_B, K);  // 列主序(M,K)的情况
-    cublasSetMatrix(K, M, sizeof(double), A, K, d_A, K);  // 看成列主序(K,M)矩阵时，应该使用的参数
-    cublasSetMatrix(N, K, sizeof(double), B, N, d_B, N);  // 看成列主序(N,K)矩阵时，应该使用的参数
+    cublasSetMatrix(K, M, sizeof(double), A, K, d_A, K);  // 看成列主序(K,M)矩阵
+    cublasSetMatrix(N, K, sizeof(double), B, N, d_B, N);  // 看成列主序(N,K)矩阵
     printf("d_A\t=\t"); dis_matrix<<<1,1>>>(d_A, M * K); cudaDeviceSynchronize();
     printf("d_B\t=\t"); dis_matrix<<<1,1>>>(d_B, K * N); cudaDeviceSynchronize();
 
-    double alpha = 1.0;
-    double beta = 0.0;
-    // 列主序情况，m,n,k参数分别表示(M,K)的op(A)矩阵，(K,N)的op(B)矩阵，lda,ldb为A,B的前导维数M,K，ldc为C的前导维数
-    // cublasDgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, M, N, K, &alpha, d_A, M, d_B, K, &beta, d_C, M);
-    // 行主序情况，要将A,B看成列主序，(K,M)矩阵与(N,K)矩阵无法相乘，故需要转置op(A)和op(B)，转置后分别为(M,K)矩阵和(K,N)矩阵，
+    // 列主序情况，m,n,k参数分别表示(M,K)的op(A)矩阵，(K,N)的op(B)矩阵，
+    // lda,ldb为A,B的前导维数M,K，ldc为C的前导维数
+    // cublasDgemm(
+    //     handle, CUBLAS_OP_N, CUBLAS_OP_N, M, N, K, 
+    //     &alpha, d_A, M, d_B, K, &beta, d_C, M
+    // );
+
+    // 行主序情况，要将A,B看成列主序，(K,M)矩阵与(N,K)矩阵无法相乘，
+    // 故需要转置op(A)和op(B)，转置后分别为(M,K)矩阵和(K,N)矩阵，
     // lda,ldb为A,B的前导维数，因将A,B看成列主序的(K,M)矩阵和(N,K)矩阵，故分别为K,N，
-    // ldc为C的前导维数，因为无法控制矩阵C进行转置，故输出结果C是列主序存储的(M,N)矩阵，其前导维数为M
-    cublasDgemm(handle, CUBLAS_OP_T, CUBLAS_OP_T, M, N, K, &alpha, d_A, K, d_B, N, &beta, d_C, M);
+    // ldc为C的前导维数，因为无法控制矩阵C进行转置，
+    // 故输出结果C是列主序存储的(M,N)矩阵，其前导维数为M
+    cublasDgemm(
+        handle, CUBLAS_OP_T, CUBLAS_OP_T, M, N, K,
+        &alpha, d_A, K, d_B, N, &beta, d_C, M
+    );
     
     printf("d_C\t=\t"); dis_matrix<<<1,1>>>(d_C, M * N); cudaDeviceSynchronize();
     // 因为无法控制矩阵C进行转置，故输出结果C是列主序存储的(M,N)矩阵，其前导维数为M
@@ -400,13 +410,17 @@ int main(int argc, char* argv[]) {
         C[bidx] = (double*)malloc(sizeof(double) * M * N);
     }
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        for (int i = 0; i < M * K; i++) A[bidx][i] = i;    // 行主序(M,K)矩阵，仅逻辑上转置，可看成列主序(K,M)矩阵
-        for (int i = 0; i < K * N; i++) B[bidx][i] = i;    // 行主序(K,N)矩阵，仅逻辑上转置，可看成列主序(N,K)矩阵
-        for (int i = 0; i < M * N; i++) C[bidx][i] = 0;    // 行主序(M,N)矩阵，仅逻辑上转置，可看成列主序(N,M)矩阵
+        for (int i = 0; i < M * K; i++) A[bidx][i] = i;    // 行主序(M,K)矩阵，可看成列主序(K,M)矩阵
+        for (int i = 0; i < K * N; i++) B[bidx][i] = i;    // 行主序(K,N)矩阵，可看成列主序(N,K)矩阵
+        for (int i = 0; i < M * N; i++) C[bidx][i] = 0;    // 行主序(M,N)矩阵，可看成列主序(N,M)矩阵
     }
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("A[%d]\t=\t", bidx); for (int i = 0; i < M * K; i++) printf("%.1f\t", A[bidx][i]); printf("\n");
-        printf("B[%d]\t=\t", bidx); for (int i = 0; i < K * N; i++) printf("%.1f\t", B[bidx][i]); printf("\n");
+        printf("A[%d]\t=\t", bidx);
+        for (int i = 0; i < M * K; i++) printf("%.1f\t", A[bidx][i]);
+        printf("\n");
+        printf("B[%d]\t=\t", bidx);
+        for (int i = 0; i < K * N; i++) printf("%.1f\t", B[bidx][i]);
+        printf("\n");
     }
 
     double **d_A_ptr = (double**)malloc(sizeof(double*) * batchCount);
@@ -418,18 +432,23 @@ int main(int argc, char* argv[]) {
         cudaMalloc(&d_C_ptr[bidx], sizeof(double) * M * N);
     }
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        cublasSetMatrix(K, M, sizeof(double), A[bidx], K, d_A_ptr[bidx], K);  // 看成列主序(K,M)矩阵时，应该使用的参数
-        cublasSetMatrix(N, K, sizeof(double), B[bidx], N, d_B_ptr[bidx], N);  // 看成列主序(N,K)矩阵时，应该使用的参数
+        cublasSetMatrix(K, M, sizeof(double), A[bidx], K, d_A_ptr[bidx], K);  // 看成列主序(K,M)矩阵
+        cublasSetMatrix(N, K, sizeof(double), B[bidx], N, d_B_ptr[bidx], N);  // 看成列主序(N,K)矩阵
     }
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("d_A[%d]\t=\t", bidx); dis_matrix<<<1,1>>>(d_A_ptr[bidx], M * K); cudaDeviceSynchronize();
-        printf("d_B[%d]\t=\t", bidx); dis_matrix<<<1,1>>>(d_B_ptr[bidx], K * N); cudaDeviceSynchronize();
+        printf("d_A[%d]\t=\t", bidx); 
+        dis_matrix<<<1,1>>>(d_A_ptr[bidx], M * K); 
+        cudaDeviceSynchronize();
+        printf("d_B[%d]\t=\t", bidx); 
+        dis_matrix<<<1,1>>>(d_B_ptr[bidx], K * N); 
+        cudaDeviceSynchronize();
     }
 
     double alpha = 1.0;
     double beta = 0.0;
     // 因为d_A_ptr[bidx],d_B_ptr[bidx],d_C_ptr[bidx]变量虽然指向设备地址，但其本身是位于主机内存上的，
-    // 而cublas<t>gemmBatched()函数需要根据地址访问d_A_ptr[bidx]等变量，故需要再将d_A_ptr[bidx]等本身复制到设备内存上
+    // 而cublas<t>gemmBatched()函数需要根据地址访问d_A_ptr[bidx]等变量，
+    // 故需要再将d_A_ptr[bidx]等本身复制到设备内存上
     double **d_A;
     double **d_B;
     double **d_C;
@@ -442,17 +461,24 @@ int main(int argc, char* argv[]) {
     cudaMemcpy(d_B, d_B_ptr, sizeof(double*) * batchCount, cudaMemcpyHostToDevice);
     cudaMemcpy(d_C, d_C_ptr, sizeof(double*) * batchCount, cudaMemcpyHostToDevice);
     // 求C，列主序
-    cublasDgemmBatched(handle, CUBLAS_OP_T, CUBLAS_OP_T, M, N, K, &alpha, d_A, K, d_B, N, &beta, d_C, M, batchCount);
+    cublasDgemmBatched(
+        handle, CUBLAS_OP_T, CUBLAS_OP_T, M, N, K, 
+        &alpha, d_A, K, d_B, N, &beta, d_C, M, batchCount
+    );
 
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("d_C[%d]\t=\t", bidx); dis_matrix<<<1,1>>>(d_C_ptr[bidx], M * N); cudaDeviceSynchronize();
+        printf("d_C[%d]\t=\t", bidx);
+        dis_matrix<<<1,1>>>(d_C_ptr[bidx], M * N);
+        cudaDeviceSynchronize();
     }
     for (int bidx = 0; bidx < batchCount; bidx++) {
         // 因为无法控制矩阵C进行转置，故输出结果C是列主序存储的(M,N)矩阵，其前导维数为M
         cublasGetMatrix(M, N, sizeof(double), d_C_ptr[bidx], M, C[bidx], M);
     }
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("C[%d]\t=\t", bidx); for (int i = 0; i < M * N; i++) printf("%.1f\t", C[bidx][i]); printf("\n");
+        printf("C[%d]\t=\t", bidx);
+        for (int i = 0; i < M * N; i++) printf("%.1f\t", C[bidx][i]); 
+        printf("\n");
     }
 
     cudaFree(d_A);
@@ -585,23 +611,31 @@ int main(int argc, char* argv[]) {
     double *A = (double*)malloc(sizeof(double) * M * K * batchCount);
     double *B = (double*)malloc(sizeof(double) * K * N * batchCount);
     double *C = (double*)malloc(sizeof(double) * M * N * batchCount);
-    for (int i = 0; i < M * K * batchCount; i++) A[i] = i;  // 行主序(M,K)矩阵，仅逻辑上转置，可看成列主序(K,M)矩阵
-    for (int i = 0; i < K * N * batchCount; i++) B[i] = i;  // 行主序(K,N)矩阵，仅逻辑上转置，可看成列主序(N,K)矩阵
-    for (int i = 0; i < M * N * batchCount; i++) C[i] = 0;  // 行主序(M,N)矩阵，仅逻辑上转置，可看成列主序(N,M)矩阵
+    for (int i = 0; i < M * K * batchCount; i++) A[i] = i;  // 行主序(M,K)矩阵，可看成列主序(K,M)矩阵
+    for (int i = 0; i < K * N * batchCount; i++) B[i] = i;  // 行主序(K,N)矩阵，可看成列主序(N,K)矩阵
+    for (int i = 0; i < M * N * batchCount; i++) C[i] = 0;  // 行主序(M,N)矩阵，可看成列主序(N,M)矩阵
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("A[%d]\t=\t", bidx); for (int i = 0; i < M * K; i++) printf("%.1f\t", A[bidx*M*K+i]); printf("\n");
-        printf("B[%d]\t=\t", bidx); for (int i = 0; i < K * N; i++) printf("%.1f\t", B[bidx*K*N+i]); printf("\n");
+        printf("A[%d]\t=\t", bidx);
+        for (int i = 0; i < M * K; i++) printf("%.1f\t", A[bidx*M*K+i]);
+        printf("\n");
+        printf("B[%d]\t=\t", bidx);
+        for (int i = 0; i < K * N; i++) printf("%.1f\t", B[bidx*K*N+i]);
+        printf("\n");
     }
 
     double *d_A, *d_B, *d_C;
     cudaMalloc(&d_A, sizeof(double) * M * K * batchCount);
     cudaMalloc(&d_B, sizeof(double) * K * N * batchCount);
     cudaMalloc(&d_C, sizeof(double) * M * N * batchCount);
-    cublasSetMatrix(K, M * batchCount, sizeof(double), A, K, d_A, K);  // 看成列主序(K,M)矩阵时，应该使用的参数
-    cublasSetMatrix(N, K * batchCount, sizeof(double), B, N, d_B, N);  // 看成列主序(N,K)矩阵时，应该使用的参数
+    cublasSetMatrix(K, M * batchCount, sizeof(double), A, K, d_A, K);  // 看成列主序(K,M)矩阵
+    cublasSetMatrix(N, K * batchCount, sizeof(double), B, N, d_B, N);  // 看成列主序(N,K)矩阵
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("d_A[%d]\t=\t", bidx); dis_matrix<<<1,1>>>(&d_A[bidx*M*K], M * K); cudaDeviceSynchronize();
-        printf("d_B[%d]\t=\t", bidx); dis_matrix<<<1,1>>>(&d_B[bidx*K*N], K * N); cudaDeviceSynchronize();
+        printf("d_A[%d]\t=\t", bidx);
+        dis_matrix<<<1,1>>>(&d_A[bidx*M*K], M * K);
+        cudaDeviceSynchronize();
+        printf("d_B[%d]\t=\t", bidx);
+        dis_matrix<<<1,1>>>(&d_B[bidx*K*N], K * N);
+        cudaDeviceSynchronize();
     }
 
     double alpha = 1.0;
@@ -613,7 +647,9 @@ int main(int argc, char* argv[]) {
         batchCount);
 
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("d_C[%d]\t=\t", bidx); dis_matrix<<<1,1>>>(&d_C[bidx*M*N], M * N); cudaDeviceSynchronize();
+        printf("d_C[%d]\t=\t", bidx);
+        dis_matrix<<<1,1>>>(&d_C[bidx*M*N], M * N);
+        cudaDeviceSynchronize();
     }
 
     for (int bidx = 0; bidx < batchCount; bidx++) {
@@ -621,7 +657,9 @@ int main(int argc, char* argv[]) {
         cublasGetMatrix(M, N * batchCount, sizeof(double), d_C, M, C, M);
     }
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("C[%d]\t=\t", bidx); for (int i = 0; i < M * N; i++) printf("%.1f\t", C[bidx*M*N+i]); printf("\n");
+        printf("C[%d]\t=\t", bidx);
+        for (int i = 0; i < M * N; i++) printf("%.1f\t", C[bidx*M*N+i]);
+        printf("\n");
     }
     
     cudaFree(d_A);
@@ -757,7 +795,7 @@ cublasStatus_t cublasLtMatmul(
 
 其所执行的计算如下面的公式所示，其中$A,B,C$是输入矩阵，$\alpha,\beta$是标量，$D$是输出矩阵。
 $$
-D = \alpha * AB + \beta * C
+D = \alpha \times AB + \beta \times C
 $$
 注意，这个函数支持就地矩阵乘法（$C,\text{Cdesc}$与$D,\text{Ddesc}$相等，即指向同一内存地址）；以及非就地的矩阵乘法（$C$与$D$不相等，即指向不同内存地址），它们应该具有相同的数据类型，rows行数与cols列数，相同的batch size大小，以及相同的内存存储顺序。在非就地的矩阵乘法中，$C$的前导维数可以与$D$的前导维数不同，特别地，将矩阵$C$的前导维数置为0，表示对其按行或列进行广播，如果省略Cdesc参数，则矩阵$C$自动采用矩阵$D$的布局描述Ddesc。
 
@@ -797,9 +835,15 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < K * N; i++) h_B[i] = i * 1.0;
     for (int i = 0; i < M * N; i++) h_C[i] = i * 1.0;
     for (int i = 0; i < M * N; i++) h_D[i] = 0.0;
-    printf("A\t=\t"); for (int i = 0; i < M * K; i++) printf("%.1f\t", h_A[i]); printf("\n");
-    printf("B\t=\t"); for (int i = 0; i < K * N; i++) printf("%.1f\t", h_B[i]); printf("\n");
-    printf("C\t=\t"); for (int i = 0; i < M * N; i++) printf("%.1f\t", h_C[i]); printf("\n");
+    printf("A\t=\t");
+    for (int i = 0; i < M * K; i++) printf("%.1f\t", h_A[i]);
+    printf("\n");
+    printf("B\t=\t");
+    for (int i = 0; i < K * N; i++) printf("%.1f\t", h_B[i]);
+    printf("\n");
+    printf("C\t=\t");
+    for (int i = 0; i < M * N; i++) printf("%.1f\t", h_C[i]);
+    printf("\n");
     
     float *A, *B, *C, *D;
     cudaMalloc(&A, sizeof(float) * M * K);
@@ -822,7 +866,10 @@ int main(int argc, char *argv[]) {
 
     float alpha = 1.0, beta = 1.0;
     // A, B, C, D are stored as column-major  // Not use workspace
-    cublasLtMatmul(handle, computeDesc, &alpha, A, Adesc, B, Bdesc, &beta, C, Cdesc, D, Ddesc, NULL, NULL, 0, NULL);
+    cublasLtMatmul(
+        handle, computeDesc, &alpha, A, Adesc, B, Bdesc, &beta, 
+        C, Cdesc, D, Ddesc, NULL, NULL, 0, NULL
+    );
     
     cublasLtMatrixLayoutDestroy(Adesc);
     cublasLtMatrixLayoutDestroy(Bdesc);
@@ -832,7 +879,9 @@ int main(int argc, char *argv[]) {
     cublasLtDestroy(handle);
 
     cudaMemcpy(h_D, D, sizeof(float) * M * N, cudaMemcpyDeviceToHost);
-    printf("D\t=\t"); for (int i = 0; i < M * N; i++) printf("%.1f\t", h_D[i]); printf("\n");
+    printf("D\t=\t");
+    for (int i = 0; i < M * N; i++) printf("%.1f\t", h_D[i]);
+    printf("\n");
     cudaFree(A);
     cudaFree(B);
     cudaFree(C);
@@ -878,39 +927,32 @@ typedef enum {
      *  value type: uint32_t
      */
     CUBLASLT_MATRIX_LAYOUT_TYPE = 0,
-    
     /** Memory order of the data. See cublasLtOrder_t.
      *  value type: int32_t, default: CUBLASLT_ORDER_COL
      */
     CUBLASLT_MATRIX_LAYOUT_ORDER = 1,
-    
     /** Number of rows. 
      *  value type: uint64_t
      *  Usually only values that can be expressed as int32_t are supported.
      */
     CUBLASLT_MATRIX_LAYOUT_ROWS = 2,
-    
     /** Number of columns.
      *  value type: uint64_t
      *  Usually only values that can be expressed as int32_t are supported.
      */
     CUBLASLT_MATRIX_LAYOUT_COLS = 3,
-    
     /** Matrix leading dimension. Currently only non-negative values are supported.
      *  value type: uint64_t
      */
     CUBLASLT_MATRIX_LAYOUT_LD = 4,
-    
     /** Number of matmul operations to perform in the batch. See also CUBLASLT_ALGO_CAP_STRIDED_BATCH_SUPPORT. 
      *  value type: int32_t, default: 1
      */
     CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT = 5,
-    
     /** Stride (in elements) to the next matrix for strided batch operation.
      *  value type: int64_t, default: 0
      */
     CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET = 6,
-    
     /** Stride (in bytes) to the imaginary plane for planar complex layout. 
      *  value type: int64_t, default: 0
      */
@@ -938,9 +980,15 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < K * N; i++)         h_B[i] = i * 1.0;
     for (int i = 0; i < 1 * N; i++)         h_C[i] = i * 0.1;
     for (int i = 0; i < M * N * batch; i++) h_D[i] = 0.0;
-    printf("A\t=\t"); for (int i = 0; i < M * K * batch; i++) printf("%.1f\t", h_A[i]); printf("\n");
-    printf("B\t=\t"); for (int i = 0; i < K * N; i++)         printf("%.1f\t", h_B[i]); printf("\n");
-    printf("C\t=\t"); for (int i = 0; i < 1 * N; i++)         printf("%.1f\t", h_C[i]); printf("\n");
+    printf("A\t=\t");
+    for (int i = 0; i < M * K * batch; i++) printf("%.1f\t", h_A[i]);
+    printf("\n");
+    printf("B\t=\t");
+    for (int i = 0; i < K * N; i++) printf("%.1f\t", h_B[i]);
+    printf("\n");
+    printf("C\t=\t");
+    for (int i = 0; i < 1 * N; i++) printf("%.1f\t", h_C[i]);
+    printf("\n");
     
     float *A, *B, *C, *D;
     cudaMalloc(&A, sizeof(float) * M * K * batch);
@@ -961,26 +1009,41 @@ int main(int argc, char *argv[]) {
     cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_32F, M, N, 0);  // broadcast
     cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_32F, M, N, N);
     cublasLtOrder_t row_major = CUBLASLT_ORDER_ROW;
-    cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(cublasLtOrder_t));
-    cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(cublasLtOrder_t));
-    cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(cublasLtOrder_t));
-    cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(cublasLtOrder_t));
-    cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
-    cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
-    cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
-    cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
+    cublasLtMatrixLayoutSetAttribute(
+        Adesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(cublasLtOrder_t));
+    cublasLtMatrixLayoutSetAttribute(
+        Bdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(cublasLtOrder_t));
+    cublasLtMatrixLayoutSetAttribute(
+        Cdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(cublasLtOrder_t));
+    cublasLtMatrixLayoutSetAttribute(
+        Ddesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(cublasLtOrder_t));
+    cublasLtMatrixLayoutSetAttribute(
+        Adesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
+    cublasLtMatrixLayoutSetAttribute(
+        Bdesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
+    cublasLtMatrixLayoutSetAttribute(
+        Cdesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
+    cublasLtMatrixLayoutSetAttribute(
+        Ddesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
     int64_t Astride = M * K;
     int64_t Bstride = 0;
     int64_t Cstride = 0;
     int64_t Dstride = M * N;
-    cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Astride, sizeof(int64_t));
-    cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Bstride, sizeof(int64_t));
-    cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Cstride, sizeof(int64_t));
-    cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Dstride, sizeof(int64_t));
+    cublasLtMatrixLayoutSetAttribute(
+        Adesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Astride, sizeof(int64_t));
+    cublasLtMatrixLayoutSetAttribute(
+        Bdesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Bstride, sizeof(int64_t));
+    cublasLtMatrixLayoutSetAttribute(
+        Cdesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Cstride, sizeof(int64_t));
+    cublasLtMatrixLayoutSetAttribute(
+        Ddesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Dstride, sizeof(int64_t));
 
     float alpha = 1.0, beta = 1.0;
     // Not use workspace
-    cublasLtMatmul(handle, computeDesc, &alpha, A, Adesc, B, Bdesc, &beta, C, Cdesc, D, Ddesc, NULL, NULL, 0, NULL);
+    cublasLtMatmul(
+        handle, computeDesc, &alpha, A, Adesc, B, Bdesc, &beta,
+        C, Cdesc, D, Ddesc, NULL, NULL, 0, NULL
+    );
 
     cublasLtMatrixLayoutDestroy(Adesc);
     cublasLtMatrixLayoutDestroy(Bdesc);
@@ -990,7 +1053,9 @@ int main(int argc, char *argv[]) {
     cublasLtDestroy(handle);
 
     cudaMemcpy(h_D, D, sizeof(float) * M * N * batch, cudaMemcpyDeviceToHost);
-    printf("D\t=\t"); for (int i = 0; i < M * N * batch; i++) printf("%.1f\t", h_D[i]); printf("\n");
+    printf("D\t=\t"); 
+    for (int i = 0; i < M * N * batch; i++) printf("%.1f\t", h_D[i]); 
+    printf("\n");
     cudaFree(A);
     cudaFree(B);
     cudaFree(C);
@@ -1215,3 +1280,7 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 ```
+
+# cuFFTXt
+
+cuFFTXt API用于将FFT计算扩展到单节点多GPU环境。
