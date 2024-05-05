@@ -1284,3 +1284,8 @@ int main(int argc, char *argv[]) {
 # cuFFTXt
 
 cuFFTXt API用于将FFT计算扩展到单节点多GPU环境。
+
+```c++
+cublasLt_sgemm(A, B, C0_ROW, alpha, beta, M, N, K, batchCount, CUBLASLT_ORDER_ROW, CUBLASLT_ORDER_ROW, CUBLASLT_ORDER_ROW);
+```
+

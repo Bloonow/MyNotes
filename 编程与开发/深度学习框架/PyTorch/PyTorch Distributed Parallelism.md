@@ -2035,15 +2035,15 @@ model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank]
 
 ```python
 def main():
-  load_checkpoint(checkpoint_path)
-  initialize()
-  train()
+    checkpoint_path()
+    initialize()
+    train()
 
 def train():
-  for batch in iter(dataset):
-    train_step(batch)
-    if should_checkpoint:
-      save_checkpoint(checkpoint_path)
+    for batch in iter(dataset):
+        train_step(batch)
+    	if should_checkpoint:
+            save_checkpoint(checkpoint_path)
 ```
 
 在worker的错误error上，此工具将总结错误的详细信息，例如time,rank,host,pid,traceback等。在每个节点上，第一个错误（按时间戳）被报告为“根本原因（Root Cause）”错误。为打印出错误摘要的一部分traceback信息，需在训练脚本中对主入口点函数（main entry point）进行注释，如下面的例子所示。
@@ -2185,7 +2185,7 @@ class SimpleElasticAgent(ElasticAgent):
     @staticmethod
     def _get_master_addr_port(store: Store) -> Tuple[str, int]
 
-    def _assign_worker_ranks(self, store, group_rank: int, group_world_size: int, spec: WorkerSpec) -> List[Worker]
+    def _assign_worker_ranks(self, store, group_rank, group_world_size, spec: WorkerSpec) -> List[Worker]
     def _initialize_workers(self, worker_group: WorkerGroup) -> None
     def _restart_workers(self, worker_group: WorkerGroup) -> None
     def run(self, role: str = DEFAULT_ROLE) -> RunResult
@@ -2313,7 +2313,7 @@ redirects和tee参数是位掩码（bitmasks），指定要将哪些std标准流
 
 ```python
 class PContext(abc.ABC):
-    def __init__(self, name, entrypoint, args, envs, stdouts, stderrs, tee_stdouts, tee_stderrs, error_files, )
+    def __init__(self, name, entrypoint, args, envs, stdouts, stderrs, tee_stdouts, tee_stderrs, error_files,)
     def start(self) -> None
     def wait(self, timeout: float = -1, period: float = 1) -> Optional[RunProcsResult]
 ```
