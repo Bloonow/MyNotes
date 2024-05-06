@@ -127,7 +127,7 @@ int main(int argc, char* argv[]) {
 }
 ```
 
-需要注意的是，在cuBLAS中，将矢量、矩阵、张量等多维数组结构视作**列主序**存储（也即从索引为0号的第一个维度轴开始存储），而不是C风格的行主序存储（从索引为-1的最后一个维度轴开始存储）。
+需要注意的是，在cuBLAS中，将矢量、矩阵、张量等多维数组结构视作**列主序**存储（也即从矩阵最左侧的第一个维度轴开始存储），而不是C风格的行主序存储（从矩阵最右侧的最后一个维度轴开始存储）。
 
 例如，一个2行3列的矩阵$A$，其各个元素的值如下所示。
 $$
@@ -415,11 +415,9 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < M * N; i++) C[bidx][i] = 0;    // 行主序(M,N)矩阵，可看成列主序(N,M)矩阵
     }
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("A[%d]\t=\t", bidx);
-        for (int i = 0; i < M * K; i++) printf("%.1f\t", A[bidx][i]);
+        printf("A[%d]\t=\t", bidx); for (int i = 0; i < M * K; i++) printf("%.1f\t", A[bidx][i]); 
         printf("\n");
-        printf("B[%d]\t=\t", bidx);
-        for (int i = 0; i < K * N; i++) printf("%.1f\t", B[bidx][i]);
+        printf("B[%d]\t=\t", bidx); for (int i = 0; i < K * N; i++) printf("%.1f\t", B[bidx][i]); 
         printf("\n");
     }
 
@@ -467,17 +465,14 @@ int main(int argc, char* argv[]) {
     );
 
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("d_C[%d]\t=\t", bidx);
-        dis_matrix<<<1,1>>>(d_C_ptr[bidx], M * N);
-        cudaDeviceSynchronize();
+        printf("d_C[%d]\t=\t", bidx); dis_matrix<<<1,1>>>(d_C_ptr[bidx], M * N); cudaDeviceSynchronize();
     }
     for (int bidx = 0; bidx < batchCount; bidx++) {
         // 因为无法控制矩阵C进行转置，故输出结果C是列主序存储的(M,N)矩阵，其前导维数为M
         cublasGetMatrix(M, N, sizeof(double), d_C_ptr[bidx], M, C[bidx], M);
     }
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("C[%d]\t=\t", bidx);
-        for (int i = 0; i < M * N; i++) printf("%.1f\t", C[bidx][i]); 
+        printf("C[%d]\t=\t", bidx); for (int i = 0; i < M * N; i++) printf("%.1f\t", C[bidx][i]);
         printf("\n");
     }
 
@@ -615,11 +610,9 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < K * N * batchCount; i++) B[i] = i;  // 行主序(K,N)矩阵，可看成列主序(N,K)矩阵
     for (int i = 0; i < M * N * batchCount; i++) C[i] = 0;  // 行主序(M,N)矩阵，可看成列主序(N,M)矩阵
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("A[%d]\t=\t", bidx);
-        for (int i = 0; i < M * K; i++) printf("%.1f\t", A[bidx*M*K+i]);
+        printf("A[%d]\t=\t", bidx); for (int i = 0; i < M * K; i++) printf("%.1f\t", A[bidx*M*K+i]);
         printf("\n");
-        printf("B[%d]\t=\t", bidx);
-        for (int i = 0; i < K * N; i++) printf("%.1f\t", B[bidx*K*N+i]);
+        printf("B[%d]\t=\t", bidx); for (int i = 0; i < K * N; i++) printf("%.1f\t", B[bidx*K*N+i]);
         printf("\n");
     }
 
@@ -630,12 +623,8 @@ int main(int argc, char* argv[]) {
     cublasSetMatrix(K, M * batchCount, sizeof(double), A, K, d_A, K);  // 看成列主序(K,M)矩阵
     cublasSetMatrix(N, K * batchCount, sizeof(double), B, N, d_B, N);  // 看成列主序(N,K)矩阵
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("d_A[%d]\t=\t", bidx);
-        dis_matrix<<<1,1>>>(&d_A[bidx*M*K], M * K);
-        cudaDeviceSynchronize();
-        printf("d_B[%d]\t=\t", bidx);
-        dis_matrix<<<1,1>>>(&d_B[bidx*K*N], K * N);
-        cudaDeviceSynchronize();
+        printf("d_A[%d]\t=\t", bidx); dis_matrix<<<1,1>>>(&d_A[bidx*M*K], M * K); cudaDeviceSynchronize();
+        printf("d_B[%d]\t=\t", bidx); dis_matrix<<<1,1>>>(&d_B[bidx*K*N], K * N); cudaDeviceSynchronize();
     }
 
     double alpha = 1.0;
@@ -643,13 +632,11 @@ int main(int argc, char* argv[]) {
     // 求C，列主序
     cublasDgemmStridedBatched(
         handle, CUBLAS_OP_T, CUBLAS_OP_T, M, N, K, 
-        &alpha, d_A, K, M*K, d_B, N, K*N, &beta, d_C, M, M*N, 
-        batchCount);
+        &alpha, d_A, K, M*K, d_B, N, K*N, &beta, d_C, M, M*N, batchCount
+    );
 
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("d_C[%d]\t=\t", bidx);
-        dis_matrix<<<1,1>>>(&d_C[bidx*M*N], M * N);
-        cudaDeviceSynchronize();
+        printf("d_C[%d]\t=\t", bidx); dis_matrix<<<1,1>>>(&d_C[bidx*M*N], M * N); cudaDeviceSynchronize();
     }
 
     for (int bidx = 0; bidx < batchCount; bidx++) {
@@ -657,8 +644,7 @@ int main(int argc, char* argv[]) {
         cublasGetMatrix(M, N * batchCount, sizeof(double), d_C, M, C, M);
     }
     for (int bidx = 0; bidx < batchCount; bidx++) {
-        printf("C[%d]\t=\t", bidx);
-        for (int i = 0; i < M * N; i++) printf("%.1f\t", C[bidx*M*N+i]);
+        printf("C[%d]\t=\t", bidx); for (int i = 0; i < M * N; i++) printf("%.1f\t", C[bidx*M*N+i]);
         printf("\n");
     }
     
@@ -835,15 +821,9 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < K * N; i++) h_B[i] = i * 1.0;
     for (int i = 0; i < M * N; i++) h_C[i] = i * 1.0;
     for (int i = 0; i < M * N; i++) h_D[i] = 0.0;
-    printf("A\t=\t");
-    for (int i = 0; i < M * K; i++) printf("%.1f\t", h_A[i]);
-    printf("\n");
-    printf("B\t=\t");
-    for (int i = 0; i < K * N; i++) printf("%.1f\t", h_B[i]);
-    printf("\n");
-    printf("C\t=\t");
-    for (int i = 0; i < M * N; i++) printf("%.1f\t", h_C[i]);
-    printf("\n");
+    printf("A\t=\t"); for (int i = 0; i < M * K; i++) printf("%.1f\t", h_A[i]); printf("\n");
+    printf("B\t=\t"); for (int i = 0; i < K * N; i++) printf("%.1f\t", h_B[i]); printf("\n");
+    printf("C\t=\t"); for (int i = 0; i < M * N; i++) printf("%.1f\t", h_C[i]); printf("\n");
     
     float *A, *B, *C, *D;
     cudaMalloc(&A, sizeof(float) * M * K);
@@ -879,9 +859,7 @@ int main(int argc, char *argv[]) {
     cublasLtDestroy(handle);
 
     cudaMemcpy(h_D, D, sizeof(float) * M * N, cudaMemcpyDeviceToHost);
-    printf("D\t=\t");
-    for (int i = 0; i < M * N; i++) printf("%.1f\t", h_D[i]);
-    printf("\n");
+    printf("D\t=\t"); for (int i = 0; i < M * N; i++) printf("%.1f\t", h_D[i]); printf("\n");
     cudaFree(A);
     cudaFree(B);
     cudaFree(C);
@@ -980,15 +958,9 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < K * N; i++)         h_B[i] = i * 1.0;
     for (int i = 0; i < 1 * N; i++)         h_C[i] = i * 0.1;
     for (int i = 0; i < M * N * batch; i++) h_D[i] = 0.0;
-    printf("A\t=\t");
-    for (int i = 0; i < M * K * batch; i++) printf("%.1f\t", h_A[i]);
-    printf("\n");
-    printf("B\t=\t");
-    for (int i = 0; i < K * N; i++) printf("%.1f\t", h_B[i]);
-    printf("\n");
-    printf("C\t=\t");
-    for (int i = 0; i < 1 * N; i++) printf("%.1f\t", h_C[i]);
-    printf("\n");
+    printf("A\t=\t"); for (int i = 0; i < M * K * batch; i++) printf("%.1f\t", h_A[i]); printf("\n");
+    printf("B\t=\t"); for (int i = 0; i < K * N; i++)         printf("%.1f\t", h_B[i]); printf("\n");
+    printf("C\t=\t"); for (int i = 0; i < 1 * N; i++)         printf("%.1f\t", h_C[i]); printf("\n");
     
     float *A, *B, *C, *D;
     cudaMalloc(&A, sizeof(float) * M * K * batch);
@@ -1008,35 +980,23 @@ int main(int argc, char *argv[]) {
     cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_32F, K, N, N);
     cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_32F, M, N, 0);  // broadcast
     cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_32F, M, N, N);
-    cublasLtOrder_t row_major = CUBLASLT_ORDER_ROW;
-    cublasLtMatrixLayoutSetAttribute(
-        Adesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(cublasLtOrder_t));
-    cublasLtMatrixLayoutSetAttribute(
-        Bdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(cublasLtOrder_t));
-    cublasLtMatrixLayoutSetAttribute(
-        Cdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(cublasLtOrder_t));
-    cublasLtMatrixLayoutSetAttribute(
-        Ddesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &row_major, sizeof(cublasLtOrder_t));
-    cublasLtMatrixLayoutSetAttribute(
-        Adesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
-    cublasLtMatrixLayoutSetAttribute(
-        Bdesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
-    cublasLtMatrixLayoutSetAttribute(
-        Cdesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
-    cublasLtMatrixLayoutSetAttribute(
-        Ddesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
-    int64_t Astride = M * K;
-    int64_t Bstride = 0;
-    int64_t Cstride = 0;
-    int64_t Dstride = M * N;
-    cublasLtMatrixLayoutSetAttribute(
-        Adesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Astride, sizeof(int64_t));
-    cublasLtMatrixLayoutSetAttribute(
-        Bdesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Bstride, sizeof(int64_t));
-    cublasLtMatrixLayoutSetAttribute(
-        Cdesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Cstride, sizeof(int64_t));
-    cublasLtMatrixLayoutSetAttribute(
-        Ddesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &Dstride, sizeof(int64_t));
+    cublasLtOrder_t rm = CUBLASLT_ORDER_ROW;
+    cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &rm, sizeof(cublasLtOrder_t));
+    cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &rm, sizeof(cublasLtOrder_t));
+    cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &rm, sizeof(cublasLtOrder_t));
+    cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &rm, sizeof(cublasLtOrder_t));
+    cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
+    cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
+    cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
+    cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
+    int64_t aS = M * K;
+    int64_t bS = 0;
+    int64_t cS = 0;
+    int64_t dS = M * N;
+    cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &aS, sizeof(int64_t));
+    cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &bS, sizeof(int64_t));
+    cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &cS, sizeof(int64_t));
+    cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &dS, sizeof(int64_t));
 
     float alpha = 1.0, beta = 1.0;
     // Not use workspace
@@ -1053,9 +1013,7 @@ int main(int argc, char *argv[]) {
     cublasLtDestroy(handle);
 
     cudaMemcpy(h_D, D, sizeof(float) * M * N * batch, cudaMemcpyDeviceToHost);
-    printf("D\t=\t"); 
-    for (int i = 0; i < M * N * batch; i++) printf("%.1f\t", h_D[i]); 
-    printf("\n");
+    printf("D\t=\t"); for (int i = 0; i < M * N * batch; i++) printf("%.1f\t", h_D[i]); printf("\n");
     cudaFree(A);
     cudaFree(B);
     cudaFree(C);
@@ -1099,9 +1057,7 @@ $$
 
 在许多实际应用中，输入向量是实值，可以证明，在这种情况下，输出满足Hermite对称性（$X_k=X^H_{N-k}$）。反之，对于满足Hermite对称性的复值输入，逆变换将是纯实值的。cuFFT利用这种冗余，仅使用Hermite向量的前半部分。复数到实数的C2R变换接受Hermite复数输入，对于一维信号，这需要索引为0的元素为实数（如果N为偶数则$\frac{N}{2}$索引元素也应为实数），对于D维信号，这意味着$x(n_1,n_2,\cdots,n_d)=x^H(N_1-n_1,N_2-n_2,\cdots,N_d-n_d)$​，否则变换的行为是未定义的。
 
-DFT可以使用矩阵向量乘法实现，需要$O(N^2)$​时间复杂度。
-
-不过，cuFFT采用[Cooley-Tukey](http://en.wikipedia.org/wiki/Cooley-Tukey_FFT_algorithm)算法实现来减少所需操作的数量，以优化特定变换规模下的性能。该算法将DFT矩阵表示为稀疏构建块（sparse building block）矩阵的乘积，cuFFT实现以2、3、5、7为基数的构建块，因此，任何能够分解为$2^a\times3^b\times5^c\times7^d$​形式（其中a、b、c、d为非负整数）的输入规模都由cuFFT库提供了优化。此外，对于所有采用[2,128)之间质数的构建块，也有特定优化，当长度无法分解为[2,128)之间质数幂的倍数时，使用[Bluestein](http://en.wikipedia.org/wiki/Bluestein's_FFT_algorithm)算法。由于Bluestein实现对每个输出点比Cooley-Tukey实现需要更多的计算，因此Cooley-Tukey算法的准确性更好，纯Cooley-Tukey算法的相对误差按$\log_2(N)$的比例增长，其中N为参与变换的元素数目。
+DFT可以使用矩阵向量乘法实现，需要$O(N^2)$​时间复杂度。不过，cuFFT采用[Cooley-Tukey](http://en.wikipedia.org/wiki/Cooley-Tukey_FFT_algorithm)算法实现来减少所需操作的数量，以优化特定变换规模下的性能。该算法将DFT矩阵表示为稀疏构建块（sparse building block）矩阵的乘积，cuFFT实现以2、3、5、7为基数的构建块，因此，任何能够分解为$2^a\times3^b\times5^c\times7^d$​形式（其中a、b、c、d为非负整数）的输入规模都由cuFFT库提供了优化。此外，对于所有采用[2,128)之间质数的构建块，也有特定优化，当长度无法分解为[2,128)之间质数幂的倍数时，使用[Bluestein](http://en.wikipedia.org/wiki/Bluestein's_FFT_algorithm)算法。由于Bluestein实现对每个输出点比Cooley-Tukey实现需要更多的计算，因此Cooley-Tukey算法的准确性更好，纯Cooley-Tukey算法的相对误差按$\log_2(N)$的比例增长，其中N为参与变换的元素数目。
 
 cuFFT库位于cufft.h头文件中，它仿照FFTW接口建模，提供一种称为plan的配置机制，使用内部构建块来优化基于给定配置和GPU硬件的傅里叶变换。然后，当调用执行函数时，实际的变换将按照plan执行。该方法优点是，一旦用户创建plan，库就会保留多次执行该plan所需的任何状态，而无需重新计算配置。
 
@@ -1279,13 +1235,5 @@ int main(int argc, char *argv[]) {
     free(h_reslut);
     return 0;
 }
-```
-
-# cuFFTXt
-
-cuFFTXt API用于将FFT计算扩展到单节点多GPU环境。
-
-```c++
-cublasLt_sgemm(A, B, C0_ROW, alpha, beta, M, N, K, batchCount, CUBLASLT_ORDER_ROW, CUBLASLT_ORDER_ROW, CUBLASLT_ORDER_ROW);
 ```
 
