@@ -54,3 +54,15 @@
 在本地策略组gpedit.msc中，计算机配置>管理模板>Windows组件>Windows更新。在配置自动更新项上，右键>编辑，设置为已禁用；在删除使用所有Windows更新功能的访问权限项上，右键>编辑，设为已启用。
 
 在注册表中，找到`计算机\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\UsoSvc`自动更新服务，Start>修改，数值数据为4；FailureActions>修改二进制数据，00000010行与00000018行中，第5个字节位置，由原来的01修改为00。
+
+# CMD启动时执行命令
+
+在Linux平台上，可以在用户家目录下的.bashrc配置文件中指定要在bash shell启动时执行的命令，在Windows平台上也可实现该需求。
+
+创建一个名称为auto_execute_command.bat的批处理文件，编辑文件内容如下所示，下述示例是将CMD的代码页切换到UTF-8字符集。
+
+```cmd
+chcp 65001
+```
+
+在注册表中，找到`计算机\HKEY_LOCAL_MACHINE\Software\Microsoft\Command Processor`或`计算机\HKEY_CURRENT_USER\Software\Microsoft\Command Processor`，右键>新建>字符串值，名称设为AutoRun，数值指定为批处理文件auto_execute_command.bat的完整路径，即可。
