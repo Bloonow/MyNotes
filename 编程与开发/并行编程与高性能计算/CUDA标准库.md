@@ -1,3 +1,123 @@
+# CUDA标准库
+
+CUDA开发工具套件中有很多有用的库，涵盖线性代数、图像处理、机器学习等众多应用领域，广泛用于科学与工程计算。
+
+| 库名     | 简介                                                   |
+| -------- | ------------------------------------------------------ |
+| Thrust   | 类似于C++的标准模板库（standard template library）     |
+| cuBLAS   | 基本线性代数子程序（basic linear algebra subroutines） |
+| cuFFT    | 快速傅里叶变换（fast Fourier transforms）              |
+| cuSPARSE | 稀疏矩阵（sparse matrix）                              |
+| cuRAND   | 随机数生成器（random number generator）                |
+| cuSolver | 稠密（dense）矩阵和稀疏（sparse）矩阵计算库            |
+| cuDNN    | 深度神经网络（deep neural networks）                   |
+
+使用CUDA程序库，有许多优点，如下所示。
+
+(1)可以节约程序开发时间，有些库的功能自己实现需要花费很多人力物力与时间。
+
+(2)可以获得更值得信赖的程序，这些常用库都是业界专家精英们的智慧结晶，一般来说比自己实现更加可靠。
+
+(3)可以简化代码，有些功能自己实现可能需要成百上千行代码，但适当使用库函数也许用几十行代码就能完成。
+
+(4)可以加速程序，对于常见的计算来说，库函数能够获得的性能往往是比较高的。
+
+但是，对于某些特定问题，使用库函数得到的性能不一定能胜过自己的实现。例如，Thrust和cuBLAS库中的很多功能是很容易实现的，有时一个计算任务通过编写一个核函数就能完成，而使用这些库却可能需要调用几个函数，从而增加全局内存的访问量。此时，用这些库就有可能得到比较差的性能。
+
+## Thrust
+
+Thrust是一个实现众多基本并行算法的C++模板库，类似于C++的标准模板库（standard template library，STL），该库自动包含在CUDA工具箱中，在使用该库的某个功能时，包含所需的头文件即可。该库中的所有类型与函数都在命名空间thrust中定义，都以thrust::开头。
+
+Thrust中的主要数据结构是矢量容器（vector container），类似于STL中的std::vector矢量。在Thrust中，有两种矢量，一种是存储于主机的矢量thrust::host\_vector\<typename\>模板，另一种是存储于设备的矢量thrust::device\_vector\<typename\>模板，这里的typename可以是任何数据类型。这两种矢量分别位于thrust/host\_vector.h头文件和thrust/device_vector.h头文件中。
+
+Thrust提供五类常用算法，包括：(1)变换（transformation），例如数组求和计算就是一种变换操作；(2)归约（reduction），例如求和归约计算等；(3)前缀和（prefix sum）或扫描（scan）；(4)排序（sorting）与搜索（searching）；(5)选择性复制、替换、移除、分区等重排（reordering）操作。除thrust::copy()函数外，Thrust算法的参数必须都来自于主机矢量host\_vector或都来自于设备矢量device\_vector，否则编译器会报错。
+
+此处以前缀和操作为例，通常也称为扫描操作，对于给定的标量序列$x_0,x_1,x_2,\cdots$，该操作会获得一个新的序列$y_0,y_1,y_2,\cdots$，其中新的元素表达式为
+$$
+y_k = x_0 + x_1 + \cdots + x_k
+$$
+其中，对于原序列各元素之间的运算可以是加法$+$求累加和、乘法$\times$求累乘积，默认操作时求累加和。若$y_k$的表达式包含$y_k$，则称为包含扫描（inclusive scan）；若$y_k$的表达式只包含到$x_{k-1}$​，则称为非包含扫描（exclusive scan）。
+
+使用thrust::device_vector设备矢量的一个示例如下所示。
+
+```c++
+#include <thrust/device_vector.h>
+#include <thrust/scan.h>
+
+int main(int argc, char *argv[]) {
+    int N = 32;
+    thrust::device_vector<int> x(N, 0);
+    thrust::device_vector<int> y(N, 0);
+    for (int i = 0; i < x.size(); i++) x[i] = i + 1;
+    thrust::inclusive_scan(x.begin(), x.end(), y.begin());
+    for (int i = 0; i < y.size(); i++) {
+        printf("%d ", (int)y[i]);
+    }
+    printf("\n");
+    return 0;
+}
+```
+
+直接使用设备内存指针的一个示例如下所示。
+
+```c++
+#include <thrust/device_vector.h>
+#include <thrust/scan.h>
+#include <thrust/execution_policy.h>
+
+int main(int argc, char *argv[]) {
+    int N = 32;
+    int *h_x = (int*)malloc(sizeof(int) * N);
+    int *h_y = (int*)malloc(sizeof(int) * N);
+    for (int i = 0; i < N; i++) h_x[i] = i + 1;
+
+    int *d_x, *d_y;
+    cudaMalloc(&d_x, sizeof(int) * N);
+    cudaMalloc(&d_y, sizeof(int) * N);
+    cudaMemcpy(d_x, h_x, sizeof(int) * N, cudaMemcpyHostToDevice);
+    thrust::inclusive_scan(thrust::device, d_x, d_x + N, d_y);
+    cudaMemcpy(h_y, d_y, sizeof(int) * N, cudaMemcpyDeviceToHost);
+    cudaFree(d_x);
+    cudaFree(d_y);
+
+    for (int i = 0; i < N; i++) {
+        printf("%d ", (int)h_y[i]);
+    }
+    printf("\n");
+    free(h_x);
+    free(h_y);
+    return 0;
+}
+```
+
+相比使用设备矢量的版本，该版本的inclusive_scan()使用了一个thrust::device参数，它表示执行策略（execution policy），位于thrust/execution_policy.h头文件中。
+
+如果程序中大量使用了Thrust库提供的功能，那么直接使用设备矢量存储数据是比较好的方法；而如果程序中大部分代码都是手写的核函数，只是偶尔使用Thrust库提供的功能，那么使用设备内存指针是比较好的方法。
+
+## cuBLAS
+
+cuBLAS是CUDA Basic Linear Algebra Subroutine的缩写，是基本线性代数子程序BLAS库基于CUDA运行时环境的实现。cuBLAS库提供四个API接口集合，分别描述如下所示。
+
+- cuBLAS API，自CUDA 6.0引入。计算所使用到的矩阵和向量必须位于GPU设备内存中，cuBLAS提供辅助函数用于在主机和设备之间传输数据。
+- cuBLASXt API，自CUDA 6.0引入。计算所使用到的数据可位于主机或多个GPU设备内存中，库会基于用户操作将数据传输到合适的GPU设备。
+- cuBLASLt API，自CUDA 10.1引入。轻量级的通用矩阵乘法GEMM（GEneral Matrix-to-matrix Multiply）库，提供灵活的API配置接口。
+- cuBLASDx API，属于MathDx库的一部分，需要单独配置。用于在Kernel核函数中执行BLAS计算，可进行算子融合。
+
+BLAS库最初是在CPU环境中使用Fortran编程语言实现的，Fortran风格中的的多维数组是列主序存储的，而C风格中的多维数组是行主序存储的。因而，cuBLAS库对于矩阵的存储和计算都是按照列主序的方式进行的，这一点需要特别注意。
+
+按照人类的阅读习惯，符号(M,N)表示M行N列矩阵，符号[rid,cid]表示行索引为rid列索引为cid的相应元素，推广到多维张量时，对应到各给维度轴上。例如，一个2行3列的矩阵A[2,3]，其各个元素的值如下所示。
+$$
+A = \begin{bmatrix} 0.0 & 1.0 & 2.0 \\ 3.0 & 4.0 & 5.0 \end{bmatrix}
+$$
+这样的二维数组或多维数组，本质上都是以一维数组的形式在计算机内存中连续存储的，根据所采用的存储方式不同，其存储的一维数组元素也不尽相同。
+
+```c++
+float A_row_major[] = { 0.0, 1.0, 2.0, 3.0, 4.0, 5.0 };  // row-major
+float A_col_major[] = { 0.0, 3.0, 1.0, 4.0, 2.0, 5.0 };  // col-major
+```
+
+注意，对于一个矩阵来说，若对其底层存储的一维数组，采用逻辑上不同的存储方式进行解释，会得到不同的存储顺序。例如，行主序存储的M行N列的矩阵，也可以看作是列存储的N行M列的矩阵。这种逻辑上的解释方式不同于矩阵转置，矩阵转置不会改变逻辑上对存储方式的解释，只会真正改变矩阵元素在内存中的存储位置。例如行主序存储的M行N列的矩阵，在执行转置操作后，会变为行主序存储的N行M列的矩阵。
+
 # cuBLAS
 
 cuBLAS是BLAS在CUDA运行时的实现，其全称是basic linear algebra subroutines，即基本线性代数子程序。这一套子程序最早是在CPU中通过Fortran语言实现的，所以后来的各种实现都带有Fortran风格，其与C风格最大的区别就是，Fortran中的多维数组是列主序存储的。
