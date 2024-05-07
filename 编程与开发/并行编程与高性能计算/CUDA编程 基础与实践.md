@@ -1,6 +1,6 @@
 [toc]
 
-**在维基百科查询GPU与CUDA的各种信息，可在https://en.wikipedia.org/wiki/List_of_Nvidia_graphics_processing_units网站查询各GPU设备的硬件信息，可在https://en.wikipedia.org/wiki/CUDA网站查询各计算能力架构下的硬件规格配置。**
+在维基百科查询GPU与CUDA的各种信息，可在https://en.wikipedia.org/wiki/List_of_Nvidia_graphics_processing_units网站查询各GPU设备的硬件信息，可在https://en.wikipedia.org/wiki/CUDA网站查询各计算能力架构下的硬件规格配置。
 
 # 一、GPU硬件与CUDA程序开发工具
 
@@ -47,7 +47,7 @@ CUDA（Compute Unified Device Architecture）是显卡厂商NVIDIA推出的运�
 
 另一个影响计算性能的参数是GPU中的内存带宽（Memory Bandwidth）。GPU中的内存通常称为显存。显存容量也是制约应用程序性能的一个因素。如果一个应用程序所需要的显存数量超过了一个GPU的显存容量，则在不使用统一内存的情况下程序就无法正确运行。
 
-## （二）CUDA程序开发工具
+## （二）CUDA开发工具
 
 有多种软件开发工具，都可以用来进行GPU编程，如下所示。
 
@@ -226,7 +226,7 @@ nvcc demo.cu -o demo.exe             \
 
 此外，也可以不为nvcc指定目标计算能力，此时会使用默认的目标计算能力。对于CUDA 6.0及更早，默认计算能力为1.0；对于CUDA 6.5至CUDA 8.0，默认计算能力为2.0；对于CUDA 9.0至CUDA 10.2，默认计算能力为3.0。将来更新版本的情况，请查阅CUDA官网信息。
 
-# 二、CUDA中的线程组织
+# 二、CUDA的线程组织
 
 一个典型的CUDA程序如下所示。注意，CUDA程序不支持C++的iostream库。
 
