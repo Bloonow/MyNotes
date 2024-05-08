@@ -169,7 +169,7 @@ intptr_t(C+ldc) % 16 == 0
 
 ## cuBLAS Type Reference
 
-头文件cublas_api.h提供一些cuBLAS库的类型定义，用于控制cuBLAS API函数的特定行为。一些遗留的类型不再展开描述，例如cublasFillMode_t类型，用于指示下三角矩阵还是上三角矩阵；cublasDiagType_t类型，用于指示矩阵的对角线元素是否是单位值且不可修改；cublasSideMode_t类型，用于指示在求解矩阵方程时，矩阵是位于等式左侧还是右侧。
+头文件cublas_api.h提供一些cuBLAS库的类型定义，用于控制cuBLAS API函数的特定行为。
 
 ```c++
 struct cublasContext;
@@ -206,6 +206,34 @@ typedef enum {
 ```
 
 类型cublasOperation_t，表示对矩阵执行的操作，表示参与计算的矩阵是否需要转置。
+
+```c++
+typedef enum {
+    CUBLAS_FILL_MODE_LOWER = 0,
+    CUBLAS_FILL_MODE_UPPER = 1,
+    CUBLAS_FILL_MODE_FULL = 2
+} cublasFillMode_t;
+```
+
+类型cublasFillMode_t，表示矩阵的哪一部分被填充并参与API函数计算，指的是下三角矩阵或上三角矩阵。
+
+```c++
+typedef enum {
+    CUBLAS_DIAG_NON_UNIT = 0,
+    CUBLAS_DIAG_UNIT = 1
+} cublasDiagType_t;
+```
+
+类型cublasDiagType_t，表示矩阵的主对角线是否是单位值，并且不应该被API函数修改。
+
+```c++
+typedef enum {
+    CUBLAS_SIDE_LEFT = 0,
+    CUBLAS_SIDE_RIGHT = 1
+} cublasSideMode_t;
+```
+
+类型cublasSideMode_t，表示在使用特定API函数求解矩阵方程时，矩阵是位于等式左侧还是右侧。
 
 ```c++
 typedef enum {
@@ -373,6 +401,101 @@ cublasStatus_t cublasGetMatrixAsync(
 ```
 
 函数cublasSetMatrix()从主机复制矩阵到设备，函数cublasGetMatrix()从设备复制矩阵到主机，参数rows和cols分别指定矩阵的行数和列数，参数elemSize指定一个元素的字节数，参数A指定源矩阵地址，参数B指定目标矩阵地址，参数lda和ldb指定矩阵的前导维度轴的维数。
+
+## Level-1 Function Reference
+
+该部分介绍的线性代数子程序BLAS1，用于执行标量-矢量操作。由于要兼容Fortran版本的BLAS库，在该部分中若无特殊说明，矢量所使用的索引从1开始。
+
+```c++
+cublasStatus_t cublasIsamax_v2(cublasHandle_t handle, int n, const float* x, int incx, int* result);
+cublasStatus_t cublasIsamin_v2(cublasHandle_t handle, int n, const float* x, int incx, int* result);
+```
+
+以元素的|Re()|+|Im()|值作为操作数，获取矢量中最大元素或最小元素的索引，存在多个相同最值元素时，获得这些元素中最小的索引。其中，参数n指定矢量中元素的数目，参数x指定设备矢量地址，参数incx指定矢量中两个相邻元素的存储位置之间的差距，参数result指定主机或设备地址，用于存储计算结果。
+
+```c++
+cublasStatus_t cublasSasum_v2(cublasHandle_t handle, int n, const float* x, int incx, float* result);
+```
+
+以元素的|Re()|+|Im()|值作为操作数，计算矢量中各个元素之和。
+
+```c++
+cublasStatus_t cublasSaxpy_v2(
+    cublasHandle_t handle, int n, const float* alpha, const float* x, int incx, float* y, int incy
+);
+```
+
+对矢量元素执行乘加操作，可用y[i]=alpha\*x[i]+y[i]公式表示。其中，参数y指定设备矢量地址，参数incy指定矢量中两个相邻元素的存储位置之间的差距。
+
+```c++
+cublasStatus_t cublasScopy_v2(cublasHandle_t handle, int n, const float* x, int incx, float* y, int incy);
+```
+
+对矢量元素执行拷贝操作，可用y[i]=x[i]公式表示。
+
+```c++
+cublasStatus_t cublasSdot_v2(
+    cublasHandle_t handle, int n, const float* x, int incx, const float* y, int incy, float* result
+);
+cublasStatus_t cublasCdotu_v2(
+    cublasHandle_t handle, int n, const cuComplex* x, int incx, const cuComplex* y, int incy,
+    cuComplex* result
+);
+cublasStatus_t cublasCdotc_v2(
+    cublasHandle_t handle, int n, const cuComplex* x, int incx, const cuComplex* y, int incy,
+    cuComplex* result
+);
+```
+
+计算矢量元素的点积，可用Σ(x[i]\*y[i])公式表示。对于复数的情况，当函数名称以u后缀结尾时，直接执行复数乘法，当函数名称以c后缀结尾时，先将矢量x的元素进行共轭后再执行复数乘法。
+
+```c++
+cublasStatus_t cublasSnrm2_v2(cublasHandle_t handle, int n, const float* x, int incx, float* result);
+```
+
+计算矢量元素的L2范数，可用公式sqrt(Σ(x[i]\*x[i]))公式表示。
+
+```c++
+cublasStatus_t cublasSrot_v2(
+    cublasHandle_t handle, int n, float* x, int incx, float* y, int incy, const float* c, const float* s
+);
+```
+
+对矢量x,y应用旋转矩阵，以逆时针方向旋转，旋转角度α由参数sin(α)=s,cos(α)=c定义。
+
+```c++
+cublasStatus_t cublasSrotg_v2(cublasHandle_t handle, float* a, float* b, float* c, float* s);
+```
+
+根据指定参数构建旋转矩阵。
+
+```c++
+cublasStatus_t cublasSrotm_v2(
+    cublasHandle_t handle, int n, float* x, int incx, float* y, int incy, const float* param
+);
+```
+
+对矢量x,y应用变换矩阵。
+
+```c++
+cublasStatus_t cublasSrotmg_v2(
+    cublasHandle_t handle, float* d1, float* d2, float* x1, const float* y1, float* param
+);
+```
+
+根据指定参数构建变换矩阵。
+
+```c++
+cublasStatus_t cublasSscal_v2(cublasHandle_t handle, int n, const float* alpha, float* x, int incx);
+```
+
+对矢量元素执行缩放操作，可用x[i]=α\*x[i]公式表示。
+
+```c++
+cublasStatus_t cublasSswap_v2(cublasHandle_t handle, int n, float* x, int incx, float* y, int incy);
+```
+
+交换两个矢量之间的元素。
 
 # cuBLAS
 
