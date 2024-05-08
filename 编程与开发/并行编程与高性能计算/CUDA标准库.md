@@ -99,8 +99,8 @@ int main(int argc, char *argv[]) {
 cuBLAS是CUDA Basic Linear Algebra Subroutine的缩写，是基本线性代数子程序BLAS库基于CUDA运行时环境的实现。cuBLAS库提供四个API接口集合，分别描述如下所示。
 
 - cuBLAS API，自CUDA 6.0引入。计算所使用到的矩阵和向量必须位于GPU设备内存中，cuBLAS提供辅助函数用于在主机和设备之间传输数据。
-- cuBLASXt API，自CUDA 6.0引入。计算所使用到的数据可位于主机或多个GPU设备内存中，库会基于用户操作将数据传输到合适的GPU设备。
 - cuBLASLt API，自CUDA 10.1引入。轻量级的通用矩阵乘法GEMM（GEneral Matrix-to-matrix Multiply）库，提供灵活的API配置接口。
+- cuBLASXt API，自CUDA 6.0引入。计算所使用到的数据可位于主机或多个GPU设备内存中，库会基于用户操作将数据传输到合适的GPU设备。
 - cuBLASDx API，属于MathDx库的一部分，需要单独配置。用于在Kernel核函数中执行BLAS计算，可进行算子融合。
 
 BLAS库最初是在CPU环境中使用Fortran编程语言实现的，Fortran风格中的的多维数组是列主序存储的，而C风格中的多维数组是行主序存储的。因而，cuBLAS库对于矩阵的存储和计算都是按照列主序的方式进行的，这一点需要特别注意。
