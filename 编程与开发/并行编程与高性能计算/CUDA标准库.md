@@ -118,6 +118,291 @@ float A_col_major[] = { 0.0, 3.0, 1.0, 4.0, 2.0, 5.0 };  // col-major
 
 注意，对于一个矩阵来说，若对其底层存储的一维数组，采用逻辑上不同的存储方式进行解释，会得到不同的存储顺序。例如，行主序存储的M行N列的矩阵，也可以看作是列存储的N行M列的矩阵。这种逻辑上的解释方式不同于矩阵转置，矩阵转置不会改变逻辑上对存储方式的解释，只会真正改变矩阵元素在内存中的存储位置。例如行主序存储的M行N列的矩阵，在执行转置操作后，会变为行主序存储的N行M列的矩阵。
 
+# cuBLAS API
+
+自CUDA 4.0以来，cuBLAS库提供新版本的API接口，位于cublas_v2.h头文件h和cublas_api.h头文件。实际上，真正的声明位于cublas_api.h头文件中，许多函数声明都以\_v2后缀结尾，而在cublas_v2.h头文件中，提供这些以\_v2后缀结尾函数的宏，用于兼容遗留API接口。
+
+要使用cuBLAS库，在程序编译链接时需要链接到指定库，在Linux平台上是cublas.so动态库，在Windows上是cublas.dll动态库。在Linux平台上，也可以链接到libcublas_static.a静态库和libculibos.a静态库。
+
+## General Description
+
+所有cuBLAS库函数都以cublasStatus_t作为返回类型，表示错误状态（error status）信息。
+
+使用cuBLAS库必须通过cublasCreate()函数初始化一个cublasHandle_t类型的句柄，句柄持有一个cuBLAS库的上下文环境。在后续使用cuBLAS库函数时，将该句柄传入调用，最后需要通过cublasDestroy()函数释放cuBLAS库上下文句柄所关联的计算资源。在使用主机多线程控制多个GPU设备时，这种方式能够允许用户显式控制cuBLAS库的初始化。例如，不同的主机线程可使用cudaSetDevice()函数关联到不同的GPU设备，然后主机线程可初始化自己唯一的cuBLAS库上下文句柄，以使用不同的GPU设备。需要注意的是，一个cuBLAS上下文句柄所关联的GPU设备在cublasCreate()调用与cublasDestroy()调用之间应保持不变，也即一个cuBLAS句柄与一个GPU设备所绑定。若一个主机线程需要使用不同的GPU设备，则需要创建不同的cuBLAS上下文句柄。cuBLAS上下文句柄与CUDA上下文紧密绑定，使用多个CUDA上下文环境的应用，需要在不同的CUDA上下文环境创建不同的cuBLAS上下文句柄。cuBLAS库是线程安全的，可以从多个主机线程中调用，即这些主机线程使用同一个句柄。当多个主机线程使用同一个句柄时，需要注意的是，当改变句柄配置时可能会影响cuBLAS调用的执行顺序，包括cublasDestroy()函数的调用时机。因此，不推荐在多个主机线程中使用同一个cuBLAS句柄。
+
+只要确保CUDA套件版本一致、GPU架构一致、SM数目一致，就能保证每次cuBLAS API调用的结果是完全可重现的，即按位（bit-wise）一致。而当使用多个CUDA流时，则不一定能获得按位一致的结果。此外，对于symv例程以及hemv例程来说，如果通过cublasSetAtomicsMode()函数启用原子操作，则也不能保证获得按位一致的结果。
+
+在cuBLAS库函数中，可能会用到两类标量参数。一是gemm系列函数，使用alpha和beta控制结果的缩放和偏置；二是诸如amax、amin、asum、rotg、rotmg、dot、nrm2之类的函数，它们计算的结果是一个标量值。对于第一类函数，当指针模式设置为CUBLAS_POINTER_MODE_HOST时，标量参数alpha与beta可以位于主机的栈内存或堆内存上，不应该位于托管内存上，此时标量值会随着API调用传递到设备，在调用完成后即可释放标量变量的内存，而无需等待API核函数执行完毕；当指针模式设置为CUBLAS_POINTER_MODE_DEVICE时，标量参数alpha与beta必须位于设备内存上，且它们的值在API核函数执行完毕之前不允许修改。对于第二类函数，当指针模式设置为CUBLAS_POINTER_MODE_HOST时，这些API函数会阻塞CPU，直到GPU完成计算并将标量结果写回主机内存；当指针模式设置为CUBLAS_POINTER_MODE_DEVICE时，API调用会立刻返回不阻塞CPU，但结果需要在API核函数执行完毕后才能访问，因此需要进行同步。无论时哪一类函数，指针模式CUBLAS_POINTER_MODE_DEVICE都允许kernel异步执行，哪怕alpha与beta标量参数是由之前调用的CUDA核函数生成的。
+
+当应用程序存在多个相互独立的任务时，可使用多个CUDA流以重叠多个任务之间的计算。使用cudaStreamCreate()函数创建一个CUDA流，并使用cublasSetStream()函数为每个cuBLAS句柄设置对应的CUDA流。需要注意的是，cublasSetStream()函数会将用户提供的workspace工作空间重置为默认的工作空间池。当执行大量的小矩阵乘法kernel时，无法获得执行大矩阵乘法kernel时的FLOPS。例如，执行$n\times n$的矩阵乘法时，针对$n^2$的输入会执行$n^3$的浮点运算；而执行1024个$\frac{n}{32}\times\frac{n}{32}$的矩阵乘法时，同样是$n^2$的输入，但只会获得$1024\times(\frac{n}{32})^3=\frac{n^3}{32}$的浮点运算。但通过将小的矩阵乘法kernel并行执行，可以尽可能地获得更好的性能。这可以通过使用多个CUDA流来实现，使用cublasSetStream()函数创建相应个数的CUDA流，并在调用gemm系列函数之前，使用cublasSetStream()函数设置所使用的CUDA流。尽管可以创建许多CUDA流，但在实践应用中发现，同时并行执行的CUDA流不太可能超过32个。
+
+在某些设备上，L1 Cache缓存与共享内存使用相同的硬件资源，可以使用cudaDeviceSetCacheConfig()进行cache配置，或使用cudaFuncSetCacheConfig()为特定函数进行cache配置。因为修改cache配置会影响kernel的并发性，cuBLAS库并未设置任何cache配置首选项，而是使用当前的设置。然而一些cuBLAS API函数，特别是矩阵乘法函数，其性能严重依赖于共享内存的空间，这一点需特别注意。
+
+尤其是当K远大于M和N时，为达到更高的GPU占用率，某些GEMM算法会沿着K维度划分计算，然后将每个划分的部分结果求和归约，以得到最终结果。对于gemmEx系列函数，当计算精度大于输出精度时，求和归约可能会发生数值溢出。而如果所有求和归约以计算精度执行，并在最后转换为输出精度，则不会发生数值溢出，而只有精度舍弃。当计算类型computeType是CUDA_R_32F，而矩阵类型Atype、Btype、Ctype是CUDA_R_16F时，则会导致精度溢出，可使用cublasSetMathMode()函数设置CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION精度模式以控制这种行为。
+
+自GPU Volta架构（计算能力7.0）以来，引入Tensor Core计算核心，可以显著加速矩阵乘法的性能。自cuBLAS 11.0.0版本以来，只要能够获得更好的性能，cuBLAS库就会在条件满足的情况下自动使用Tensor Core计算核心，除非手动使用cublasSetMathMode()函数将cublasMath_t数学模式设置为cublasSetMathMode模式。自cuBLAS 11.0.0版本以来，使用Tensor Core不再具有矩阵维度和内存对齐的限制，然而特定的矩阵维度和内存指针对齐会获得最好的性能。特别是，满足特定条件时，如下所示。
+
+```
+m % 8 == 0
+k % 8 == 0
+n % 8 == 0 || op_B == CUBLAS_OP_N
+intptr_t(A) % 16 == 0
+intptr_t(B) % 16 == 0
+intptr_t(C) % 16 == 0
+intptr_t(A+lda) % 16 == 0
+intptr_t(B+ldb) % 16 == 0
+intptr_t(C+ldc) % 16 == 0
+```
+
+大部分情况下，cuBLAS例程可以被CUDA Graph图捕获，例外是在使用CUBLAS_POINTER_MODE_HOST指针模式时的dot系列函数，它会将结果标量写回主机内存，这需要强制同步。而对于使用alpha和beta标量参数的gemm系列函数，在CUBLAS_POINTER_MODE_HOST指针模式时，标量参数的值会被捕捉到CUDA图当中，在CUBLAS_POINTER_MODE_DEVICE指针模式时，CUDA图会在执行时从设备内存中访问标量参数的值。
+
+## cuBLAS Type Reference
+
+类型cublasHandle_t，指向cuBLAS库上下文环境的指针类型。使用cublasCreate()函数创建，使用cublasDestroy()函数释放。
+
+```c++
+struct cublasContext;
+typedef struct cublasContext* cublasHandle_t;
+```
+
+类型cublasStatus_t，表示cuBLAS API函数的返回状态。
+
+```c++
+typedef enum {
+    CUBLAS_STATUS_SUCCESS = 0,
+    CUBLAS_STATUS_NOT_INITIALIZED = 1,
+    CUBLAS_STATUS_ALLOC_FAILED = 3,
+    CUBLAS_STATUS_INVALID_VALUE = 7,
+    CUBLAS_STATUS_ARCH_MISMATCH = 8,
+    CUBLAS_STATUS_MAPPING_ERROR = 11,
+    CUBLAS_STATUS_EXECUTION_FAILED = 13,
+    CUBLAS_STATUS_INTERNAL_ERROR = 14,
+    CUBLAS_STATUS_NOT_SUPPORTED = 15,
+    CUBLAS_STATUS_LICENSE_ERROR = 16
+} cublasStatus_t;
+```
+
+类型cublasOperation_t，表示对矩阵执行的操作，表示参与计算的矩阵是否需要转置。
+
+```c++
+typedef enum {
+    CUBLAS_OP_N = 0,        /* non-transpose operation */
+    CUBLAS_OP_T = 1,        /* transpose operation */
+    CUBLAS_OP_C = 2,        /* conjugate transpose operation */
+    CUBLAS_OP_HERMITAN = 2, /* synonym if CUBLAS_OP_C */
+    CUBLAS_OP_CONJG = 3     /* conjugate, placeholder - not supported in the current release */
+} cublasOperation_t;
+```
+
+类型cublasFillMode_t，表示矩阵的哪一部分被填充并参与API函数计算，指的是下三角矩阵或上三角矩阵。用于遗留的cuBLAS API接口。
+
+```c++
+typedef enum {
+    CUBLAS_FILL_MODE_LOWER = 0,
+    CUBLAS_FILL_MODE_UPPER = 1,
+    CUBLAS_FILL_MODE_FULL = 2
+} cublasFillMode_t;
+```
+
+类型cublasDiagType_t，表示矩阵的主对角线是否是单位值，并且不应该被API函数修改。用于遗留的cuBLAS API接口。
+
+```c++
+typedef enum {
+    CUBLAS_DIAG_NON_UNIT = 0,
+    CUBLAS_DIAG_UNIT = 1
+} cublasDiagType_t;
+```
+
+类型cublasSideMode_t，表示在使用特定API函数求解矩阵方程时，矩阵是位于等式左侧还是右侧。用于遗留的cuBLAS API接口。
+
+```c++
+typedef enum {
+    CUBLAS_SIDE_LEFT = 0,
+    CUBLAS_SIDE_RIGHT = 1
+} cublasSideMode_t;
+```
+
+类型cublasPointerMode_t，表示用于API函数的标量指针是指向主机内存还是指向设备内存。可使用cublasSetPointerMode()函数设置指针模式。
+
+```c++
+typedef enum {
+    CUBLAS_POINTER_MODE_HOST = 0,  /* The scalars are passed by reference on the host */
+    CUBLAS_POINTER_MODE_DEVICE = 1 /* The scalars are passed by reference on the device */
+} cublasPointerMode_t;
+```
+
+类型cublasAtomicsMode_t，表示某些cuBLAS函数的实现是否可以使用原子操作。可使用cublasSetAtomicsMode()函数设置原子操作模式。
+
+```c++
+typedef enum {
+    CUBLAS_ATOMICS_NOT_ALLOWED = 0,
+    CUBLAS_ATOMICS_ALLOWED = 1
+} cublasAtomicsMode_t;
+```
+
+类型cublasGemmAlgo_t，表示矩阵乘法GEMM所采用的特定算法，该项只在sm_75架构之前有效，在sm_80及更新的架构上无效。
+
+```c++
+typedef enum {
+    CUBLAS_GEMM_DFALT = -1,
+    CUBLAS_GEMM_DEFAULT = -1,
+    CUBLAS_GEMM_ALGO0 = 0,
+    /* CUBLAS_GEMM_ALGO1 - CUBLAS_GEMM_ALGO16 */
+    CUBLAS_GEMM_ALGO17 = 17,
+    CUBLAS_GEMM_ALGO18 = 18,  // sliced 32x32
+    CUBLAS_GEMM_ALGO19 = 19,  // sliced 64x32
+    CUBLAS_GEMM_ALGO20 = 20,  // sliced 128x32
+    CUBLAS_GEMM_ALGO21 = 21,  // sliced 32x32  - splitK
+    CUBLAS_GEMM_ALGO22 = 22,  // sliced 64x32  - splitK
+    CUBLAS_GEMM_ALGO23 = 23,  // sliced 128x32 - splitK
+} cublasGemmAlgo_t;
+```
+
+类型cublasMath_t，表示所使用的计算精度模式。可使用cublasSetMathMode()函数设置计算精度的模式。其中，CUBLAS_DEFAULT_MATH是默认且性能最高的模式，计算和中间结果所使用精度的尾数和指数位至少与所请求的计算精度相同，只要有可能就使用Tensor Core计算核心；CUBLAS_DEFAULT_MATH模式在计算的所有阶段都使用规定精度和标准算法，性能不如其它模式；CUBLAS_TF32_TENSOR_OP_MATH模式允许单精度浮点数计算使用TF32类型的Tensor Core计算核心；CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION模式表示，当矩阵乘法操作的计算精度高于输出精度时，强制相关的归约操作使用计算精度而不是输出精度，该模式是一个flag标志，可以与其它精度模式一起使用。
+
+```c++
+typedef enum {
+    CUBLAS_DEFAULT_MATH = 0,
+    CUBLAS_PEDANTIC_MATH = 2,
+    CUBLAS_TF32_TENSOR_OP_MATH = 3,
+    CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION = 16,
+} cublasMath_t;
+```
+
+类型cublasComputeType_t，用于cublasGemmEx()函数和cublasLtMatmul()函数，以及Batched版本与StridedBatched版本的函数，以选择计算精度。若将环境变量NVIDIA_TF32_OVERRIDE设置为0，则会覆盖NVIDIA库的默认配置与编程配置，使得cuBLAS库不使用TF32类型的Tensor Core计算核心加速FP32精度的计算。
+
+```c++
+typedef enum {
+    CUBLAS_COMPUTE_16F = 64,           /* half - default */
+    CUBLAS_COMPUTE_16F_PEDANTIC = 65,  /* half - pedantic */
+    CUBLAS_COMPUTE_32F = 68,           /* float - default */
+    CUBLAS_COMPUTE_32F_PEDANTIC = 69,  /* float - pedantic */
+    CUBLAS_COMPUTE_32F_FAST_16F = 74,  /* float - fast, allows down-converting inputs to half or TF32 */
+    CUBLAS_COMPUTE_32F_FAST_16BF = 75, /* float - fast, allows down-converting inputs to bfloat16 or TF32 */
+    CUBLAS_COMPUTE_32F_FAST_TF32 = 77, /* float - fast, allows down-converting inputs to TF32 */
+    CUBLAS_COMPUTE_64F = 70,           /* double - default */
+    CUBLAS_COMPUTE_64F_PEDANTIC = 71,  /* double - pedantic */
+    CUBLAS_COMPUTE_32I = 72,           /* signed 32-bit int - default */
+    CUBLAS_COMPUTE_32I_PEDANTIC = 73,  /* signed 32-bit int - pedantic */
+} cublasComputeType_t;
+```
+
+## CUDA Type Reference
+
+头文件library_types.h中提供一些公用的类型定义，许多CUDA库都会使用其中的类型定义，包括cuBLAS库。
+
+在library_types.h中的类型cudaDataType或cudaDataType_t，提供数值精度类型的定义，cuBLAS库在头文件cublas_api.h中使用cublasDataType_t作为数值精度类型的别名，用于指定数值精度。
+
+```c++
+typedef enum cudaDataType_t {
+    CUDA_R_16F  =  2, /* real as a half */
+    CUDA_C_16F  =  6, /* complex as a pair of half numbers */
+    CUDA_R_16BF = 14, /* real as a nv_bfloat16 */
+    CUDA_C_16BF = 15, /* complex as a pair of nv_bfloat16 numbers */
+    CUDA_R_32F  =  0, /* real as a float */
+    CUDA_C_32F  =  4, /* complex as a pair of float numbers */
+    CUDA_R_64F  =  1, /* real as a double */
+    CUDA_C_64F  =  5, /* complex as a pair of double numbers */
+    CUDA_R_4I   = 16, /* real as a signed 4-bit int */
+    CUDA_C_4I   = 17, /* complex as a pair of signed 4-bit int numbers */
+    CUDA_R_4U   = 18, /* real as a unsigned 4-bit int */
+    CUDA_C_4U   = 19, /* complex as a pair of unsigned 4-bit int numbers */
+    CUDA_R_8I   =  3, /* real as a signed 8-bit int */
+    CUDA_C_8I   =  7, /* complex as a pair of signed 8-bit int numbers */
+    CUDA_R_8U   =  8, /* real as a unsigned 8-bit int */
+    CUDA_C_8U   =  9, /* complex as a pair of unsigned 8-bit int numbers */
+    CUDA_R_16I  = 20, /* real as a signed 16-bit int */
+    CUDA_C_16I  = 21, /* complex as a pair of signed 16-bit int numbers */
+    CUDA_R_16U  = 22, /* real as a unsigned 16-bit int */
+    CUDA_C_16U  = 23, /* complex as a pair of unsigned 16-bit int numbers */
+    CUDA_R_32I  = 10, /* real as a signed 32-bit int */
+    CUDA_C_32I  = 11, /* complex as a pair of signed 32-bit int numbers */
+    CUDA_R_32U  = 12, /* real as a unsigned 32-bit int */
+    CUDA_C_32U  = 13, /* complex as a pair of unsigned 32-bit int numbers */
+    CUDA_R_64I  = 24, /* real as a signed 64-bit int */
+    CUDA_C_64I  = 25, /* complex as a pair of signed 64-bit int numbers */
+    CUDA_R_64U  = 26, /* real as a unsigned 64-bit int */
+    CUDA_C_64U  = 27, /* complex as a pair of unsigned 64-bit int numbers */
+    CUDA_R_8F_E4M3 = 28, /* real as a nv_fp8_e4m3 */
+    CUDA_R_8F_E5M2 = 29, /* real as a nv_fp8_e5m2 */
+} cudaDataType;
+typedef cudaDataType cublasDataType_t;
+```
+
+类型libraryPropertyType_t，用于控制在使用cublasGetProperty()函数时，所请求的属性。
+
+```c++
+typedef enum libraryPropertyType_t {
+    MAJOR_VERSION,
+    MINOR_VERSION,
+    PATCH_LEVEL
+} libraryPropertyType;
+```
+
+## Helper Function Reference
+
+此处列举cuBLAS库提供的辅助函数，许多函数已经在cuBLAS Type Reference中提起过，此处只列出其函数原型而不过多介绍。
+
+```c++
+cublasStatus_t cublasGetVersion_v2(cublasHandle_t handle, int* version);
+cublasStatus_t cublasGetProperty(libraryPropertyType type, int* value);
+size_t cublasGetCudartVersion(void);
+const char* cublasGetStatusName(cublasStatus_t status);
+const char* cublasGetStatusString(cublasStatus_t status);
+```
+
+```c++
+cublasStatus_t cublasCreate_v2(cublasHandle_t* handle);
+cublasStatus_t cublasDestroy_v2(cublasHandle_t handle);
+cublasStatus_t cublasSetStream_v2(cublasHandle_t handle, cudaStream_t streamId);
+cublasStatus_t cublasGetStream_v2(cublasHandle_t handle, cudaStream_t* streamId);
+cublasStatus_t cublasSetPointerMode_v2(cublasHandle_t handle, cublasPointerMode_t mode);
+cublasStatus_t cublasGetPointerMode_v2(cublasHandle_t handle, cublasPointerMode_t* mode);
+cublasStatus_t cublasSetAtomicsMode(cublasHandle_t handle, cublasAtomicsMode_t mode);
+cublasStatus_t cublasGetAtomicsMode(cublasHandle_t handle, cublasAtomicsMode_t* mode);
+cublasStatus_t cublasSetMathMode(cublasHandle_t handle, cublasMath_t mode);
+cublasStatus_t cublasGetMathMode(cublasHandle_t handle, cublasMath_t* mode);
+```
+
+函数cublasSetSmCountTarget()，用于设置cuBLAS上下文句柄可用的SM流处理器数目，设置为0时恢复默认行为，不能超过GPU物理设备实际拥有的SM数目。当cuBLAS库与其他CUDA核函数一起共用GPU设备时，设置更大的SM数目可以提高cuBLAS库的性能。
+
+```c++
+cublasStatus_t cublasSetSmCountTarget(cublasHandle_t handle, int smCountTarget);
+cublasStatus_t cublasGetSmCountTarget(cublasHandle_t handle, int* smCountTarget);
+```
+
+函数cublasSetWorkspace()，用于设置cuBLAS库所使用的工作空间，工作空间的指针地址必须至少256字节对齐。如果未指定，则会使用在创建cuBLAS上下文时分配的默认工作空间池（workspace pool）。将workspaceSizeInBytes参数指定为0时，指定cuBLAS库函数不使用工作空间，而指定过小空间可能会使得某些API函数导致CUBLAS_STATUS_ALLOC_FAILED错误。根据GPU架构推荐（也是默认工作空间池），在Hopper以上的架构使用32MiB空间，而其它架构使用4MiB空间。
+
+```c++
+cublasStatus_t cublasSetWorkspace_v2(cublasHandle_t handle, void* workspace, size_t workspaceSizeInBytes);
+```
+
+函数cublasSetVector()从主机复制矢量到设备，函数cublasGetVector()从设备复制矢量到主机，参数n指定元素数目，参数elemSize指定一个元素的字节数，参数x指定源矢量地址，参数y指定目标矢量地址，参数incx和incy指定矢量中两个相邻元素之间的存储位置间隔，指定为1表示两个相邻元素在内存中连续存储。
+
+```c++
+cublasStatus_t cublasSetVector(int n, int elemSize, const void* x, int incx, void* y, int incy);
+cublasStatus_t cublasGetVector(int n, int elemSize, const void* x, int incx, void* y, int incy);
+cublasStatus_t cublasSetVectorAsync(
+    int n, int elemSize, const void* x, int incx, void* y, int incy, cudaStream_t stream
+);
+cublasStatus_t cublasGetVectorAsync(
+    int n, int elemSize, const void* x, int incx, void* y, int incy, cudaStream_t stream
+);
+```
+
+函数cublasSetMatrix()从主机复制矩阵到设备，函数cublasGetMatrix()从设备复制矩阵到主机，参数rows和cols分别指定矩阵的行数和列数，参数elemSize指定一个元素的字节数，参数A指定源矩阵地址，参数B指定目标矩阵地址，参数lda和ldb指定矩阵的前导维度轴的维数。
+
+```c++
+cublasStatus_t cublasSetMatrix(int rows, int cols, int elemSize, const void* A, int lda, void* B, int ldb);
+cublasStatus_t cublasGetMatrix(int rows, int cols, int elemSize, const void* A, int lda, void* B, int ldb);
+cublasStatus_t cublasSetMatrixAsync(
+    int rows, int cols, int elemSize, const void* A, int lda, void* B, int ldb, cudaStream_t stream
+);
+cublasStatus_t cublasGetMatrixAsync(
+    int rows, int cols, int elemSize, const void* A, int lda, void* B, int ldb, cudaStream_t stream
+);
+```
+
 # cuBLAS
 
 cuBLAS是BLAS在CUDA运行时的实现，其全称是basic linear algebra subroutines，即基本线性代数子程序。这一套子程序最早是在CPU中通过Fortran语言实现的，所以后来的各种实现都带有Fortran风格，其与C风格最大的区别就是，Fortran中的多维数组是列主序存储的。
