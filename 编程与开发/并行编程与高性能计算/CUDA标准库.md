@@ -171,14 +171,12 @@ intptr_t(C+ldc) % 16 == 0
 
 头文件cublas_api.h提供一些cuBLAS库的类型定义，用于控制cuBLAS API函数的特定行为。一些遗留的类型不再展开描述，例如cublasFillMode_t类型，用于指示下三角矩阵还是上三角矩阵；cublasDiagType_t类型，用于指示矩阵的对角线元素是否是单位值且不可修改；cublasSideMode_t类型，用于指示在求解矩阵方程时，矩阵是位于等式左侧还是右侧。
 
-类型cublasHandle_t，指向cuBLAS库上下文环境的指针类型。使用cublasCreate()函数创建，使用cublasDestroy()函数释放。
-
 ```c++
 struct cublasContext;
 typedef struct cublasContext* cublasHandle_t;
 ```
 
-类型cublasStatus_t，表示cuBLAS API函数的返回状态。
+类型cublasHandle_t，指向cuBLAS库上下文环境的指针类型。使用cublasCreate()函数创建，使用cublasDestroy()函数释放。
 
 ```c++
 typedef enum {
@@ -195,7 +193,7 @@ typedef enum {
 } cublasStatus_t;
 ```
 
-类型cublasOperation_t，表示对矩阵执行的操作，表示参与计算的矩阵是否需要转置。
+类型cublasStatus_t，表示cuBLAS API函数的返回状态。
 
 ```c++
 typedef enum {
@@ -207,7 +205,7 @@ typedef enum {
 } cublasOperation_t;
 ```
 
-类型cublasPointerMode_t，表示用于API函数的标量指针是指向主机内存还是指向设备内存。可使用cublasSetPointerMode()函数设置指针模式。
+类型cublasOperation_t，表示对矩阵执行的操作，表示参与计算的矩阵是否需要转置。
 
 ```c++
 typedef enum {
@@ -216,7 +214,7 @@ typedef enum {
 } cublasPointerMode_t;
 ```
 
-类型cublasAtomicsMode_t，表示某些cuBLAS函数的实现是否可以使用原子操作。可使用cublasSetAtomicsMode()函数设置原子操作模式。
+类型cublasPointerMode_t，表示用于API函数的标量指针是指向主机内存还是指向设备内存。可使用cublasSetPointerMode()函数设置指针模式。
 
 ```c++
 typedef enum {
@@ -225,7 +223,7 @@ typedef enum {
 } cublasAtomicsMode_t;
 ```
 
-类型cublasGemmAlgo_t，表示矩阵乘法GEMM所采用的特定算法，该项只在sm_75架构之前有效，在sm_80及更新的架构上无效。
+类型cublasAtomicsMode_t，表示某些cuBLAS函数的实现是否可以使用原子操作。可使用cublasSetAtomicsMode()函数设置原子操作模式。
 
 ```c++
 typedef enum {
@@ -243,7 +241,7 @@ typedef enum {
 } cublasGemmAlgo_t;
 ```
 
-类型cublasMath_t，表示所使用的计算精度模式。可使用cublasSetMathMode()函数设置计算精度的模式。其中，CUBLAS_DEFAULT_MATH是默认且性能最高的模式，计算和中间结果所使用精度的尾数和指数位至少与所请求的计算精度相同，只要有可能就使用Tensor Core计算核心；CUBLAS_DEFAULT_MATH模式在计算的所有阶段都使用规定精度和标准算法，性能不如其它模式；CUBLAS_TF32_TENSOR_OP_MATH模式允许单精度浮点数计算使用TF32类型的Tensor Core计算核心；CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION模式表示，当矩阵乘法操作的计算精度高于输出精度时，强制相关的归约操作使用计算精度而不是输出精度，该模式是一个flag标志，可以与其它精度模式一起使用。
+类型cublasGemmAlgo_t，表示矩阵乘法GEMM所采用的特定算法，该项只在sm_75架构之前有效，在sm_80及更新的架构上无效。
 
 ```c++
 typedef enum {
@@ -254,7 +252,7 @@ typedef enum {
 } cublasMath_t;
 ```
 
-类型cublasComputeType_t，用于cublasGemmEx()函数和cublasLtMatmul()函数，以及Batched版本与StridedBatched版本的函数，以选择计算精度。若将环境变量NVIDIA_TF32_OVERRIDE设置为0，则会覆盖NVIDIA库的默认配置与编程配置，使得cuBLAS库不使用TF32类型的Tensor Core计算核心加速FP32精度的计算。
+类型cublasMath_t，表示所使用的计算精度模式。可使用cublasSetMathMode()函数设置计算精度的模式。其中，CUBLAS_DEFAULT_MATH是默认且性能最高的模式，计算和中间结果所使用精度的尾数和指数位至少与所请求的计算精度相同，只要有可能就使用Tensor Core计算核心；CUBLAS_DEFAULT_MATH模式在计算的所有阶段都使用规定精度和标准算法，性能不如其它模式；CUBLAS_TF32_TENSOR_OP_MATH模式允许单精度浮点数计算使用TF32类型的Tensor Core计算核心；CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION模式表示，当矩阵乘法操作的计算精度高于输出精度时，强制相关的归约操作使用计算精度而不是输出精度，该模式是一个flag标志，可以与其它精度模式一起使用。
 
 ```c++
 typedef enum {
@@ -272,11 +270,11 @@ typedef enum {
 } cublasComputeType_t;
 ```
 
+类型cublasComputeType_t，用于cublasGemmEx()函数和cublasLtMatmul()函数，以及Batched版本与StridedBatched版本的函数，以选择计算精度。若将环境变量NVIDIA_TF32_OVERRIDE设置为0，则会覆盖NVIDIA库的默认配置与编程配置，使得cuBLAS库不使用TF32类型的Tensor Core计算核心加速FP32精度的计算。
+
 ## CUDA Type Reference
 
 头文件library_types.h中提供一些公用的类型定义，许多CUDA库都会使用其中的类型定义，包括cuBLAS库。
-
-在library_types.h中的类型cudaDataType或cudaDataType_t，提供数值精度类型的定义，cuBLAS库在头文件cublas_api.h中使用cublasDataType_t作为数值精度类型的别名，用于指定数值精度。
 
 ```c++
 typedef enum cudaDataType_t {
@@ -298,7 +296,7 @@ typedef enum cudaDataType_t {
 typedef cudaDataType cublasDataType_t;
 ```
 
-类型libraryPropertyType_t，用于控制在使用cublasGetProperty()函数时，所请求的属性。
+在library_types.h中的类型cudaDataType或cudaDataType_t，提供数值精度类型的定义，cuBLAS库在头文件cublas_api.h中使用cublasDataType_t作为数值精度类型的别名，用于指定数值精度。
 
 ```c++
 typedef enum libraryPropertyType_t {
@@ -308,9 +306,11 @@ typedef enum libraryPropertyType_t {
 } libraryPropertyType;
 ```
 
+类型libraryPropertyType_t，用于控制在使用cublasGetProperty()函数时，所请求的属性。
+
 ## Helper Function Reference
 
-此处列举cuBLAS库提供的辅助函数，许多函数已经在cuBLAS Type Reference中提起过，此处只列出其函数原型而不过多介绍。
+此处列举cuBLAS库提供的辅助函数。
 
 ```c++
 cublasStatus_t cublasGetVersion_v2(cublasHandle_t handle, int* version);
@@ -333,20 +333,20 @@ cublasStatus_t cublasSetMathMode(cublasHandle_t handle, cublasMath_t mode);
 cublasStatus_t cublasGetMathMode(cublasHandle_t handle, cublasMath_t* mode);
 ```
 
-函数cublasSetSmCountTarget()，用于设置cuBLAS上下文句柄可用的SM流处理器数目，设置为0时恢复默认行为，不能超过GPU物理设备实际拥有的SM数目。当cuBLAS库与其他CUDA核函数一起共用GPU设备时，设置更大的SM数目可以提高cuBLAS库的性能。
+上述函数已经在cuBLAS Type Reference中提起过，此处只列出其函数原型而不过多介绍。
 
 ```c++
 cublasStatus_t cublasSetSmCountTarget(cublasHandle_t handle, int smCountTarget);
 cublasStatus_t cublasGetSmCountTarget(cublasHandle_t handle, int* smCountTarget);
 ```
 
-函数cublasSetWorkspace()，用于设置cuBLAS库所使用的工作空间，工作空间的指针地址必须至少256字节对齐。如果未指定，则会使用在创建cuBLAS上下文时分配的默认工作空间池（workspace pool）。将workspaceSizeInBytes参数指定为0时，指定cuBLAS库函数不使用工作空间，而指定过小空间可能会使得某些API函数导致CUBLAS_STATUS_ALLOC_FAILED错误。根据GPU架构推荐（也是默认工作空间池），在Hopper以上的架构使用32MiB空间，而其它架构使用4MiB空间。
+函数cublasSetSmCountTarget()，用于设置cuBLAS上下文句柄可用的SM流处理器数目，设置为0时恢复默认行为，不能超过GPU物理设备实际拥有的SM数目。当cuBLAS库与其他CUDA核函数一起共用GPU设备时，设置更大的SM数目可以提高cuBLAS库的性能。
 
 ```c++
 cublasStatus_t cublasSetWorkspace_v2(cublasHandle_t handle, void* workspace, size_t workspaceSizeInBytes);
 ```
 
-函数cublasSetVector()从主机复制矢量到设备，函数cublasGetVector()从设备复制矢量到主机，参数n指定元素数目，参数elemSize指定一个元素的字节数，参数x指定源矢量地址，参数y指定目标矢量地址，参数incx和incy指定矢量中两个相邻元素之间的存储位置间隔，指定为1表示两个相邻元素在内存中连续存储。
+函数cublasSetWorkspace()，用于设置cuBLAS库所使用的工作空间，工作空间的指针地址必须至少256字节对齐。如果未指定，则会使用在创建cuBLAS上下文时分配的默认工作空间池（workspace pool）。将workspaceSizeInBytes参数指定为0时，指定cuBLAS库函数不使用工作空间，而指定过小空间可能会使得某些API函数导致CUBLAS_STATUS_ALLOC_FAILED错误。根据GPU架构推荐（也是默认工作空间池），在Hopper以上的架构使用32MiB空间，而其它架构使用4MiB空间。
 
 ```c++
 cublasStatus_t cublasSetVector(int n, int elemSize, const void* x, int incx, void* y, int incy);
@@ -359,7 +359,7 @@ cublasStatus_t cublasGetVectorAsync(
 );
 ```
 
-函数cublasSetMatrix()从主机复制矩阵到设备，函数cublasGetMatrix()从设备复制矩阵到主机，参数rows和cols分别指定矩阵的行数和列数，参数elemSize指定一个元素的字节数，参数A指定源矩阵地址，参数B指定目标矩阵地址，参数lda和ldb指定矩阵的前导维度轴的维数。
+函数cublasSetVector()从主机复制矢量到设备，函数cublasGetVector()从设备复制矢量到主机，参数n指定元素数目，参数elemSize指定一个元素的字节数，参数x指定源矢量地址，参数y指定目标矢量地址，参数incx和incy指定矢量中两个相邻元素之间的存储位置间隔，指定为1表示两个相邻元素在内存中连续存储。
 
 ```c++
 cublasStatus_t cublasSetMatrix(int rows, int cols, int elemSize, const void* A, int lda, void* B, int ldb);
@@ -371,6 +371,8 @@ cublasStatus_t cublasGetMatrixAsync(
     int rows, int cols, int elemSize, const void* A, int lda, void* B, int ldb, cudaStream_t stream
 );
 ```
+
+函数cublasSetMatrix()从主机复制矩阵到设备，函数cublasGetMatrix()从设备复制矩阵到主机，参数rows和cols分别指定矩阵的行数和列数，参数elemSize指定一个元素的字节数，参数A指定源矩阵地址，参数B指定目标矩阵地址，参数lda和ldb指定矩阵的前导维度轴的维数。
 
 # cuBLAS
 
