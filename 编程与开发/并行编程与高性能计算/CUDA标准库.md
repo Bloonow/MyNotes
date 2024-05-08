@@ -124,6 +124,17 @@ float A_col_major[] = { 0.0, 3.0, 1.0, 4.0, 2.0, 5.0 };  // col-major
 
 要使用cuBLAS库，在程序编译链接时需要链接到指定库，在Linux平台上是cublas.so动态库，在Windows上是cublas.dll动态库。在Linux平台上，也可以链接到libcublas_static.a静态库和libculibos.a静态库。
 
+在描述API函数接口时，使用\<type\>表示可能的数值类型，使用\<t\>表示相应类型的缩写，其小写表示计算结果是标量，大写表示计算结果是张量，如下所示。为简化表述，在介绍API函数接口时，只介绍s与S表示的单精度浮点数类型，若非特别说明则默认该接口具有其它数值类型。
+
+| \<type\>        | \<t\> | Meaning                  |
+| --------------- | ----- | ------------------------ |
+| float           | s, S  | real single-precision    |
+| double          | d, D  | real double-precision    |
+| cuComplex       | c, C  | complex single-precision |
+| cuDoubleComplex | z, Z  | complex double-precision |
+
+使用Re()表示复数的实部，使用Im()表示复数的虚部，使用小写希腊字母α,β等表示标量，使用小写拉丁字母a,b表示矢量，使用大写拉丁字母A,B表示矩阵，使用上划线表示一个复数的共轭转置。
+
 ## General Description
 
 所有cuBLAS库函数都以cublasStatus_t作为返回类型，表示错误状态（error status）信息。
