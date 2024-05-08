@@ -158,6 +158,8 @@ intptr_t(C+ldc) % 16 == 0
 
 ## cuBLAS Type Reference
 
+头文件cublas_api.h提供一些cuBLAS库的类型定义，用于控制cuBLAS API函数的特定行为。一些遗留的类型不再展开描述，例如cublasFillMode_t类型，用于指示下三角矩阵还是上三角矩阵；cublasDiagType_t类型，用于指示矩阵的对角线元素是否是单位值且不可修改；cublasSideMode_t类型，用于指示在求解矩阵方程时，矩阵是位于等式左侧还是右侧。
+
 类型cublasHandle_t，指向cuBLAS库上下文环境的指针类型。使用cublasCreate()函数创建，使用cublasDestroy()函数释放。
 
 ```c++
@@ -192,34 +194,6 @@ typedef enum {
     CUBLAS_OP_HERMITAN = 2, /* synonym if CUBLAS_OP_C */
     CUBLAS_OP_CONJG = 3     /* conjugate, placeholder - not supported in the current release */
 } cublasOperation_t;
-```
-
-类型cublasFillMode_t，表示矩阵的哪一部分被填充并参与API函数计算，指的是下三角矩阵或上三角矩阵。用于遗留的cuBLAS API接口。
-
-```c++
-typedef enum {
-    CUBLAS_FILL_MODE_LOWER = 0,
-    CUBLAS_FILL_MODE_UPPER = 1,
-    CUBLAS_FILL_MODE_FULL = 2
-} cublasFillMode_t;
-```
-
-类型cublasDiagType_t，表示矩阵的主对角线是否是单位值，并且不应该被API函数修改。用于遗留的cuBLAS API接口。
-
-```c++
-typedef enum {
-    CUBLAS_DIAG_NON_UNIT = 0,
-    CUBLAS_DIAG_UNIT = 1
-} cublasDiagType_t;
-```
-
-类型cublasSideMode_t，表示在使用特定API函数求解矩阵方程时，矩阵是位于等式左侧还是右侧。用于遗留的cuBLAS API接口。
-
-```c++
-typedef enum {
-    CUBLAS_SIDE_LEFT = 0,
-    CUBLAS_SIDE_RIGHT = 1
-} cublasSideMode_t;
 ```
 
 类型cublasPointerMode_t，表示用于API函数的标量指针是指向主机内存还是指向设备内存。可使用cublasSetPointerMode()函数设置指针模式。
@@ -295,34 +269,18 @@ typedef enum {
 
 ```c++
 typedef enum cudaDataType_t {
-    CUDA_R_16F  =  2, /* real as a half */
-    CUDA_C_16F  =  6, /* complex as a pair of half numbers */
-    CUDA_R_16BF = 14, /* real as a nv_bfloat16 */
-    CUDA_C_16BF = 15, /* complex as a pair of nv_bfloat16 numbers */
+    /* CUDA_R_16F, CUDA_C_16F, CUDA_R_16BF, CUDA_C_16BF */
     CUDA_R_32F  =  0, /* real as a float */
     CUDA_C_32F  =  4, /* complex as a pair of float numbers */
     CUDA_R_64F  =  1, /* real as a double */
     CUDA_C_64F  =  5, /* complex as a pair of double numbers */
-    CUDA_R_4I   = 16, /* real as a signed 4-bit int */
-    CUDA_C_4I   = 17, /* complex as a pair of signed 4-bit int numbers */
-    CUDA_R_4U   = 18, /* real as a unsigned 4-bit int */
-    CUDA_C_4U   = 19, /* complex as a pair of unsigned 4-bit int numbers */
-    CUDA_R_8I   =  3, /* real as a signed 8-bit int */
-    CUDA_C_8I   =  7, /* complex as a pair of signed 8-bit int numbers */
-    CUDA_R_8U   =  8, /* real as a unsigned 8-bit int */
-    CUDA_C_8U   =  9, /* complex as a pair of unsigned 8-bit int numbers */
-    CUDA_R_16I  = 20, /* real as a signed 16-bit int */
-    CUDA_C_16I  = 21, /* complex as a pair of signed 16-bit int numbers */
-    CUDA_R_16U  = 22, /* real as a unsigned 16-bit int */
-    CUDA_C_16U  = 23, /* complex as a pair of unsigned 16-bit int numbers */
+	/* CUDA_R_4I, CUDA_C_4I, CUDA_R_8I, CUDA_C_8I, CUDA_R_16I, CUDA_C_16I */
+	/* CUDA_R_4U, CUDA_C_4U, CUDA_R_8U, CUDA_C_8U, CUDA_R_16U, CUDA_C_16U */
+    /* CUDA_R_32U, CUDA_C_32U, CUDA_R_64U, CUDA_C_64U */
     CUDA_R_32I  = 10, /* real as a signed 32-bit int */
     CUDA_C_32I  = 11, /* complex as a pair of signed 32-bit int numbers */
-    CUDA_R_32U  = 12, /* real as a unsigned 32-bit int */
-    CUDA_C_32U  = 13, /* complex as a pair of unsigned 32-bit int numbers */
     CUDA_R_64I  = 24, /* real as a signed 64-bit int */
     CUDA_C_64I  = 25, /* complex as a pair of signed 64-bit int numbers */
-    CUDA_R_64U  = 26, /* real as a unsigned 64-bit int */
-    CUDA_C_64U  = 27, /* complex as a pair of unsigned 64-bit int numbers */
     CUDA_R_8F_E4M3 = 28, /* real as a nv_fp8_e4m3 */
     CUDA_R_8F_E5M2 = 29, /* real as a nv_fp8_e5m2 */
 } cudaDataType;
