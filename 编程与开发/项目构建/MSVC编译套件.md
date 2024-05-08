@@ -252,7 +252,7 @@ int main() {
 
 <img src="MSVC编译套件.assets/调用DLL输出.jpg" style="zoom:80%;" />
 
-## dll浅析
+## DLL浅析
 
 ### 1. 概述
 
