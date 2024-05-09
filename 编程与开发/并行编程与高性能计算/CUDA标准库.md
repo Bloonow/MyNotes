@@ -215,7 +215,7 @@ typedef enum {
 } cublasFillMode_t;
 ```
 
-类型cublasFillMode_t，表示矩阵的哪一部分被填充并参与API函数计算，指的是下三角矩阵或上三角矩阵。
+类型cublasFillMode_t，表示矩阵的哪一部分参与API函数的计算，可以是矩阵的下三角部分或上三角部分。
 
 ```c++
 typedef enum {
@@ -224,7 +224,7 @@ typedef enum {
 } cublasDiagType_t;
 ```
 
-类型cublasDiagType_t，表示矩阵的主对角线是否是单位值，并且不应该被API函数修改。
+类型cublasDiagType_t，表示矩阵主对角线元素的访问模式。其中，CUBLAS_DIAG_NON_UNIT表示矩阵的主对角线元素正常参与计算并支持被修改，CUBLAS_DIAG_UNIT表示矩阵的主对角线元素以单位值1参与计算，并不支持被API函数修改。
 
 ```c++
 typedef enum {
@@ -496,6 +496,227 @@ cublasStatus_t cublasSswap_v2(cublasHandle_t handle, int n, float* x, int incx, 
 ```
 
 交换两个向量之间的元素。
+
+## Level-2 Function Reference
+
+该部分介绍的线性代数子程序BLAS2，用于执行矩阵-向量操作。该部分API函数的命名存在特定规范，例如，g或ge是general通用矩阵，s是symmetric对称矩阵，h是Hermite对称矩阵，b是banded带状矩阵，t或tr是triangular三角矩阵，p是packed紧凑存储的对称矩阵或三角矩阵，r是rank秩。
+
+```c++
+cublasStatus_t cublasSgemv_v2(
+    cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+    const float* alpha, const float* A, int lda, const float* x, int incx, 
+    const float* beta, float* y, int incy
+);
+```
+
+执行矩阵-向量乘法，可用y=α·Op(A)x+β·y公式表示。其中，参数trans表示对矩阵执行的操作Op()；参数m,n分别表示矩阵A的行数与列数；参数alpha,beta表示缩放因子；参数A表示矩阵；参数lda表示矩阵A的前导维数；参数x表示向量，其长度与Op(A)的列数一致；参数y表示向量，其长度与Op(A)的行数一致；参数incx,incy分别表示向量中两个相邻元素的存储位置之间的差距。
+
+```c++
+cublasStatus_t cublasSgemvBatched(
+    cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+    const float* alpha, const float* const Aarray[], int lda,
+    const float* const xarray[], int incx,
+    const float* beta, float* const yarray[], int incy,
+    int batchCount
+);
+```
+
+执行批量矩阵-向量乘法，可用y[i]=α·Op(A[i])x[i]+β·y[i]公式表示，其中i为批量索引。其中，参数batchCount表示批量中矩阵和向量的数目。
+
+```c++
+cublasStatus_t cublasSgemvStridedBatched(
+    cublasHandle_t handle, cublasOperation_t trans, int m, int n,
+    const float* alpha, const float* A, int lda, long long int strideA,
+    const float* x, int incx, long long int stridex,
+    const float* beta, float* y, int incy, long long int stridey,
+    int batchCount
+);
+```
+
+执行批量跨步矩阵-向量乘法，可用y[i]=α·Op(A[i])x[i]+β·y[i]公式表示，其中i为批量索引。其中，参数strideA,stridex,stridey分别表示批量中两个相邻矩阵或向量的存储位置之间的跨步差距。
+
+```c++
+cublasStatus_t cublasSsymv_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n,
+    const float* alpha, const float* A, int lda, const float* x, int incx,
+    const float* beta, float* y, int incy
+);
+cublasStatus_t cublasChemv_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n,
+    const cuComplex* alpha, const cuComplex* A, int lda, const cuComplex* x, int incx,
+    const cuComplex* beta, cuComplex* y, int incy
+);
+```
+
+执行对称矩阵-向量乘法或Hermite对称矩阵-向量乘法，可用y=α·Ax+β·y公式表示。其中，参数uplo表示对称矩阵元素的访问方式，CUBLAS_FILL_MODE_LOWER表示仅访问矩阵下三角部分，CUBLAS_FILL_MODE_UPPER表示仅访问矩阵上三角部分，CUBLAS_FILL_MODE_FULL表示访问整个矩阵。该API函数提供使用原子操作实现的快速版本，可使用cublasSetAtomicsMode()设置允许原子操作。
+
+```c++
+cublasStatus_t cublasSspmv_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n,
+    const float* alpha, const float* AP, const float* x, int incx,
+    const float* beta, float* y, int incy
+);
+cublasStatus_t cublasChpmv_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n,
+    const cuComplex* alpha, const cuComplex* AP, const cuComplex* x, int incx,
+    const cuComplex* beta, cuComplex* y, int incy
+);
+```
+
+执行紧凑对称矩阵-向量乘法或紧凑Hermite对称矩阵-向量乘法，可用y=α·Ax+β·y公式表示。其中，参数AP表示按uplo方式紧凑存储的下三角矩阵或上三角矩阵，仅需存储n(n+1)/2个元素。
+
+```c++
+cublasStatus_t cublasStrmv_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag,
+    int n, const float* A, int lda, float* x, int incx
+);
+```
+
+执行三角矩阵-向量乘法，可用x=Op(A)x公式表示。其中，参数diag表示矩阵主对角线元素的访问模式，CUBLAS_DIAG_NON_UNIT表示矩阵的主对角线元素正常参与计算并支持被修改，CUBLAS_DIAG_UNIT表示矩阵的主对角线元素以单位值1参与计算，并不支持被API函数修改。
+
+```c++
+cublasStatus_t cublasStpmv_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag,
+    int n, const float* AP, float* x, int incx
+);
+```
+
+执行紧凑三角矩阵-向量乘法，可用x=Op(A)x公式表示。其中，参数AP表示按uplo方式紧凑存储的下三角矩阵或上三角矩阵，仅需存储n(n+1)/2个元素。
+
+```c++
+cublasStatus_t cublasSgbmv_v2(
+    cublasHandle_t handle, cublasOperation_t trans, int m, int n, int kl, int ku,
+    const float* alpha, const float* A, int lda, const float* x, int incx,
+    const float* beta, float* y, int incy
+);
+```
+
+执行带状矩阵-向量乘法，可用y=α·Op(A)x+β·y公式表示。其中，参数kl,ku分别表示矩阵的上带宽对角线条数和下带宽对角线条数；参数A是带状矩阵，以带状矩阵的存储方式进行存储。
+
+```c++
+cublasStatus_t cublasSsbmv_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n, int k,
+    const float* alpha, const float* A, int lda, const float* x, int incx,
+    const float* beta, float* y, int incy
+);
+cublasStatus_t cublasChbmv_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n, int k,
+    const cuComplex* alpha, const cuComplex* A, int lda, const cuComplex* x, int incx,
+    const cuComplex* beta, cuComplex* y, int incy
+);
+```
+
+执行对称带状矩阵-向量乘法或Hermite对称带状矩阵-向量乘法，可用y=α·Ax+β·y公式表示。其中，参数k表示矩阵的上带宽对角线条数和下带宽对角线条数；参数A是对称或Hermite对称的带状矩阵，以带状矩阵的存储方式进行存储。
+
+```c++
+cublasStatus_t cublasStbmv_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag,
+    int n, int k, const float* A, int lda, float* x, int incx
+);
+```
+
+执行三角带状矩阵-向量乘法，可用x=Op(A)x公式表示。其中，参数diag表示矩阵主对角线元素的访问模式；参数A是三角带状矩阵，以带状矩阵的存储方式进行存储。
+
+```c++
+cublasStatus_t cublasStrsv_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag,
+    int n, const float* A, int lda, float* x, int incx
+);
+```
+
+求解三角矩阵线性方程组，可用Op(A)x=b公式表示。其中，参数x在函数执行前表示右侧向量b，执行函数所求的解写回到x中。该函数不进行奇异值检测。
+
+```c++
+cublasStatus_t cublasStpsv_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag,
+    int n, const float* AP, float* x, int incx
+);
+```
+
+求解紧凑三角矩阵线性方程组，可用Op(A)x=b公式表示。其中，参数AP表示按uplo方式紧凑存储的下三角矩阵或上三角矩阵，仅需存储n(n+1)/2个元素。
+
+```c++
+cublasStatus_t cublasStbsv_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, cublasOperation_t trans, cublasDiagType_t diag,
+    int n, int k, const float* A, int lda, float* x, int incx
+);
+```
+
+求解三角带状矩阵线性方程组，可用Op(A)x=b公式表示。其中，参数diag表示矩阵主对角线元素的访问模式；参数A是三角带状矩阵，以带状矩阵的存储方式进行存储。
+
+```c++
+cublasStatus_t cublasSger_v2(
+    cublasHandle_t handle, int m, int n, 
+    const float* alpha, const float* x, int incx, const float* y, int incy, 
+    float* A, int lda
+);
+cublasStatus_t cublasCgeru_v2(
+    cublasHandle_t handle, int m, int n,
+    const cuComplex* alpha, const cuComplex* x, int incx, const cuComplex* y, int incy,
+    cuComplex* A, int lda
+);
+cublasStatus_t cublasCgerc_v2(
+    cublasHandle_t handle, int m, int n,
+    const cuComplex* alpha, const cuComplex* x, int incx, const cuComplex* y, int incy,
+    cuComplex* A, int lda
+);
+```
+
+对矩阵添加秩为1的矩阵，可用A=α·xy^T^+A公式或A=α·xy^H^+A公式表示。对于复数的情况，当函数名称以u后缀结尾时，对向量y执行普通转置，当函数名称以c后缀结尾时，对向量y执行共轭转置。
+
+```c++
+cublasStatus_t cublasSsyr_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n,
+    const float* alpha, const float* x, int incx, float* A, int lda
+);
+cublasStatus_t cublasCher_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n,
+    const float* alpha, const cuComplex* x, int incx, cuComplex* A, int lda
+);
+```
+
+对矩阵添加秩为1的对称矩阵或Hermite对称矩阵，可用A=α·xx^T^+A公式或A=α·xx^H^+A公式表示。其中，参数uplo表示对称矩阵元素的访问方式。
+
+```c++
+cublasStatus_t cublasSspr_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n,
+    const float* alpha, const float* x, int incx, float* AP
+);
+cublasStatus_t cublasChpr_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n,
+    const float* alpha, const cuComplex* x, int incx, cuComplex* AP
+);
+```
+
+对矩阵添加秩为1的紧凑对称矩阵或紧凑Hermite对称矩阵，可用A=α·xx^T^+A公式或A=α·xx^H^+A公式表示。其中，参数AP表示按uplo方式紧凑存储的下三角矩阵或上三角矩阵，仅需存储n(n+1)/2个元素。
+
+```c++
+cublasStatus_t cublasSsyr2_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n,
+    const float* alpha, const float* x, int incx, const float* y, int incy,
+    float* A, int lda
+);
+cublasStatus_t cublasCher2_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n,
+    const cuComplex* alpha, const cuComplex* x, int incx, const cuComplex* y, int incy,
+    cuComplex* A, int lda
+);
+```
+
+对矩阵添加秩为2的对称矩阵或Hermite对称矩阵，可用A=α·(xy^T^+yx^T^)+A公式或A=α·(xy^H^+yx^H^)+A公式表示。其中，参数uplo表示对称矩阵元素的访问方式。
+
+```c++
+cublasStatus_t cublasSspr2_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n,
+    const float* alpha, const float* x, int incx, const float* y, int incy, float* AP
+);
+cublasStatus_t cublasChpr2_v2(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n,
+    const cuComplex* alpha, const cuComplex* x, int incx, const cuComplex* y, int incy, cuComplex* AP
+);
+```
+
+对矩阵添加秩为2的紧凑对称矩阵或紧凑Hermite对称矩阵，可用A=α·(xy^T^+yx^T^)+A公式或A=α·(xy^H^+yx^H^)+A公式表示。其中，参数AP表示按uplo方式紧凑存储的下三角矩阵或上三角矩阵，仅需存储n(n+1)/2个元素。
 
 # cuBLAS
 
