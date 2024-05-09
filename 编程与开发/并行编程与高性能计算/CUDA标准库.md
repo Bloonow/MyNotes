@@ -28,9 +28,9 @@ CUDA开发工具套件中有很多有用的库，涵盖线性代数、图像处�
 
 Thrust是一个实现众多基本并行算法的C++模板库，类似于C++的标准模板库（standard template library，STL），该库自动包含在CUDA工具箱中，在使用该库的某个功能时，包含所需的头文件即可。该库中的所有类型与函数都在命名空间thrust中定义，都以thrust::开头。
 
-Thrust中的主要数据结构是矢量容器（vector container），类似于STL中的std::vector矢量。在Thrust中，有两种矢量，一种是存储于主机的矢量thrust::host\_vector\<typename\>模板，另一种是存储于设备的矢量thrust::device\_vector\<typename\>模板，这里的typename可以是任何数据类型。这两种矢量分别位于thrust/host\_vector.h头文件和thrust/device_vector.h头文件中。
+Thrust中的主要数据结构是向量容器（vector container），类似于STL中的std::vector向量。在Thrust中，有两种向量，一种是存储于主机的向量thrust::host\_vector\<typename\>模板，另一种是存储于设备的向量thrust::device\_vector\<typename\>模板，这里的typename可以是任何数据类型。这两种向量分别位于thrust/host\_vector.h头文件和thrust/device_vector.h头文件中。
 
-Thrust提供五类常用算法，包括：(1)变换（transformation），例如数组求和计算就是一种变换操作；(2)归约（reduction），例如求和归约计算等；(3)前缀和（prefix sum）或扫描（scan）；(4)排序（sorting）与搜索（searching）；(5)选择性复制、替换、移除、分区等重排（reordering）操作。除thrust::copy()函数外，Thrust算法的参数必须都来自于主机矢量host\_vector或都来自于设备矢量device\_vector，否则编译器会报错。
+Thrust提供五类常用算法，包括：(1)变换（transformation），例如数组求和计算就是一种变换操作；(2)归约（reduction），例如求和归约计算等；(3)前缀和（prefix sum）或扫描（scan）；(4)排序（sorting）与搜索（searching）；(5)选择性复制、替换、移除、分区等重排（reordering）操作。除thrust::copy()函数外，Thrust算法的参数必须都来自于主机向量host\_vector或都来自于设备向量device\_vector，否则编译器会报错。
 
 此处以前缀和操作为例，通常也称为扫描操作，对于给定的标量序列$x_0,x_1,x_2,\cdots$，该操作会获得一个新的序列$y_0,y_1,y_2,\cdots$，其中新的元素表达式为
 $$
@@ -38,7 +38,7 @@ y_k = x_0 + x_1 + \cdots + x_k
 $$
 其中，对于原序列各元素之间的运算可以是加法$+$求累加和、乘法$\times$求累乘积，默认操作时求累加和。若$y_k$的表达式包含$y_k$，则称为包含扫描（inclusive scan）；若$y_k$的表达式只包含到$x_{k-1}$​，则称为非包含扫描（exclusive scan）。
 
-使用thrust::device_vector设备矢量的一个示例如下所示。
+使用thrust::device_vector设备向量的一个示例如下所示。
 
 ```c++
 #include <thrust/device_vector.h>
@@ -90,9 +90,9 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-相比使用设备矢量的版本，该版本的inclusive_scan()使用了一个thrust::device参数，它表示执行策略（execution policy），位于thrust/execution_policy.h头文件中。
+相比使用设备向量的版本，该版本的inclusive_scan()使用了一个thrust::device参数，它表示执行策略（execution policy），位于thrust/execution_policy.h头文件中。
 
-如果程序中大量使用了Thrust库提供的功能，那么直接使用设备矢量存储数据是比较好的方法；而如果程序中大部分代码都是手写的核函数，只是偶尔使用Thrust库提供的功能，那么使用设备内存指针是比较好的方法。
+如果程序中大量使用了Thrust库提供的功能，那么直接使用设备向量存储数据是比较好的方法；而如果程序中大部分代码都是手写的核函数，只是偶尔使用Thrust库提供的功能，那么使用设备内存指针是比较好的方法。
 
 ## cuBLAS
 
@@ -103,7 +103,7 @@ cuBLAS是CUDA Basic Linear Algebra Subroutine的缩写，是基本线性代数�
 - cuBLASXt API，自CUDA 6.0引入。计算所使用到的数据可位于主机或多个GPU设备内存中，库会基于用户操作将数据传输到合适的GPU设备。
 - cuBLASDx API，属于MathDx库的一部分，需要单独配置。用于在Kernel核函数中执行BLAS计算，可进行算子融合。
 
-BLAS库最初是在CPU环境中使用Fortran编程语言实现的，Fortran风格中的的多维数组是列主序存储的，而C风格中的多维数组是行主序存储的。因而，cuBLAS库对于矩阵的存储和计算都是按照列主序的方式进行的，这一点需要特别注意。
+BLAS库最初是在CPU环境中使用Fortran编程语言实现的，Fortran风格中的的多维数组是列主序存储的，而C风格中的多维数组是行主序存储的。因而，cuBLAS库对于矩阵和向量的存储和计算都是按照列主序的方式进行的，这一点需要特别注意。
 
 按照人类的阅读习惯，符号(M,N)表示M行N列矩阵，符号[rid,cid]表示行索引为rid列索引为cid的相应元素，推广到多维张量时，对应到各给维度轴上。例如，一个2行3列的矩阵A[2,3]，其各个元素的值如下所示。
 $$
@@ -124,7 +124,7 @@ float A_col_major[] = { 0.0, 3.0, 1.0, 4.0, 2.0, 5.0 };  // col-major
 
 要使用cuBLAS库，在程序编译链接时需要链接到指定库，在Linux平台上是cublas.so动态库，在Windows上是cublas.dll动态库。在Linux平台上，也可以链接到libcublas_static.a静态库和libculibos.a静态库。
 
-在描述API函数接口时，使用\<type\>表示可能的数值类型，使用\<t\>表示相应类型的缩写，其小写表示计算结果是标量，大写表示计算结果是张量，如下所示。为简化表述，在介绍API函数接口时，只介绍s与S表示的单精度浮点数类型，若非特别说明则默认该接口具有其它数值类型。
+在描述API函数接口时，使用\<type\>表示可能的数值类型，使用\<t\>表示相应类型的缩写，其小写表示计算结果是标量，大写表示计算结果是张量，如下所示。为简化表述，在介绍API函数接口时，通常只以s与S表示的单精度浮点数类型为示例。
 
 | \<type\>        | \<t\> | Meaning                  |
 | --------------- | ----- | ------------------------ |
@@ -133,7 +133,7 @@ float A_col_major[] = { 0.0, 3.0, 1.0, 4.0, 2.0, 5.0 };  // col-major
 | cuComplex       | c, C  | complex single-precision |
 | cuDoubleComplex | z, Z  | complex double-precision |
 
-使用Re()表示复数的实部，使用Im()表示复数的虚部，使用小写希腊字母α,β等表示标量，使用小写拉丁字母a,b表示矢量，使用大写拉丁字母A,B表示矩阵，使用上划线表示一个复数的共轭转置。
+使用Re()表示复数的实部，使用Im()表示复数的虚部，使用小写希腊字母α,β等表示标量，使用小写拉丁字母a,b表示向量，使用大写拉丁字母A,B表示矩阵，使用上划线表示一个复数的共轭转置。
 
 ## General Description
 
@@ -387,7 +387,7 @@ cublasStatus_t cublasGetVectorAsync(
 );
 ```
 
-函数cublasSetVector()从主机复制矢量到设备，函数cublasGetVector()从设备复制矢量到主机，参数n指定元素数目，参数elemSize指定一个元素的字节数，参数x指定源矢量地址，参数y指定目标矢量地址，参数incx和incy指定矢量中两个相邻元素之间的存储位置间隔，指定为1表示两个相邻元素在内存中连续存储。
+函数cublasSetVector()从主机复制向量到设备，函数cublasGetVector()从设备复制向量到主机。其中，参数n指定元素数目；参数elemSize指定一个元素的字节数；参数x指定源向量地址；参数y指定目标向量地址；参数incx和incy指定向量中两个相邻元素之间的存储位置间隔，指定为1表示两个相邻元素在内存中连续存储。
 
 ```c++
 cublasStatus_t cublasSetMatrix(int rows, int cols, int elemSize, const void* A, int lda, void* B, int ldb);
@@ -400,24 +400,24 @@ cublasStatus_t cublasGetMatrixAsync(
 );
 ```
 
-函数cublasSetMatrix()从主机复制矩阵到设备，函数cublasGetMatrix()从设备复制矩阵到主机，参数rows和cols分别指定矩阵的行数和列数，参数elemSize指定一个元素的字节数，参数A指定源矩阵地址，参数B指定目标矩阵地址，参数lda和ldb指定矩阵的前导维度轴的维数。
+函数cublasSetMatrix()从主机复制矩阵到设备，函数cublasGetMatrix()从设备复制矩阵到主机。参数rows和cols分别指定矩阵的行数和列数；参数elemSize指定一个元素的字节数；参数A指定源矩阵地址；参数B指定目标矩阵地址；参数lda和ldb指定矩阵的前导维度轴的维数。
 
 ## Level-1 Function Reference
 
-该部分介绍的线性代数子程序BLAS1，用于执行标量-矢量操作。由于要兼容Fortran版本的BLAS库，在该部分中若无特殊说明，矢量所使用的索引从1开始。
+该部分介绍的线性代数子程序BLAS1，用于执行标量-向量操作。由于要兼容Fortran版本的BLAS库，在该部分中若无特殊说明，向量所使用的索引从1开始。
 
 ```c++
 cublasStatus_t cublasIsamax_v2(cublasHandle_t handle, int n, const float* x, int incx, int* result);
 cublasStatus_t cublasIsamin_v2(cublasHandle_t handle, int n, const float* x, int incx, int* result);
 ```
 
-以元素的|Re()|+|Im()|值作为操作数，获取矢量中最大元素或最小元素的索引，存在多个相同最值元素时，获得这些元素中最小的索引。其中，参数n指定矢量中元素的数目，参数x指定设备矢量地址，参数incx指定矢量中两个相邻元素的存储位置之间的差距，参数result指定主机或设备地址，用于存储计算结果。
+以元素的|Re()|+|Im()|值作为操作数，获取向量中最大元素或最小元素的索引，存在多个相同最值元素时，获得这些元素中最小的索引。其中，参数n指定向量中元素的数目；参数x指定设备向量地址；参数incx指定向量中两个相邻元素的存储位置之间的差距；参数result指定主机或设备地址，用于存储计算结果。
 
 ```c++
 cublasStatus_t cublasSasum_v2(cublasHandle_t handle, int n, const float* x, int incx, float* result);
 ```
 
-以元素的|Re()|+|Im()|值作为操作数，计算矢量中各个元素之和。
+以元素的|Re()|+|Im()|值作为操作数，计算向量中各个元素之和。
 
 ```c++
 cublasStatus_t cublasSaxpy_v2(
@@ -425,13 +425,13 @@ cublasStatus_t cublasSaxpy_v2(
 );
 ```
 
-对矢量元素执行乘加操作，可用y[i]=alpha\*x[i]+y[i]公式表示。其中，参数y指定设备矢量地址，参数incy指定矢量中两个相邻元素的存储位置之间的差距。
+对向量元素执行乘加操作，可用y[i]=alpha\*x[i]+y[i]公式表示。其中，参数y指定设备向量地址；参数incy指定向量中两个相邻元素的存储位置之间的差距。
 
 ```c++
 cublasStatus_t cublasScopy_v2(cublasHandle_t handle, int n, const float* x, int incx, float* y, int incy);
 ```
 
-对矢量元素执行拷贝操作，可用y[i]=x[i]公式表示。
+对向量元素执行拷贝操作，可用y[i]=x[i]公式表示。
 
 ```c++
 cublasStatus_t cublasSdot_v2(
@@ -447,13 +447,13 @@ cublasStatus_t cublasCdotc_v2(
 );
 ```
 
-计算矢量元素的点积，可用Σ(x[i]\*y[i])公式表示。对于复数的情况，当函数名称以u后缀结尾时，直接执行复数乘法，当函数名称以c后缀结尾时，先将矢量x的元素进行共轭后再执行复数乘法。
+计算向量元素的点积，可用Σ(x[i]\*y[i])公式表示。对于复数的情况，当函数名称以u后缀结尾时，直接执行复数乘法，当函数名称以c后缀结尾时，先将向量x的元素进行共轭后再执行复数乘法。
 
 ```c++
 cublasStatus_t cublasSnrm2_v2(cublasHandle_t handle, int n, const float* x, int incx, float* result);
 ```
 
-计算矢量元素的L2范数，可用公式sqrt(Σ(x[i]\*x[i]))公式表示。
+计算向量元素的L2范数，可用公式sqrt(Σ(x[i]\*x[i]))公式表示。
 
 ```c++
 cublasStatus_t cublasSrot_v2(
@@ -461,7 +461,7 @@ cublasStatus_t cublasSrot_v2(
 );
 ```
 
-对矢量x,y应用旋转矩阵，以逆时针方向旋转，旋转角度α由参数sin(α)=s,cos(α)=c定义。
+对向量x,y应用旋转矩阵，以逆时针方向旋转，旋转角度α由参数sin(α)=s,cos(α)=c定义。
 
 ```c++
 cublasStatus_t cublasSrotg_v2(cublasHandle_t handle, float* a, float* b, float* c, float* s);
@@ -475,7 +475,7 @@ cublasStatus_t cublasSrotm_v2(
 );
 ```
 
-对矢量x,y应用变换矩阵。
+对向量x,y应用变换矩阵。
 
 ```c++
 cublasStatus_t cublasSrotmg_v2(
@@ -489,13 +489,13 @@ cublasStatus_t cublasSrotmg_v2(
 cublasStatus_t cublasSscal_v2(cublasHandle_t handle, int n, const float* alpha, float* x, int incx);
 ```
 
-对矢量元素执行缩放操作，可用x[i]=α\*x[i]公式表示。
+对向量元素执行缩放操作，可用x[i]=α\*x[i]公式表示。
 
 ```c++
 cublasStatus_t cublasSswap_v2(cublasHandle_t handle, int n, float* x, int incx, float* y, int incy);
 ```
 
-交换两个矢量之间的元素。
+交换两个向量之间的元素。
 
 # cuBLAS
 
@@ -503,7 +503,7 @@ cuBLAS是BLAS在CUDA运行时的实现，其全称是basic linear algebra subrou
 
 cuBLAS库包含四个API，具体为：(1)cuBLAS API，标准BLAS的CUDA运行时实现；(2)cuBLASXt API，将BLAS计算扩展到多GPU环境；(3)cuBLASLt API，一个专门用于处理矩阵乘法的API接口，在CUDA 10.1中引入；(4)cuBLASDx API，在CUDA核函数中执行BLAS计算，用于算子融合以降低全局访存开销，属于MathDx的一部分，需要单独下载。
 
-其中，cuBLAS API实现了三个层级的函数，具体为：(1)第一层级，处理矢量之间的运算，如矢量的内积；(2)第二层级，处理矩阵矢量之间的运算，例如矩阵与矢量的乘法；(3)第三层级，处理矩阵之间的运算，如矩阵与矩阵相乘。
+其中，cuBLAS API实现了三个层级的函数，具体为：(1)第一层级，处理向量之间的运算，如向量的内积；(2)第二层级，处理矩阵向量之间的运算，例如矩阵与向量的乘法；(3)第三层级，处理矩阵之间的运算，如矩阵与矩阵相乘。
 
 ## 注意事项
 
@@ -528,7 +528,7 @@ int main(int argc, char* argv[]) {
 }
 ```
 
-需要注意的是，在cuBLAS中，将矢量、矩阵、张量等多维数组结构视作**列主序**存储（也即从矩阵最左侧的第一个维度轴开始存储），而不是C风格的行主序存储（从矩阵最右侧的最后一个维度轴开始存储）。
+需要注意的是，在cuBLAS中，将向量、矩阵、张量等多维数组结构视作**列主序**存储（也即从矩阵最左侧的第一个维度轴开始存储），而不是C风格的行主序存储（从矩阵最右侧的最后一个维度轴开始存储）。
 
 例如，一个2行3列的矩阵$A$，其各个元素的值如下所示。
 $$
@@ -1530,7 +1530,7 @@ typedef enum cufftType_t {
 $$
 X_\mathbf{k} = \sum_{n=0}^{N-1} x_\mathbf{n} e^{-2\pi i\cdot\mathbf{\frac{nk}{N}}}
 $$
-其中，求和符号$\sum\limits_{n=0}^{N-1}$表示嵌套求和$\sum\limits_{n_1=0}^{N_1-1}\sum\limits_{n_2=0}^{N_2-1}\cdots\sum\limits_{n_d=0}^{N_d-1}$，矢量$\mathbf{\frac{nk}{N}}=\frac{n_1k_1}{N_1}+\frac{n_2k_2}{N_2}+\cdots+\frac{n_dk_d}{N_d}$，注意，在离散傅里叶逆变换的公式中，需要除以$\mathbf{N}$作标准化，上式中并没有体现出来，这点需要特别注意。与一维情况类似，实值输入数据的频域表示满足Hermite对称性，这意味着$x(n_1,n_2,\cdots,n_d)=x^H(N_1-n_1,N_2-n_2,\cdots,N_d-n_d)$。
+其中，求和符号$\sum\limits_{n=0}^{N-1}$表示嵌套求和$\sum\limits_{n_1=0}^{N_1-1}\sum\limits_{n_2=0}^{N_2-1}\cdots\sum\limits_{n_d=0}^{N_d-1}$，向量$\mathbf{\frac{nk}{N}}=\frac{n_1k_1}{N_1}+\frac{n_2k_2}{N_2}+\cdots+\frac{n_dk_d}{N_d}$，注意，在离散傅里叶逆变换的公式中，需要除以$\mathbf{N}$作标准化，上式中并没有体现出来，这点需要特别注意。与一维情况类似，实值输入数据的频域表示满足Hermite对称性，这意味着$x(n_1,n_2,\cdots,n_d)=x^H(N_1-n_1,N_2-n_2,\cdots,N_d-n_d)$。
 
 | Dims | FFT Type | input data size                         | output data size                        |
 | ---- | -------- | --------------------------------------- | --------------------------------------- |
