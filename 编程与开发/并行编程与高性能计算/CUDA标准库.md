@@ -233,7 +233,7 @@ typedef enum {
 } cublasSideMode_t;
 ```
 
-类型cublasSideMode_t，表示在使用特定API函数求解矩阵方程时，矩阵是位于等式左侧还是右侧。
+类型cublasSideMode_t，表示矩阵是位于左侧还是右侧。
 
 ```c++
 typedef enum {
@@ -499,7 +499,9 @@ cublasStatus_t cublasSswap_v2(cublasHandle_t handle, int n, float* x, int incx, 
 
 ## Level-2 Function Reference
 
-该部分介绍的线性代数子程序BLAS2，用于执行矩阵-向量操作。该部分API函数的命名存在特定规范，例如，g或ge是general通用矩阵，s是symmetric对称矩阵，h是Hermite对称矩阵，b是banded带状矩阵，t或tr是triangular三角矩阵，p是packed紧凑存储的对称矩阵或三角矩阵，r是rank秩。
+该部分介绍的线性代数子程序BLAS2，用于执行矩阵-向量操作。该部分API函数的命名存在特定规范，例如，g或ge是general通用矩阵，s或sy是symmetric对称矩阵，h或he是Hermite对称矩阵，b是banded带状矩阵，t或tr是triangular三角矩阵，p是packed紧凑存储的对称矩阵或三角矩阵，r是rank秩。
+
+需要注意的是，在Level-2函数接口中，m,n是指矩阵A的行数与列数；而在Level-3函数接口中，m是指矩阵Op(A)与矩阵C的行数，n是指矩阵Op(B)与矩阵C的列数，k是指矩阵Op(A)的列数与矩阵Op(B)的行数。
 
 ```c++
 cublasStatus_t cublasSgemv_v2(
