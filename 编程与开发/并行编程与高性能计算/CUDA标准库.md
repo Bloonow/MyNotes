@@ -120,6 +120,8 @@ float A_col_major[] = { 0.0, 3.0, 1.0, 4.0, 2.0, 5.0 };  // col-major
 
 # cuBLAS API
 
+> 使用示例见www.my.com网址。
+
 自CUDA 4.0以来，cuBLAS库提供新版本的API接口，位于cublas_v2.h头文件h和cublas_api.h头文件。实际上，真正的声明位于cublas_api.h头文件中，许多函数声明都以\_v2后缀结尾，而在cublas_v2.h头文件中，提供这些以\_v2后缀结尾函数的宏，用于兼容遗留API接口。
 
 要使用cuBLAS库，在程序编译链接时需要链接到指定库，在Linux平台上是cublas.so动态库，在Windows上是cublas.dll动态库。在Linux平台上，也可以链接到libcublas_static.a静态库和libculibos.a静态库。
@@ -215,7 +217,7 @@ typedef enum {
 } cublasFillMode_t;
 ```
 
-类型cublasFillMode_t，表示矩阵的哪一部分参与API函数的计算，可以是矩阵的下三角部分或上三角部分。
+类型cublasFillMode_t，表示矩阵元素的访问方式，即矩阵的哪一部分参与API函数的计算，可以是矩阵的下三角部分或上三角部分。
 
 ```c++
 typedef enum {
@@ -550,7 +552,7 @@ cublasStatus_t cublasChemv_v2(
 );
 ```
 
-执行对称矩阵-向量乘法或Hermite对称矩阵-向量乘法，可用y=α·Ax+β·y公式表示。其中，参数uplo表示对称矩阵元素的访问方式，CUBLAS_FILL_MODE_LOWER表示仅访问矩阵下三角部分，CUBLAS_FILL_MODE_UPPER表示仅访问矩阵上三角部分，CUBLAS_FILL_MODE_FULL表示访问整个矩阵。该API函数提供使用原子操作实现的快速版本，可使用cublasSetAtomicsMode()设置允许原子操作。
+执行对称矩阵-向量乘法或Hermite对称矩阵-向量乘法，可用y=α·Ax+β·y公式表示。其中，参数uplo表示矩阵元素的访问方式，CUBLAS_FILL_MODE_LOWER表示仅访问矩阵下三角部分，CUBLAS_FILL_MODE_UPPER表示仅访问矩阵上三角部分，CUBLAS_FILL_MODE_FULL表示访问整个矩阵；参数n表示方阵的阶数。该API函数提供使用原子操作实现的快速版本，可使用cublasSetAtomicsMode()设置允许原子操作。
 
 ```c++
 cublasStatus_t cublasSspmv_v2(
@@ -574,7 +576,7 @@ cublasStatus_t cublasStrmv_v2(
 );
 ```
 
-执行三角矩阵-向量乘法，可用x=Op(A)x公式表示。其中，参数diag表示矩阵主对角线元素的访问模式，CUBLAS_DIAG_NON_UNIT表示矩阵的主对角线元素正常参与计算并支持被修改，CUBLAS_DIAG_UNIT表示矩阵的主对角线元素以单位值1参与计算，并不支持被API函数修改。
+执行三角矩阵-向量乘法，可用x=Op(A)x公式表示。其中，参数diag表示矩阵主对角线元素的访问模式，CUBLAS_DIAG_NON_UNIT表示矩阵的主对角线元素正常参与计算并支持被修改，CUBLAS_DIAG_UNIT表示矩阵的主对角线元素以单位值1参与计算，并不支持被API函数修改；参数n表示方阵的阶数。
 
 ```c++
 cublasStatus_t cublasStpmv_v2(
@@ -608,7 +610,7 @@ cublasStatus_t cublasChbmv_v2(
 );
 ```
 
-执行对称带状矩阵-向量乘法或Hermite对称带状矩阵-向量乘法，可用y=α·Ax+β·y公式表示。其中，参数k表示矩阵的上带宽对角线条数和下带宽对角线条数；参数A是对称或Hermite对称的带状矩阵，以带状矩阵的存储方式进行存储。
+执行对称带状矩阵-向量乘法或Hermite对称带状矩阵-向量乘法，可用y=α·Ax+β·y公式表示。其中，参数n表示方阵的阶数；参数k表示矩阵的上带宽对角线条数和下带宽对角线条数；参数A是对称或Hermite对称的带状矩阵，以带状矩阵的存储方式进行存储。
 
 ```c++
 cublasStatus_t cublasStbmv_v2(
@@ -626,7 +628,7 @@ cublasStatus_t cublasStrsv_v2(
 );
 ```
 
-求解三角矩阵线性方程组，可用Op(A)x=b公式表示。其中，参数x在函数执行前表示右侧向量b，执行函数所求的解写回到x中。该函数不进行奇异值检测。
+求解三角矩阵线性方程组，可用Op(A)x=b公式表示。其中，参数n表示方阵的阶数；参数x在函数执行前表示右侧向量b，执行函数所求的解写回到x中。该函数不进行奇异值检测。
 
 ```c++
 cublasStatus_t cublasStpsv_v2(
@@ -644,7 +646,7 @@ cublasStatus_t cublasStbsv_v2(
 );
 ```
 
-求解三角带状矩阵线性方程组，可用Op(A)x=b公式表示。其中，参数diag表示矩阵主对角线元素的访问模式；参数A是三角带状矩阵，以带状矩阵的存储方式进行存储。
+求解三角带状矩阵线性方程组，可用Op(A)x=b公式表示。其中，参数n表示方阵的阶数；参数k表示矩阵的上带宽对角线条数和下带宽对角线条数；参数diag表示矩阵主对角线元素的访问模式；参数A是三角带状矩阵，以带状矩阵的存储方式进行存储。
 
 ```c++
 cublasStatus_t cublasSger_v2(
@@ -677,7 +679,7 @@ cublasStatus_t cublasCher_v2(
 );
 ```
 
-对矩阵添加秩为1的对称矩阵或Hermite对称矩阵，可用A=α·xx^T^+A公式或A=α·xx^H^+A公式表示。其中，参数uplo表示对称矩阵元素的访问方式。
+对矩阵添加秩为1的对称矩阵或Hermite对称矩阵，可用A=α·xx^T^+A公式或A=α·xx^H^+A公式表示。其中，参数uplo表示矩阵元素的访问方式；参数n表示方阵的阶数。
 
 ```c++
 cublasStatus_t cublasSspr_v2(
@@ -705,7 +707,7 @@ cublasStatus_t cublasCher2_v2(
 );
 ```
 
-对矩阵添加秩为2的对称矩阵或Hermite对称矩阵，可用A=α·(xy^T^+yx^T^)+A公式或A=α·(xy^H^+yx^H^)+A公式表示。其中，参数uplo表示对称矩阵元素的访问方式。
+对矩阵添加秩为2的对称矩阵或Hermite对称矩阵，可用A=α·(xy^T^+yx^T^)+A公式或A=α·(xy^H^+yx^H^)+A公式表示。其中，参数uplo表示矩阵元素的访问方式。
 
 ```c++
 cublasStatus_t cublasSspr2_v2(
@@ -811,7 +813,7 @@ cublasStatus_t cublasChemm_v2(
 );
 ```
 
-执行对称矩阵-矩阵乘法或Hermite对称矩阵-矩阵乘法，可用C=α·AB+β·C公式或C=α·BA+β·C公式表示。其中，参数A表示对称矩阵或Hermite对称矩阵；参数B,C表示普通矩阵；参数side表示对称矩阵A位于左侧还是右侧，CUBLAS_SIDE_LEFT表示对称矩阵位于左侧，即作AB乘法，CUBLAS_SIDE_RIGHT表示对称矩阵位于右侧，即作BA乘法；参数uplo表示对称矩阵元素的访问方式，CUBLAS_FILL_MODE_LOWER表示仅访问矩阵下三角部分，CUBLAS_FILL_MODE_UPPER表示仅访问矩阵上三角部分；参数m,n分别表示矩阵B,C的行数与列数，矩阵A的行数和列数根据所作乘法相匹配。
+执行对称矩阵-矩阵乘法或Hermite对称矩阵-矩阵乘法，可用C=α·AB+β·C公式或C=α·BA+β·C公式表示。其中，参数A表示对称矩阵或Hermite对称矩阵；参数B,C表示普通矩阵；参数side表示矩阵A位于左侧还是右侧，CUBLAS_SIDE_LEFT表示矩阵位于左侧，即作AB乘法，CUBLAS_SIDE_RIGHT表示矩阵位于右侧，即作BA乘法；参数uplo表示矩阵元素的访问方式，CUBLAS_FILL_MODE_LOWER表示仅访问矩阵下三角部分，CUBLAS_FILL_MODE_UPPER表示仅访问矩阵上三角部分；参数m,n分别表示矩阵B,C的行数与列数，矩阵A的行数和列数根据所作乘法相匹配。
 
 ```c++
 cublasStatus_t cublasSsyrk_v2(
@@ -824,7 +826,7 @@ cublasStatus_t cublasCherk_v2(
 );
 ```
 
-向对称矩阵或Hermite对称矩阵添加秩为k的对称矩阵或Hermite对称矩阵，可用C=α·Op(A)Op(A)^T^+β·C公式表示。其中，参数C表示n阶对称矩阵或Hermite对称矩阵；参数uplo表示对称矩阵元素的访问方式；参数n,k表示矩阵Op(A)的行数与列数。
+向对称矩阵或Hermite对称矩阵添加秩为k的对称矩阵或Hermite对称矩阵，可用C=α·Op(A)Op(A)^T^+β·C公式表示。其中，参数n表示方阵的阶数；参数C表示n阶对称矩阵或Hermite对称矩阵；参数uplo表示矩阵元素的访问方式；参数n,k表示矩阵Op(A)的行数与列数。
 
 ```c++
 cublasStatus_t cublasSsyrkx(
@@ -839,7 +841,7 @@ cublasStatus_t cublasCherkx(
 );
 ```
 
-向对称矩阵或Hermite对称矩阵添加秩为k的矩阵，可用C=α·Op(A)Op(B)^T^+β·C公式表示。其中，参数C表示n阶对称矩阵或Hermite对称矩阵；参数uplo表示对称矩阵元素的访问方式；参数n,k表示矩阵Op(A),Op(B)的行数与列数。
+向对称矩阵或Hermite对称矩阵添加秩为k的矩阵，可用C=α·Op(A)Op(B)^T^+β·C公式表示。其中，参数C表示n阶对称矩阵或Hermite对称矩阵；参数uplo表示矩阵元素的访问方式；参数n,k表示矩阵Op(A),Op(B)的行数与列数。
 
 ```c++
 cublasStatus_t cublasSsyr2k_v2(
@@ -854,7 +856,7 @@ cublasStatus_t cublasCher2k_v2(
 );
 ```
 
-向对称矩阵或Hermite对称矩阵添加秩为2k的对称矩阵或Hermite对称矩阵，可用C=α·(Op(A)Op(B)^T^+Op(B)Op(A)^T^)+β·C公式表示。其中，参数C表示n阶对称矩阵或Hermite对称矩阵；参数uplo表示对称矩阵元素的访问方式；参数n,k表示矩阵Op(A),Op(B)的行数与列数。
+向对称矩阵或Hermite对称矩阵添加秩为2k的对称矩阵或Hermite对称矩阵，可用C=α·(Op(A)Op(B)^T^+Op(B)Op(A)^T^)+β·C公式表示。其中，参数C表示n阶对称矩阵或Hermite对称矩阵；参数uplo表示矩阵元素的访问方式；参数n,k表示矩阵Op(A),Op(B)的行数与列数。
 
 ```c++
 cublasStatus_t cublasStrmm_v2(
@@ -865,7 +867,7 @@ cublasStatus_t cublasStrmm_v2(
 );
 ```
 
-执行三角矩阵-矩阵乘法，可用C=α·Op(A)B公式或C=α·BOp(A)公式表示。其中，参数A表示三角矩阵；参数B,C表示普通矩阵；参数side表示对称矩阵A位于左侧还是右侧；参数uplo表示矩阵元素的访问方式；参数diag表示矩阵主对角线元素的访问模式，CUBLAS_DIAG_NON_UNIT表示矩阵的主对角线元素正常参与计算并支持被修改，CUBLAS_DIAG_UNIT表示矩阵的主对角线元素以单位值1参与计算，并不支持被API函数修改；参数m,n表示矩阵B的行数与列数，矩阵Op(A)的行数和列数根据所作乘法相匹配。
+执行三角矩阵-矩阵乘法，可用C=α·Op(A)B公式或C=α·BOp(A)公式表示。其中，参数A表示三角矩阵；参数B,C表示普通矩阵；参数side表示矩阵A位于左侧还是右侧；参数uplo表示矩阵元素的访问方式；参数diag表示矩阵主对角线元素的访问模式，CUBLAS_DIAG_NON_UNIT表示矩阵的主对角线元素正常参与计算并支持被修改，CUBLAS_DIAG_UNIT表示矩阵的主对角线元素以单位值1参与计算，并不支持被API函数修改；参数m,n表示矩阵B的行数与列数，矩阵Op(A)的行数和列数根据所作乘法相匹配。
 
 ```c++
 cublasStatus_t cublasStrsm_v2(
@@ -887,6 +889,213 @@ cublasStatus_t cublasStrsmBatched(
 ```
 
 求解批量三角矩阵线性方程组，可用Op(A[i])X[i]=α·B[i]公式或X[i]Op(A[i])=α·B[i]公式表示。其中，参数B在函数执行前表示右侧矩阵B，执行函数所求的解X写回到B中；参数m,n表示矩阵B的行数与列数，矩阵Op(A)的行数和列数根据所作乘法相匹配。该函数不进行奇异值检测。
+
+## BLAS-like Extension
+
+该部分介绍BLAS-extension扩展，用于执行扩展的向量操作与矩阵操作。该部分API函数的命名存在特定规范，例如，g或ge是general通用矩阵，s或sy是symmetric对称矩阵，h或he是Hermite对称矩阵，t或tr是triangular三角矩阵。
+
+```c++
+cublasStatus_t cublasStrttp(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n, const float* A, int lda, float* AP
+);
+cublasStatus_t cublasStpttr(
+    cublasHandle_t handle, cublasFillMode_t uplo, int n, const float* AP, float* A, int lda
+);
+```
+
+转换三角矩阵的存储模式，trttp从标准存储到紧凑存储，tpttr从紧凑存储到标准存储。其中，参数uplo表示矩阵元素的访问方式，CUBLAS_FILL_MODE_LOWER表示仅访问矩阵下三角部分，CUBLAS_FILL_MODE_UPPER表示仅访问矩阵上三角部分；参数n表示方阵的阶数；参数A表示标准存储方式的矩阵；参数lda表示矩阵A的前导维数；参数AP表示紧凑存储方式的矩阵。
+
+```c++
+cublasStatus_t cublasSgetrfBatched(
+    cublasHandle_t handle, int n, float* const A[], int lda, int* PivotArray,
+    int* infoArray, int batchSize
+);
+```
+
+执行批量矩阵的LU分解，可用公式PA[i]=L[i]U[i]表示，其中矩阵L为主对角线为单位值的下三角矩阵，矩阵U为上三角矩阵，其中i为批量索引。其中，参数n表示方阵的阶数；参数A表示要进行LU分解的矩阵，分解完成得到的矩阵L和矩阵U将写回到A的对应位置当中，但不写回L的单位主对角元素；参数lda表示矩阵A的前导维数；参数PivotArray表示初等行变换矩阵P，是以一维数组存储的batchSize\*n个元素，指定为NULL时不使用；参数infoArray用于在LU分解无法进行时（矩阵A是奇异矩阵），报告第一个无法LU分解的行索引，是以一维数组存储的batchSize个元素。
+
+```c++
+cublasStatus_t cublasSgetrsBatched(
+    cublasHandle_t handle, cublasOperation_t trans, int n, int nrhs,
+    const float* const Aarray[], int lda, const int* PivotArray, float* const Barray[], int ldb,
+    int* infoArray, int batchSize
+);
+```
+
+求解批量矩阵线性方程组，可用Op(A[i])X[i]=B[i]公式表示，其中i为批量索引。其中，参数n表示方阵A的阶数，矩阵X,B的行数；参数nrhs表示矩阵X,B的列数；参数A表示矩阵，实际上存储的是调用cublas\<t\>getrfBatched()函数分解得到的LU矩阵写回的结果；参数B在函数执行前表示右侧矩阵B，执行函数所求的解X写回到B中。
+
+```c++
+cublasStatus_t cublasSgetriBatched(
+    cublasHandle_t handle, int n,
+    const float* const A[], int lda, const int* PivotArray, float* const C[], int ldc, 
+    int* infoArray, int batchSize
+);
+```
+
+计算批量矩阵的逆矩阵。其中，参数n表示方阵的阶数；参数A表示矩阵，实际上存储的是调用cublas\<t\>getrfBatched()函数分解得到的LU矩阵写回的结果；参数C表示所求的逆矩阵。
+
+```c++
+cublasStatus_t cublasSmatinvBatched(
+    cublasHandle_t handle, int n,
+    const float* const A[], int lda, float* const Ainv[], int lda_inv,
+    int* infoArray, int batchSize
+);
+```
+
+计算批量矩阵的逆矩阵，等价于cublas\<t\>getrfBatched()函数和cublas\<t\>getriBatched()函数，但只能用于n小于等于32的情况，若n大于32则需手动调用上述函数。其中，参数n表示方阵的阶数；参数A表示矩阵；参数Ainv表示所求的逆矩阵。
+
+```c++
+cublasStatus_t cublasSgeqrfBatched(
+    cublasHandle_t handle, int m, int n,
+    float* const Aarray[], int lda, float* const TauArray[],
+    int* infoArray, int batchSize
+);
+```
+
+执行批量矩阵的QR分解，该分解使用由Tau构造的Householder变换进行。其中，参数m,n表示矩阵A行数和列数；参数A表示要进行QR分解的矩阵，分解完成得到的酉矩阵Q将写回到A的对应位置当中；参数TauArray表示用于构造Householder的实值标量数组。
+
+```c++
+cublasStatus_t cublasSgelsBatched(
+    cublasHandle_t handle, cublasOperation_t trans, int m, int n, int nrhs,
+    float* const Aarray[], int lda, float* const Carray[], int ldc,
+    int* infoArray, int* devInfoArray, int batchSize
+);
+```
+
+计算批量超定系统（overdetermined system）的最小二乘解（least squares solution），可用min{|C-Op(A)X|~2~}公式表示，函数执行完毕后QR分解的结果写回到参数A中，最小二乘解写回到参数C中。其中，参数m表示矩阵Op(A)的行数；参数n表示矩阵Op(A)的列数；参数nrhs表示矩阵C的列数。
+
+```c++
+cublasStatus_t cublasSdgmm(
+    cublasHandle_t handle, cublasSideMode_t side, int m, int n,
+    const float* A, int lda, const float* x, int incx, float* C, int ldc
+);
+```
+
+执行矩阵-矩阵乘法，可用C=ADiag(x)公式或C=Diag(x)A公式表示。其中，参数side表示矩阵Diag(x)位于左侧还是右侧，CUBLAS_SIDE_LEFT表示矩阵位于左侧，即作Diag(x)A乘法，CUBLAS_SIDE_RIGHT表示矩阵位于右侧，即作ADiag(x)乘法；参数m,n分别表示矩阵A,C的行数和列数；参数x表示一个向量，用于构造对角矩阵Diag(x)，向量的元素数目与矩阵乘法相匹配；参数incx表示向量中两个相邻元素的存储位置之间的差距。例如，对于两个矩阵A,B来说，若要计算ADiag(diag(B))，可指定参数x为B，参数incx为ldb+1。
+
+```c++
+cublasStatus_t cublasSgeam(
+    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n,
+    const float* alpha, const float* A, int lda, const float* beta, const float* B, int ldb,
+    float* C, int ldc
+);
+```
+
+执行矩阵-矩阵加法，也可以执行矩阵转置，可用C=α·Op(A)+β·Op(B)公式表示。其中，参数m,n分别表示矩阵Op(A),Op(B),C的行数和列数。
+
+```c++
+cublasStatus_t cublasAxpyEx(
+    cublasHandle_t handle, int n, const void* alpha, cudaDataType alphaType,
+    const void* x, cudaDataType xType, int incx, void* y, cudaDataType yType, int incy,
+    cudaDataType executiontype
+);
+```
+
+对向量元素执行乘加操作，可用y[i]=alpha\*x[i]+y[i]公式表示，与cublas\<t\>axpy_v2函数类似，可使用cudaDataType指定数值精度类型。
+
+```c++
+cublasStatus_t cublasScalEx(
+    cublasHandle_t handle, int n, const void* alpha, cudaDataType alphaType,
+    void* x, cudaDataType xType, int incx, cudaDataType executionType
+);
+```
+
+对向量元素执行缩放操作，可用x[i]=α\*x[i]公式表示，与cublas\<t\>scal_v2函数类似，可使用cudaDataType指定数值精度类型。
+
+```c++
+cublasStatus_t cublasDotEx(
+    cublasHandle_t handle, int n,
+    const void* x, cudaDataType xType, int incx, const void* y, cudaDataType yType, int incy,
+    void* result, cudaDataType resultType, cudaDataType executionType
+);
+```
+
+计算向量元素的点积，可用Σ(x[i]\*y[i])公式表示，与cublas\<t\>dot_v2函数类似，可使用cudaDataType指定数值精度类型。
+
+```c++
+cublasStatus_t cublasNrm2Ex(
+    cublasHandle_t handle, int n, const void* x, cudaDataType xType, int incx,
+    void* result, cudaDataType resultType, cudaDataType executionType
+);
+```
+
+计算向量元素的L2范数，可用公式sqrt(Σ(x[i]\*x[i]))公式表示，与cublas\<t\>nrm2_v2函数类似，可使用cudaDataType指定数值精度类型。
+
+```c++
+cublasStatus_t cublasRotEx(
+    cublasHandle_t handle, int n, 
+    void* x, cudaDataType xType, int incx, void* y, cudaDataType yType, int incy,
+    const void* c, const void* s, cudaDataType csType, cudaDataType executiontype
+);
+```
+
+对向量x,y应用旋转矩阵，以逆时针方向旋转，旋转角度α由参数sin(α)=s,cos(α)=c定义，与cublas\<t\>rot_v2函数类似，可使用cudaDataType指定数值精度类型。
+
+```c++
+cublasStatus_t cublasSgemmEx(
+    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
+    const float* alpha, const void* A, cudaDataType Atype, int lda, const void* B, cudaDataType Btype, 
+    int ldb, const float* beta, void* C, cudaDataType Ctype, int ldc
+);
+cublasStatus_t cublasGemmEx(
+    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
+    const void* alpha, const void* A, cudaDataType Atype, int lda,
+    const void* B, cudaDataType Btype, int ldb,
+    const void* beta, void* C, cudaDataType Ctype, int ldc,
+    cublasComputeType_t computeType, cublasGemmAlgo_t algo
+);
+```
+
+执行矩阵-矩阵乘法，可用y=α·Op(A)Op(B)+β·C公式表示，与cublas\<t\>gemm_v2函数类似，可使用cudaDataType或cublasComputeType_t指定数值精度类型。其中，参数algo表示所使用的矩阵乘算法。
+
+```c++
+cublasStatus_t cublasGemmBatchedEx(
+    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
+    const void* alpha, const void* const Aarray[], cudaDataType Atype, int lda,
+    const void* const Barray[], cudaDataType Btype, int ldb,
+    const void* beta, void* const Carray[], cudaDataType Ctype, int ldc,
+    int batchCount, cublasComputeType_t computeType, cublasGemmAlgo_t algo
+);
+```
+
+执行批量矩阵-矩阵乘法，可用C[i]=α·Op(A[i])Op(B[i])+β·C[i]公式表示，与cublas\<t\>gemmBatched函数类似，可使用cudaDataType或cublasComputeType_t指定数值精度类型。其中，参数algo表示所使用的矩阵乘算法。
+
+```c++
+cublasStatus_t cublasGemmStridedBatchedEx(
+    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
+    const void* alpha, const void* A, cudaDataType Atype, int lda, long long int strideA,
+    const void* B, cudaDataType Btype, int ldb, long long int strideB,
+    const void* beta, void* C, cudaDataType Ctype, int ldc, long long int strideC,
+    int batchCount, cublasComputeType_t computeType, cublasGemmAlgo_t algo
+);
+```
+
+执行跨步批量矩阵-矩阵乘法，可用C[i]=α·Op(A[i])Op(B[i])+β·C[i]公式表示，与cublas\<t\>gemmStridedBatched函数类似，可使用cudaDataType或cublasComputeType_t指定数值精度类型。其中，参数algo表示所使用的矩阵乘算法。
+
+```c++
+cublasStatus_t cublasCsyrkEx(
+    cublasHandle_t handle, cublasFillMode_t uplo, cublasOperation_t trans, int n, int k,
+    const cuComplex* alpha, const void* A, cudaDataType Atype, int lda,
+    const cuComplex* beta, void* C, cudaDataType Ctype, int ldc
+);
+cublasStatus_t cublasCherkEx(
+    cublasHandle_t handle, cublasFillMode_t uplo, cublasOperation_t trans, int n, int k,
+    const float* alpha, const void* A, cudaDataType Atype, int lda,
+    const float* beta, void* C, cudaDataType Ctype, int ldc
+);
+cublasStatus_t cublasCsyrk3mEx(
+    cublasHandle_t handle, cublasFillMode_t uplo, cublasOperation_t trans, int n, int k,
+    const cuComplex* alpha, const void* A, cudaDataType Atype, int lda,
+    const cuComplex* beta, void* C, cudaDataType Ctype, int ldc
+);
+cublasStatus_t cublasCherk3mEx(
+    cublasHandle_t handle, cublasFillMode_t uplo, cublasOperation_t trans, int n, int k,
+    const float* alpha, const void* A, cudaDataType Atype, int lda,
+    const float* beta, void* C, cudaDataType Ctype, int ldc
+);
+```
+
+向对称矩阵或Hermite对称矩阵添加秩为k的对称矩阵或Hermite对称矩阵，可用C=α·Op(A)Op(A)^T^+β·C公式表示，与cublas\<t\>syr2k_v2函数和cublas\<t\>her2k_v2函数类似，可使用cudaDataType指定数值精度类型。其中，以后缀3m结尾的函数，使用高斯复杂度归约算法，相较于cublasCsyrkEx或cublasCherkEx版本约有25%性能提升，仅在计算能力大于等于5.0的GPU设备上支持。
 
 # cuBLAS
 
