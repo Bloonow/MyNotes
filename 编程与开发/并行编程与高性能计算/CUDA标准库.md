@@ -404,7 +404,7 @@ cublasStatus_t cublasGetMatrixAsync(
 
 ## Level-1 Function Reference
 
-该部分介绍的线性代数子程序BLAS1，用于执行标量-向量操作。由于要兼容Fortran版本的BLAS库，在该部分中若无特殊说明，向量所使用的索引从1开始。
+该部分介绍线性代数子程序BLAS1，用于执行标量-向量操作。由于要兼容Fortran版本的BLAS库，在该部分中若无特殊说明，向量所使用的索引从1开始。
 
 ```c++
 cublasStatus_t cublasIsamax_v2(cublasHandle_t handle, int n, const float* x, int incx, int* result);
@@ -428,10 +428,22 @@ cublasStatus_t cublasSaxpy_v2(
 对向量元素执行乘加操作，可用y[i]=alpha\*x[i]+y[i]公式表示。其中，参数y指定设备向量地址；参数incy指定向量中两个相邻元素的存储位置之间的差距。
 
 ```c++
+cublasStatus_t cublasSscal_v2(cublasHandle_t handle, int n, const float* alpha, float* x, int incx);
+```
+
+对向量元素执行缩放操作，可用x[i]=α\*x[i]公式表示。
+
+```c++
 cublasStatus_t cublasScopy_v2(cublasHandle_t handle, int n, const float* x, int incx, float* y, int incy);
 ```
 
 对向量元素执行拷贝操作，可用y[i]=x[i]公式表示。
+
+```c++
+cublasStatus_t cublasSswap_v2(cublasHandle_t handle, int n, float* x, int incx, float* y, int incy);
+```
+
+交换两个向量之间的元素。
 
 ```c++
 cublasStatus_t cublasSdot_v2(
@@ -485,21 +497,9 @@ cublasStatus_t cublasSrotmg_v2(
 
 根据指定参数构建变换矩阵。
 
-```c++
-cublasStatus_t cublasSscal_v2(cublasHandle_t handle, int n, const float* alpha, float* x, int incx);
-```
-
-对向量元素执行缩放操作，可用x[i]=α\*x[i]公式表示。
-
-```c++
-cublasStatus_t cublasSswap_v2(cublasHandle_t handle, int n, float* x, int incx, float* y, int incy);
-```
-
-交换两个向量之间的元素。
-
 ## Level-2 Function Reference
 
-该部分介绍的线性代数子程序BLAS2，用于执行矩阵-向量操作，mv是matrix-vector矩阵-向量。该部分API函数的命名存在特定规范，例如，g或ge是general通用矩阵，s或sy是symmetric对称矩阵，h或he是Hermite对称矩阵，b是banded带状矩阵，t或tr是triangular三角矩阵，p是packed紧凑存储的对称矩阵或三角矩阵，r是rank秩。
+该部分介绍线性代数子程序BLAS2，用于执行矩阵-向量操作，mv是matrix-vector矩阵-向量。该部分API函数的命名存在特定规范，例如，g或ge是general通用矩阵，s或sy是symmetric对称矩阵，h或he是Hermite对称矩阵，b是banded带状矩阵，t或tr是triangular三角矩阵，p是packed紧凑存储的对称矩阵或三角矩阵，r是rank秩。
 
 需要注意的是，在Level-2函数接口中，m,n是指矩阵A的行数与列数；而在Level-3函数接口中，m是指矩阵Op(A)与矩阵C的行数，n是指矩阵Op(B)与矩阵C的列数，k是指矩阵Op(A)的列数与矩阵Op(B)的行数。
 
@@ -722,7 +722,7 @@ cublasStatus_t cublasChpr2_v2(
 
 ## Level-3 Function Reference
 
-该部分介绍的线性代数子程序BLAS3，用于执行矩阵-矩阵操作，mm是matrix-matrix矩阵-矩阵。该部分API函数的命名存在特定规范，例如，g或ge是general通用矩阵，s或sy是symmetric对称矩阵，h或he是Hermite对称矩阵，t或tr是triangular三角矩阵，r是rank秩。
+该部分介绍线性代数子程序BLAS3，用于执行矩阵-矩阵操作，mm是matrix-matrix矩阵-矩阵。该部分API函数的命名存在特定规范，例如，g或ge是general通用矩阵，s或sy是symmetric对称矩阵，h或he是Hermite对称矩阵，t或tr是triangular三角矩阵，r是rank秩。
 
 需要注意的是，在Level-2函数接口中，m,n是指矩阵A的行数与列数；而在Level-3函数接口中，m是指矩阵Op(A)与矩阵C的行数，n是指矩阵Op(B)与矩阵C的列数，k是指矩阵Op(A)的列数与矩阵Op(B)的行数。
 
