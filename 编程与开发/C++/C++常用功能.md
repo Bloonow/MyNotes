@@ -131,7 +131,7 @@ clock_t clock();
 time_t time(time_t* timer);
 ```
 
-- 返回自纪元Epoch（1970-01-01 00:00:00 UTC）起经过的**秒**数。如果参数timer不为空，则结构也存储在变量timer中，可以传参NULL，只接受返回值。
+- 返回自纪元Epoch（1970-01-01 00:00:00 UTC）起经过的**秒**数。如果参数timer不为空，则结果也存储在变量timer中，可以传参NULL，只接受返回值。
 - UTC是英文CUT（Coordinated Universal Time）和法文TUC缩写不同的妥协，它表示协调世界时，又称为世界统一时间、世界标准时间、国际协调时间。协调世界时是以原子时的秒长为基础。
 
 ```c

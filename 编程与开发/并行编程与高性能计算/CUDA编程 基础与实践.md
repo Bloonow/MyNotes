@@ -315,7 +315,8 @@ CUDA中对对能够定义的网格大小和线程块大小做了限制。从GPU�
 ```c++
 struct __device_builtin__ dim3 {
     unsigned int x, y, z;
-    __host__ __device__ constexpr dim3(unsigned int vx = 1, unsigned int vy = 1, unsigned int vz = 1) : x(vx), y(vy), z(vz) {}
+    __host__ __device__ constexpr dim3(unsigned int vx = 1, unsigned int vy = 1, unsigned int vz = 1)
+        : x(vx), y(vy), z(vz) {}
     __host__ __device__ constexpr dim3(uint3 v) : x(v.x), y(v.y), z(v.z) {}
     __host__ __device__ constexpr operator uint3(void) const { return uint3{x, y, z}; }
 };

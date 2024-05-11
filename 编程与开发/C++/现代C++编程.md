@@ -264,9 +264,9 @@ int main() {
 
 ## 运算符优先级
 
-按照运算符的优先级从高到低，将其分为1到15个等级，如下表所示。
-
 使用var表示一个变量（variable），使用expr表示一个表达式（expression），使用obj表示一个对象（object），使用ptr表示一个指针（pointer），使用func表示一个函数（function），使用para表示一个参数（parameter）或参数列表。
+
+按照运算符的优先级从高到低，将其分为若干等级，如下表所示。此表摘自https://en.cppreference.com/w/cpp/language/operator_precedence网站。
 
 | 优先级 | 运算符     | 名称或含义       | 使用形式            | 结合方向 | 说明             |
 | ------ | ---------- | ---------------- | ------------------- | -------- | ---------------- |
@@ -316,6 +316,10 @@ int main() {
 |        | `^=`       | 按位异或后赋值   | var ^= expr         | 右到左   |                  |
 |        | `|=`       | 按位或后赋值     | var \|= expr        | 右到左   |                  |
 | 15     | `,`        | 逗号运算符       | epxr, expr, ...     | 左到右   |                  |
+
+
+
+
 
 # 内存布局
 
@@ -1117,14 +1121,6 @@ int *ptr;    // right
 int* ptr;    // wrong, but clearer
 ```
 
-对于指针类型的声明，本质上是取值符号\*与它的右结合运算顺序决定的。如上述指针的声明，首先ptr和取指\*结合，看作一个整体，然后这个整体的类型是一个int，那么ptr就是int的指针。一个比较有意思的例子是指针与const的结合，根据\*符号与const的相对位置，可以有下面几种组合方式。我们知道，const修饰的变量表示是常量，其值无法修改。
-
-```c++
-const int *ptr;    // 指向int常量的指针，*ptr即所指向的int的值不可更改
-int *const ptr;    // 常指针，ptr即指向的地址不可更改
-const int *const ptr;     // 指向int常量的常指针，指针地址和指向的值都不可更改
-```
-
 ## const和volatile指针
 
 `const`和`volatile`关键字可更改指针的处理方式。
@@ -1141,6 +1137,14 @@ char *volatile pv;  // 指针的值（即指针中存储的实际地址）为 vo
 ```
 
 可使用const_cast\<Ty\>类型转换运算符删除名称的const属性、volatile属性、\_\_unaligned属性，如强制类型转换小节所述。
+
+对于const指针类型的声明，本质上是const对所声明变量整体类型的修饰。如下述指针的声明，首先ptr和取指\*结合，看作一个整体，然后这个整体的类型是一个int，那么ptr就是int的指针。一个比较有意思的例子是指针与const的结合，根据\*符号与const的相对位置，可以有下面几种组合方式。我们知道，const修饰的变量表示是常量，其值无法修改。
+
+```c++
+const int *ptr;    // 指向int常量的指针，*ptr即所指向的int的值不可更改
+int *const ptr;    // 常指针，ptr即指向的地址不可更改
+const int *const ptr;     // 指向int常量的常指针，指针地址和指向的值都不可更改
+```
 
 ## new和delete运算符
 
