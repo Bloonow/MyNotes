@@ -6,6 +6,14 @@
 
 清理右键“新建”菜单，注册表中的`计算机\HKEY_CLASSES_ROOT\.*`根键下存放这所有文件类型的信息，如`计算机\HKEY_CLASSES_ROOT\.docx`就是Word文档的信息，在这个键值下删除`Shellnew`后，右键的“新建”菜单中的“新建Word文档”选项就会被删除。其他类型的文件请注意查对文件类型，然后也可以通过这种方法删除右键“新建”菜单。
 
+# 清理VS Code右键菜单
+
+在VS Code编辑器中，在编辑器Editor界面和资源管理器Explorer界面点击鼠标右键，都会显式上下文菜单（context menu），用于列出快捷命令。
+
+VS Code插件开发者可以通过在插件的\$HOME/.vscode/extensions/NAME/package.json配置文件中添加相应的配置项，详细的配置项见[文档](https://code.visualstudio.com/api/references/contribution-points#contributes.menus)。注意，在服务器上，配置文件可能位于\$HOME/.vscode-server/extensions/NAME/package.json路径。
+
+用于控制编辑器或资源管理上下文菜单的键值，位于package.json配置文件中，位于"contributes":"menus"键下，其名称分别为"editor/context"键与"explorer/context"键。用户可删除其中的值来删除不需要的上下文菜单命令。
+
 # 取消默认应用的打开方式
 
 在注册表管理器中，找到`计算机\HKEY_CLASSES_ROOT\.扩展类型`，删除。再找到`计算机\HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.扩展类型`删除。重启计算机就可以了。
