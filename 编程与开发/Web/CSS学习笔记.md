@@ -269,3 +269,6 @@ body {
 body{background:#ffffff url('img_tree.png') no-repeat right top;}
 ```
 
+# 杂注
+
+CSS中使用`--name`声明一个变量，使用`var(--name)`引用变量。

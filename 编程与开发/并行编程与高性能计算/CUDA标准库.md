@@ -101,7 +101,7 @@ cuBLAS是CUDA Basic Linear Algebra Subroutine的缩写，是基本线性代数�
 - cuBLAS API，自CUDA 6.0引入。计算所使用到的矩阵和向量必须位于GPU设备内存中，cuBLAS提供辅助函数用于在主机和设备之间传输数据。
 - cuBLASLt API，自CUDA 10.1引入。轻量级的通用矩阵乘法GEMM（GEneral Matrix-to-matrix Multiply）库，提供灵活的API配置接口。
 - cuBLASXt API，自CUDA 6.0引入。计算所使用到的数据可位于主机或多个GPU设备内存中，库会基于用户操作将数据传输到合适的GPU设备。
-- cuBLASDx API，属于MathDx库的一部分，需要单独配置。用于在Kernel核函数中执行BLAS计算，可进行算子融合。
+- cuBLASDx API，属于MathDx库的一部分，需要单独配置。用于在kernel核函数中执行BLAS计算，可进行算子融合。
 
 BLAS库最初是在CPU环境中使用Fortran编程语言实现的，Fortran风格中的的多维数组是列主序存储的，而C风格中的多维数组是行主序存储的。因而，cuBLAS库对于矩阵和向量的存储和计算都是按照列主序的方式进行的，这一点需要特别注意。
 
@@ -122,9 +122,9 @@ float A_col_major[] = { 0.0, 3.0, 1.0, 4.0, 2.0, 5.0 };  // col-major
 
 > 使用示例见https://github.com/Bloonow/BlnCuda/tree/master/learn/cublas网址。
 
-自CUDA 4.0以来，cuBLAS库提供新版本的API接口，位于cublas_v2.h头文件h和cublas_api.h头文件。实际上，真正的声明位于cublas_api.h头文件中，许多函数声明都以\_v2后缀结尾，而在cublas_v2.h头文件中，提供这些以\_v2后缀结尾函数的宏，用于兼容遗留API接口。
+自CUDA 4.0以来，cuBLAS库提供新版本的API接口，位于cublas_v2.h头文件当中，而cublas_v2.h头文件又包含cublas_api.h头文件。实际上，真正的声明位于cublas_api.h头文件中，许多函数声明都以\_v2后缀结尾，而在cublas_v2.h头文件中，提供这些以\_v2后缀结尾函数的宏，用于兼容遗留API接口。
 
-要使用cuBLAS库，在程序编译链接时需要链接到指定库，在Linux平台上是cublas.so动态库，在Windows上是cublas.dll动态库。在Linux平台上，也可以链接到libcublas_static.a静态库和libculibos.a静态库。
+要使用cuBLAS库，在程序编译链接时需要链接到指定库，在Linux平台上是libcublas.so动态库，在Windows上是cublas.dll动态库。在Linux平台上，也可以链接到libcublas_static.a静态库和libculibos.a静态库。
 
 在描述API函数接口时，使用\<type\>表示可能的数值类型，使用\<t\>表示相应类型的缩写，其小写表示计算结果是标量，大写表示计算结果是张量，如下所示。为简化表述，在介绍API函数接口时，通常只以s与S表示的单精度浮点数类型为示例。
 
