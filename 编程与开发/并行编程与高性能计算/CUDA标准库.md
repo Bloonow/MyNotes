@@ -1097,6 +1097,33 @@ cublasStatus_t cublasCherk3mEx(
 
 向对称矩阵或Hermite对称矩阵添加秩为k的对称矩阵或Hermite对称矩阵，可用C=α·Op(A)Op(A)^T^+β·C公式表示，与cublas\<t\>syr2k_v2函数和cublas\<t\>her2k_v2函数类似，可使用cudaDataType指定数值精度类型。其中，以后缀3m结尾的函数，使用高斯复杂度归约算法，相较于cublasCsyrkEx或cublasCherkEx版本约有25%性能提升，仅在计算能力大于等于5.0的GPU设备上支持。
 
+# cuBLASLt API
+
+> 使用示例见www.bloonow.com网址。
+
+自CUDA 10.1以来，cuBLASLt库提供通用矩阵乘法GEMM操作的灵活的轻量级API接口，支持配置矩阵的数据布局，以参数启发式的方法选择算法。cuBLASLt库位于cublasLt.h头文件当中，而cublas_v2.h头文件又包含cublas_api.h头文件。
+
+要使用cuBLASLt库，在程序编译链接时需要链接到指定库，在Linux平台上是`libcublasLt.so`动态库，在`Windows`上是cublasLt.dll动态库。
+
+在描述API函数接口时，使用\<type\>表示可能的数值类型，使用\<t\>表示相应类型的缩写，其小写表示计算结果是标量。大写表示计算结果是张量，如下所示。为简化表述，在介绍API函数接口时，通常只以s与S表示的单精度浮点数类型为示例。
+
+| \<type\>        | \<t\> | Meaning                  |
+| --------------- | ----- | ------------------------ |
+| float           | s, S  | real single-precision    |
+| double          | d, D  | real double-precision    |
+| cuComplex       | c, C  | complex single-precision |
+| cuDoubleComplex | z, Z  | complex double-precision |
+
+使用Re()表示复数的实部，使用Im()表示复数的虚部，使用小写希腊字母α,β等表示标量，使用小写拉丁字母a,b表示向量，使用大写拉丁字母A,B表示矩阵，使用上划线表示一个复数的共轭转置。
+
+---
+
+## General Description
+
+由于CUDA编程模型的固有限制，在使用cuBLASLt库时会存在问题规模限制，例如，因为网格在z维度上的维数不能超过65535，将导致许多kernel核函数不支持超过65535的batch大小。在问题规模无法由单个kernel核函数处理时，cuBLASLt会尝将问题分解成多个子问题，并在每个子问题上启动kernel核函数。
+
+cuBLASLt会基于问题规模和GPU配置以及其他参数，使用heuristics启发式方法选择最合适的矩阵乘法kernel实现，这需要先在CPU执行一些计算，会消耗几十微秒（microsecond）的时间。对于多次计算的问题规模，推荐先使用cublasLtMatmulAlgoGetHeuristic()函数获取启发式信息，并在后续计算中直接传入。
+
 # cuBLASLt
 
 cuBLASLt库是一个新的专用于执行GeMM（General Matrix-to-Matrix multiply）操作的轻量级库，它提供了灵活的API接口。它支持更灵活的矩阵数据布局，输入类型，计算类型，还可以通过编程参数灵活选择算法的实现和启发式方法。用户只需指定一次GeMM操作的选项集合，就可以将其重复应用于不同的输入。
