@@ -3,7 +3,7 @@
 在Windows平台上，Tpyora软件的主题样式文件存储在\$HOME/AppData/Roaming/Typora/themes目录下，一个自定义样式bln-dark.css文件内容如下。
 
 ```css
-/* Bloonow Dark Typora Theme. */
+/* Bloonow Dark Typora Theme. 🤓👇 */
 /*
 <html>
 <head></head>
@@ -269,7 +269,7 @@ body {
     background-color: var(--code-bg-color);
     color: var(--code-text-color);
     font-size: 1rem;
-    margin: 0 2px;
+    margin: 0 1px;
     border-radius: 2px;
     border: 1px solid var(--theme-color-alpha);
 }
