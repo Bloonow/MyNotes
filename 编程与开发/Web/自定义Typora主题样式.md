@@ -100,11 +100,6 @@
     src: url("C:/Users/bln/AppData/Local/Microsoft/Windows/Fonts/ChillJinshuSong.otf");
 }
 
-@page {
-    size: A4;
-    margin: 8mm 0mm;
-}
-
 @media print {
     html {
         font-size: 10px;
