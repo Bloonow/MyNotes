@@ -31,7 +31,7 @@
 
 /* 自定义颜色变量 */
 :root {
-    --theme-bg-color: #3E4551;
+    --theme-bg-color: #424554;
     --theme-text-color: #C0EBBD;
     --theme-color: #8F499A;
     --theme-color-alpha: rgba(197, 112, 216, 0.4);
