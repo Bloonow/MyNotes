@@ -120,7 +120,7 @@ html {
 }
 
 body {
-    font-family: "ChillJinshuSong", "Consolas", "Times New Roman", "SimSun";
+    font-family: "ChillJinshuSong", "Consolas", "monospace", "SimSun";
     line-height: 1.6;
 }
 
@@ -265,6 +265,7 @@ body {
 
 /* 代码块区域 */
 #write .md-fences {
+    font-family: "Consolas", "monospace", "SimSun";
     background-color: var(--code-bg-color);
     color: var(--code-text-color);
     font-size: 0.95rem;
@@ -282,6 +283,7 @@ body {
 /* 内联代码 */
 #write code,
 #write tt {
+    font-family: "Consolas", "monospace", "SimSun";
     background-color: var(--code-bg-color);
     color: var(--code-text-color);
     font-size: 1rem;

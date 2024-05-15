@@ -1206,7 +1206,8 @@ def timer(label: str, verbose=True) -> None:
             mem_delta = memory_1 - memory_0
             sign = '+' if mem_delta >= 0 else '-'
             print(colored(f'{label}: Time end at {end_time:.2f} (Elapse {end_time - start_time:.4f} secs)', color='blue'))
-            print(colored(f'Local ram usage end at {memory_1:.2f} GiB (Changed {sign}{math.fabs(mem_delta):.4} GiB)\n', color='green'))
+            print(colored(f'Local ram usage end at {memory_1:.2f} GiB (Changed {sign}{math.fabs(mem_delta):.4} GiB)\n',
+                          color='green'))
     else:
         yield
         print(colored(f'{label}: Elapse {time() - start_time:.4f} secs\n', color='blue'))
@@ -1687,7 +1688,8 @@ def what(*args):
     for name, arg in zip(arg_names, args):
         name = p_str.format(name)
         type_str = str(type(arg))
-        if type_str in ["<class 'str'>", "<class 'list'>", "<class 'tuple'>", "<class 'dict'>", "<class 'torch.nn.modules.container.ModuleList'>"]:
+        if type_str in ["<class 'str'>", "<class 'list'>", "<class 'tuple'>", "<class 'dict'>", 
+                        "<class 'torch.nn.modules.container.ModuleList'>"]:
             shape = len(arg)
         elif type_str in ["<class 'numpy.ndarray'>", "<class 'torch.nn.parameter.Parameter'>"]:
             shape = arg.shape
@@ -1860,7 +1862,7 @@ shutil.make_archive()   # Create an archive file (eg. zip or tar).
 可以使用os.path模块来对目录路径进行一些简单操作，其中os.path.expanduser('~')和os.path.expandvars('$PATH')可以用户获得当前用户家目录，以及shell环境变量的值。
 
 ```python
-"""Instead of importing this module directly, import os and refer to this module as os.path."""
+""" Instead of importing this module directly, import os and refer to this module as os.path. """
 import os
 
 os.path.isdir()      # Return true if the pathname refers to an existing directory.
