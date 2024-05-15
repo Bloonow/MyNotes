@@ -1,3 +1,33 @@
+# 编程模型
+
+## 线程层次结构
+
+核函数中的线程通常组织为若干线程块（thread block），一个核函数的全部线程块构成一个网格（grid）。三括号中的第一项即线程块的数目，也即网格维度，称为网格大小（grid size）；第二项即每个线程块中线程的数目，也即线程块维度，称为线程块大小（block size）。
+
+### 线程块簇
+
+随着NVIDIA设备计算能力9.0引入，CUDA编程模型提供一个可选的线程层次，称为线程块簇（Thread Block Cluster），由线程块组成。线程块可以保证其中的线程在一个流多处理器上协同调度，线程块簇也保证其中的线程块在一个GPU处理簇（GPU Processing Cluster，CPC）上协同调度。
+
+> 从硬件的角度来看，一个GPU由若干图形处理簇（Graphics Processing Cluster，GPC）构成，每个GPC包含一些诸如光栅化引擎（Raster Engine）等部件。每个GPC由若干流多处理器（streaming multiprocessor，SM）构成，每个SM是相对独立的，而每个SM中有若干流处理器（streaming processor，SP），流处理器又称为CUDA核心；若一个SM中的SP单元数量大于32个时，则每32个SP单元（物理上）构成一个分区，称为一个SM分区（partition）。
+
+与线程块类似，线程块簇也可组织为一维、二维、三维形式，如下图所示。一个簇中的线程块数目可以由用户定义，并且CUDA最大支持一个簇中持有8个线程块。值得注意的是，若GPU硬件或MIG配置太小不足以支持8个流多处理器时，则簇的最大规模则会相应的减小。较小配置，与支持超过8个线程块的较大配置，是基于特定架构的，可使用cudaOccupancyMaxPotentialClusterSize()函数进行查询。
+
+<img src="CUDA编程指南与最佳实践.assets/grid-of-clusters.png" style="zoom:25%;" />
+
+为兼容性考虑，gridDim变量仍然表示线程块的数目规模，blockIdx变量仍然表示线程块在网格中的编号；使用Cluster Group簇组API用于获取一个簇在网格中的编号，以及一个线程块在簇中的编号。
+
+可以在定义核函数时使用\_\_cluster_dims\_\_(X,Y,Z)属性说明符指定一个核函数的线程块簇配置，这种配置会作为编译时核函数属性，并能够使用经典的<<<>>>指定核函数执行配置。一旦指定编译时簇配置，则无法在启动核函数时更改。
+
+
+
+
+
+也可以在启动核函数时使用cudaLaunchKernelEx()配置线程块簇属性。
+
+
+
+
+
 # CUDA运行时
 
 CUDA Runtime运行时环境在cudart库中实现，使用CUDA的应用程序都需要链接到该运行时库，要么是cudart.lib或libcudart.a静态库，要么是cudart.dll或libcuda.so动态库。因此需要动态链接到cudart.dll或libcudart.so库的应用程序，通常会将CUDA动态库包含在安装目录。只有链接到同一个CUDA运行时实例的多个组件，才能安全地传递地址信息。

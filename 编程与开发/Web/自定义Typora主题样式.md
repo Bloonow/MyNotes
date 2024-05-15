@@ -4,6 +4,7 @@
 
 ```css
 /* Bloonow Dark Typora Theme. 🤓👇 */
+/* $HOME/AppData/Roaming/Typora/themes/bln-dark.css */
 /*
 <html>
 <head></head>
@@ -35,7 +36,7 @@
     --theme-text-color: #C0EBBD;
     --theme-color: #8F499A;
     --theme-color-alpha: rgba(197, 112, 216, 0.4);
-    --theme-side-color: #353846;
+    --theme-gray-color: #353846;
     --dark-color: #09020C;
     --gray-color: #ADADAD;
     --light-color: #FEFEFE;
@@ -80,11 +81,11 @@
     /* 主题色之按钮文本颜色 */
     --primary-btn-text-color: var(--theme-color);
     /* 侧边菜单栏背景色 */
-    --side-bar-bg-color: var(--theme-side-color);
+    --side-bar-bg-color: var(--theme-gray-color);
     /* 控制文本颜色 */
     --control-text-color: var(--light-color);
     /* 打开文件的背景色 */
-    --active-file-bg-color: var(--theme-side-color);
+    --active-file-bg-color: var(--theme-gray-color);
     /* 打开文件的文本颜色 */
     --active-file-text-color: var(--hint-text-color);
     /* 打开文件的边界颜色 */
@@ -331,6 +332,23 @@ footer.ty-footer {
 
 .ty-preferences .nav-group-item:hover {
     background-color: var(--item-hover-bg-color);
+}
+
+/* 按钮样式 */
+.button-hover,
+.btn:hover,
+.md-image-btn:hover {
+    background-color: var(--theme-gray-color) !important;
+    color: var(--text-color);
+}
+
+.menu-style-btn:hover {
+    background-color: var(--item-hover-bg-color);
+    border: none;
+}
+
+#recent-file-panel-action-btn {
+    background-color: var(--bg-color);
 }
 
 /* 右侧滚动条 */
