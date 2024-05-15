@@ -60,9 +60,9 @@ int main(int argc, char *argv[]) {
 }
 ```
 
+在计算能力9.0的设备上，一个线程块簇中的所有线程块会保证在一个GPU处理簇上协同调度，并且同一个簇的这些线程块之间能够使用Cluster Group簇组API接口，例如使用cluster.sync()函数执行硬件支持的同步操作。簇组提供一系列函数，例如使用num_blocks()函数查询簇组的线程块数目，使用num_threads()函数查询簇组的线程数目；使用dim_blocks()函数查询当前线程块在簇组中的编号，使用dim_threads()函数查询当前线程在簇组的编号。
 
-
-
+一个簇组中的所有线程块能够访问分布式共享内存（Distributed Shared Memory），能够在分布式共享内存的任意地址执行读取、写入、原子操作。
 
 # CUDA运行时
 
