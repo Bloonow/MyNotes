@@ -199,11 +199,11 @@ typedef enum {
 
 ```c++
 typedef enum {
-    CUBLAS_OP_N = 0,        /* non-transpose operation */
-    CUBLAS_OP_T = 1,        /* transpose operation */
-    CUBLAS_OP_C = 2,        /* conjugate transpose operation */
-    CUBLAS_OP_HERMITAN = 2, /* synonym if CUBLAS_OP_C */
-    CUBLAS_OP_CONJG = 3     /* conjugate, placeholder - not supported in the current release */
+    CUBLAS_OP_N = 0,         // non-transpose operation
+    CUBLAS_OP_T = 1,         // transpose operation
+    CUBLAS_OP_C = 2,         // conjugate transpose operation
+    CUBLAS_OP_HERMITAN = 2,  // synonym if CUBLAS_OP_C
+    CUBLAS_OP_CONJG = 3      // conjugate, placeholder - not supported in the current release
 } cublasOperation_t;
 ```
 
@@ -239,8 +239,8 @@ typedef enum {
 
 ```c++
 typedef enum {
-    CUBLAS_POINTER_MODE_HOST = 0,  /* The scalars are passed by reference on the host */
-    CUBLAS_POINTER_MODE_DEVICE = 1 /* The scalars are passed by reference on the device */
+    CUBLAS_POINTER_MODE_HOST = 0,   // The scalars are passed by reference on the host
+    CUBLAS_POINTER_MODE_DEVICE = 1  // The scalars are passed by reference on the device
 } cublasPointerMode_t;
 ```
 
@@ -275,28 +275,33 @@ typedef enum {
 
 ```c++
 typedef enum {
+    // 默认且性能最高的模式，计算和中间结果所使用精度的尾数和指数位至少与所请求的计算精度相同，只要有可能就使用Tensor Core计算核心
     CUBLAS_DEFAULT_MATH = 0,
+    // 在计算的所有阶段都使用规定精度和标准算法，性能不如其它模式
     CUBLAS_PEDANTIC_MATH = 2,
+    // 允许单精度浮点数计算使用TF32类型的Tensor Core计算核心
     CUBLAS_TF32_TENSOR_OP_MATH = 3,
+    // 当矩阵乘法操作的计算精度高于输出精度时，强制相关的归约操作使用计算精度而不是输出精度
+    // 该模式是一个flag标志，可以与其它精度模式一起使用
     CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION = 16,
 } cublasMath_t;
 ```
 
-类型cublasMath_t，表示所使用的计算精度模式。可使用cublasSetMathMode()函数设置计算精度的模式。其中，CUBLAS_DEFAULT_MATH是默认且性能最高的模式，计算和中间结果所使用精度的尾数和指数位至少与所请求的计算精度相同，只要有可能就使用Tensor Core计算核心；CUBLAS_DEFAULT_MATH模式在计算的所有阶段都使用规定精度和标准算法，性能不如其它模式；CUBLAS_TF32_TENSOR_OP_MATH模式允许单精度浮点数计算使用TF32类型的Tensor Core计算核心；CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION模式表示，当矩阵乘法操作的计算精度高于输出精度时，强制相关的归约操作使用计算精度而不是输出精度，该模式是一个flag标志，可以与其它精度模式一起使用。
+类型cublasMath_t，表示所使用的计算精度模式。可使用cublasSetMathMode()函数设置计算精度的模式。
 
 ```c++
 typedef enum {
-    CUBLAS_COMPUTE_16F = 64,           /* half - default */
-    CUBLAS_COMPUTE_16F_PEDANTIC = 65,  /* half - pedantic */
-    CUBLAS_COMPUTE_32F = 68,           /* float - default */
-    CUBLAS_COMPUTE_32F_PEDANTIC = 69,  /* float - pedantic */
-    CUBLAS_COMPUTE_32F_FAST_16F = 74,  /* float - fast, allows down-converting inputs to half or TF32 */
-    CUBLAS_COMPUTE_32F_FAST_16BF = 75, /* float - fast, allows down-converting inputs to bfloat16 or TF32 */
-    CUBLAS_COMPUTE_32F_FAST_TF32 = 77, /* float - fast, allows down-converting inputs to TF32 */
-    CUBLAS_COMPUTE_64F = 70,           /* double - default */
-    CUBLAS_COMPUTE_64F_PEDANTIC = 71,  /* double - pedantic */
-    CUBLAS_COMPUTE_32I = 72,           /* signed 32-bit int - default */
-    CUBLAS_COMPUTE_32I_PEDANTIC = 73,  /* signed 32-bit int - pedantic */
+    CUBLAS_COMPUTE_16F = 64,            // half - default
+    CUBLAS_COMPUTE_16F_PEDANTIC = 65,   // half - pedantic
+    CUBLAS_COMPUTE_32F = 68,            // float - default
+    CUBLAS_COMPUTE_32F_PEDANTIC = 69,   // float - pedantic
+    CUBLAS_COMPUTE_32F_FAST_16F = 74,   // float - fast, allows down-converting inputs to half or TF32
+    CUBLAS_COMPUTE_32F_FAST_16BF = 75,  // float - fast, allows down-converting inputs to bfloat16 or TF32
+    CUBLAS_COMPUTE_32F_FAST_TF32 = 77,  // float - fast, allows down-converting inputs to TF32
+    CUBLAS_COMPUTE_64F = 70,            // double - default
+    CUBLAS_COMPUTE_64F_PEDANTIC = 71,   // double - pedantic
+    CUBLAS_COMPUTE_32I = 72,            // signed 32-bit int - default
+    CUBLAS_COMPUTE_32I_PEDANTIC = 73,   // signed 32-bit int - pedantic
 } cublasComputeType_t;
 ```
 
@@ -309,19 +314,19 @@ typedef enum {
 ```c++
 typedef enum cudaDataType_t {
     /* CUDA_R_16F, CUDA_C_16F, CUDA_R_16BF, CUDA_C_16BF */
-    CUDA_R_32F  =  0, /* real as a float */
-    CUDA_C_32F  =  4, /* complex as a pair of float numbers */
-    CUDA_R_64F  =  1, /* real as a double */
-    CUDA_C_64F  =  5, /* complex as a pair of double numbers */
+    CUDA_R_32F  =  0,  // real as a float
+    CUDA_C_32F  =  4,  // complex as a pair of float numbers
+    CUDA_R_64F  =  1,  // real as a double
+    CUDA_C_64F  =  5,  // complex as a pair of double numbers
 	/* CUDA_R_4I, CUDA_C_4I, CUDA_R_8I, CUDA_C_8I, CUDA_R_16I, CUDA_C_16I */
 	/* CUDA_R_4U, CUDA_C_4U, CUDA_R_8U, CUDA_C_8U, CUDA_R_16U, CUDA_C_16U */
     /* CUDA_R_32U, CUDA_C_32U, CUDA_R_64U, CUDA_C_64U */
-    CUDA_R_32I  = 10, /* real as a signed 32-bit int */
-    CUDA_C_32I  = 11, /* complex as a pair of signed 32-bit int numbers */
-    CUDA_R_64I  = 24, /* real as a signed 64-bit int */
-    CUDA_C_64I  = 25, /* complex as a pair of signed 64-bit int numbers */
-    CUDA_R_8F_E4M3 = 28, /* real as a nv_fp8_e4m3 */
-    CUDA_R_8F_E5M2 = 29, /* real as a nv_fp8_e5m2 */
+    CUDA_R_32I  = 10,     // real as a signed 32-bit int
+    CUDA_C_32I  = 11,     // complex as a pair of signed 32-bit int numbers
+    CUDA_R_64I  = 24,     // real as a signed 64-bit int
+    CUDA_C_64I  = 25,     // complex as a pair of signed 64-bit int numbers
+    CUDA_R_8F_E4M3 = 28,  // real as a nv_fp8_e4m3
+    CUDA_R_8F_E5M2 = 29,  // real as a nv_fp8_e5m2
 } cudaDataType;
 typedef cudaDataType cublasDataType_t;
 ```
