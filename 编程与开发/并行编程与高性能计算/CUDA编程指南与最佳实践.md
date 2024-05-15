@@ -14,15 +14,51 @@
 
 <img src="CUDA编程指南与最佳实践.assets/grid-of-clusters.png" style="zoom:25%;" />
 
-为兼容性考虑，gridDim变量仍然表示线程块的数目规模，blockIdx变量仍然表示线程块在网格中的编号；使用Cluster Group簇组API用于获取一个簇在网格中的编号，以及一个线程块在簇中的编号。
+为兼容性考虑，gridDim变量仍然表示线程块的数目规模，blockIdx变量仍然表示线程块在网格中的编号；使用Cluster Group簇组API用于获取一个簇在网格中的编号，以及一个线程块在簇中的编号。但应注意，在使用线程块簇时，线程网格中线程块的规模，应该是线程块簇中线程块规模的整数倍，以将线程网格划分为整数个线程块簇。
 
 可以在定义核函数时使用\_\_cluster_dims\_\_(X,Y,Z)属性说明符指定一个核函数的线程块簇配置，这种配置会作为编译时核函数属性，并能够使用经典的<<<>>>指定核函数执行配置。一旦指定编译时簇配置，则无法在启动核函数时更改。
 
+```c++
+// Compile time cluster size 2 in X-dimension and 1 in Y and Z dimension
+__global__ void __cluster_dims__(2,1,1) cluster_kernel(float *input, float *output) {}
 
-
-
+int main(int argc, char *argv[]) {
+    float *input, *output;
+    dim3 blockDim(32, 32);
+    dim3 gridDim((M + blockDim.x - 1) / M, (N + blockDim.y - 1) / N);
+    // The grid dimension must be a multiple of cluster size
+    cluster_kernel<<<gridDim, blockDim>>>(input, output);
+    return 0;
+}
+```
 
 也可以在启动核函数时使用cudaLaunchKernelEx()配置线程块簇属性。
+
+```c++
+// No compile time attribute attached to the kernel
+__global__ void cluster_kernel(float *input, float *output) {}
+
+int main(int argc, char *argv[]) {
+    float *input, *output;
+    dim3 blockDim(32, 32);
+    dim3 gridDim((M + blockDim.x - 1) / M, (N + blockDim.y - 1) / N);
+
+    cudaLaunchAttribute attrs[1];
+    attrs[0].id = cudaLaunchAttributeClusterDimension;
+    attrs[0].val.clusterDim.x = 2;
+    attrs[0].val.clusterDim.y = 1;
+    attrs[0].val.clusterDim.z = 1;
+
+    cudaLaunchConfig_t config = {0};
+    config.blockDim = blockDim;
+    config.gridDim = gridDim;
+    config.attrs = attrs;
+    config.numAttrs = 1;
+
+    cudaLaunchKernelEx(&config, cluster_kernel, input, output);
+    return 0;
+}
+```
 
 
 

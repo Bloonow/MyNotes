@@ -199,6 +199,21 @@ body {
     margin: 0.95rem 0;
 }
 
+#write h1 code,
+#write h1 tt,
+#write h2 code,
+#write h2 tt,
+#write h3 code,
+#write h3 tt,
+#write h4 code,
+#write h4 tt,
+#write h5 code,
+#write h5 tt,
+#write h6 code,
+#write h6 tt {
+    font-size: inherit;
+}
+
 /* 水平横线 */
 #write hr {
     height: 2px;
