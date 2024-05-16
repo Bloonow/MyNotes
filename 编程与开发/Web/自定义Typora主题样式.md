@@ -315,6 +315,12 @@ body {
     border: 1px solid var(--theme-color);
 }
 
+/* 表格容器 */
+#write .md-table-fig {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
 /* 列表 */
 #write ul:first-child,
 #write ol:first-child {

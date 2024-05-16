@@ -275,19 +275,21 @@ typedef enum {
 
 ```c++
 typedef enum {
-    // 默认且性能最高的模式，计算和中间结果所使用精度的尾数位和指数位至少与所请求的计算精度相同，只要有可能就使用Tensor Core计算核心
     CUBLAS_DEFAULT_MATH = 0,
-    // 在计算的所有阶段都使用规定精度和标准算法，性能不如其它模式
     CUBLAS_PEDANTIC_MATH = 2,
-    // 允许单精度浮点数计算使用TF32类型的Tensor Core计算核心
     CUBLAS_TF32_TENSOR_OP_MATH = 3,
-    // 当矩阵乘法操作的计算精度高于输出精度时，强制相关的归约操作使用计算精度而不是输出精度
-    // 该模式是一个flag标志，可以与其它精度模式一起使用
     CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION = 16,
 } cublasMath_t;
 ```
 
-类型cublasMath_t，表示所使用的计算精度模式。可使用cublasSetMathMode()函数设置计算精度的模式。
+类型cublasMath_t，表示所使用的计算精度模式，具体描述如下表所示。可使用cublasSetMathMode()函数设置计算精度的模式。
+
+| cublasMath_t枚举值                               | 描述                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------ |
+| CUBLAS_DEFAULT_MATH                              | 默认且性能最高的模式，计算和中间结果所使用精度的尾数位和指数位至少与所请求的计算精度相同，只要有可能就使用Tensor Core计算核心 |
+| CUBLAS_PEDANTIC_MATH                             | 在计算的所有阶段都使用规定精度和标准算法，性能不如其它模式   |
+| CUBLAS_TF32_TENSOR_OP_MATH                       | 允许单精度浮点数计算使用TF32类型的Tensor Core计算核心        |
+| CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION | 当矩阵乘法操作的计算精度高于输出精度时，强制相关的归约操作使用计算精度而不是输出精度，该模式是一个flag标志，可以与其它精度模式一起使用 |
 
 ```c++
 typedef enum {
