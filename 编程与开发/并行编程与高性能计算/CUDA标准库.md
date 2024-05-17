@@ -221,12 +221,12 @@ typedef enum {
 
 ```c++
 typedef enum {
-    CUBLAS_DIAG_NON_UNIT = 0,
-    CUBLAS_DIAG_UNIT = 1
+    CUBLAS_DIAG_NON_UNIT = 0,  // 矩阵的主对角线元素正常参与计算，并支持被修改
+    CUBLAS_DIAG_UNIT = 1       // 矩阵的主对角线元素以单位值1参与计算，并不支持被API函数修改
 } cublasDiagType_t;
 ```
 
-类型cublasDiagType_t，表示矩阵主对角线元素的访问模式。其中，CUBLAS_DIAG_NON_UNIT表示矩阵的主对角线元素正常参与计算并支持被修改，CUBLAS_DIAG_UNIT表示矩阵的主对角线元素以单位值1参与计算，并不支持被API函数修改。
+类型cublasDiagType_t，表示矩阵主对角线元素的访问模式。
 
 ```c++
 typedef enum {

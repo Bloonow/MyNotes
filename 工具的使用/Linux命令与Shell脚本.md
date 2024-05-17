@@ -12,7 +12,9 @@ dpkg --list | grep linux-headers  # 查看当前已有内核
 uname -r  # 当前正在使用的内核
 uname -a  # 内核的发行版号和操作系统版本
 lsb_release -a     # 发行版本信息
-cat /proc/version  # 各种详细信息
+cat /proc/version  # 详细的版本信息
+lscpu              # 列出CPU信息
+cat /proc/cpuinfo  # 详细的CPU信息
 ```
 
 ```shell

@@ -294,6 +294,7 @@ body {
 
 /* 表格 */
 #write table {
+    font-size: 0.95rem;
     padding: 0;
     width: 100%;
     border-collapse: collapse;
