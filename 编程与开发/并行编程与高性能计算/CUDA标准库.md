@@ -333,7 +333,7 @@ typedef enum cudaDataType_t {
 typedef cudaDataType cublasDataType_t;
 ```
 
-在library_types.h中的类型cudaDataType或cudaDataType_t，提供数值精度类型的定义，cuBLAS库在头文件cublas_api.h中使用cublasDataType_t作为数值精度类型的别名，用于指定数值精度。
+在library_types.h中的类型cudaDataType_t或cudaDataType，提供数值精度类型的定义，cuBLAS库在头文件cublas_api.h中使用cublasDataType_t作为数值精度类型的别名，用于指定数值精度。
 
 ```c++
 typedef enum libraryPropertyType_t {
