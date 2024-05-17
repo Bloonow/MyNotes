@@ -217,7 +217,7 @@ typedef enum {
 } cublasFillMode_t;
 ```
 
-类型cublasFillMode_t，表示矩阵元素的访问方式，即矩阵的哪一部分参与API函数的计算，可以是矩阵的下三角部分或上三角部分。
+类型cublasFillMode_t，表示矩阵元素的填充部分，即矩阵的哪一部分参与API函数的计算，可以是矩阵的下三角部分或上三角部分，或整个矩阵的元素。
 
 ```c++
 typedef enum {
@@ -559,7 +559,7 @@ cublasStatus_t cublasChemv_v2(
 );
 ```
 
-执行对称矩阵-向量乘法或Hermite对称矩阵-向量乘法，可用y=α·Ax+β·y公式表示。其中，参数uplo表示矩阵元素的访问方式，CUBLAS_FILL_MODE_LOWER表示仅访问矩阵下三角部分，CUBLAS_FILL_MODE_UPPER表示仅访问矩阵上三角部分，CUBLAS_FILL_MODE_FULL表示访问整个矩阵；参数n表示方阵的阶数。该API函数提供使用原子操作实现的快速版本，可使用cublasSetAtomicsMode()设置允许原子操作。
+执行对称矩阵-向量乘法或Hermite对称矩阵-向量乘法，可用y=α·Ax+β·y公式表示。其中，参数uplo表示矩阵元素的填充部分，CUBLAS_FILL_MODE_LOWER表示仅访问矩阵下三角部分，CUBLAS_FILL_MODE_UPPER表示仅访问矩阵上三角部分，CUBLAS_FILL_MODE_FULL表示访问整个矩阵；参数n表示方阵的阶数。该API函数提供使用原子操作实现的快速版本，可使用cublasSetAtomicsMode()设置允许原子操作。
 
 ```c++
 cublasStatus_t cublasSspmv_v2(
@@ -686,7 +686,7 @@ cublasStatus_t cublasCher_v2(
 );
 ```
 
-对矩阵添加秩为1的对称矩阵或Hermite对称矩阵，可用A=α·xx^T^+A公式或A=α·xx^H^+A公式表示。其中，参数uplo表示矩阵元素的访问方式；参数n表示方阵的阶数。
+对矩阵添加秩为1的对称矩阵或Hermite对称矩阵，可用A=α·xx^T^+A公式或A=α·xx^H^+A公式表示。其中，参数uplo表示矩阵元素的填充部分；参数n表示方阵的阶数。
 
 ```c++
 cublasStatus_t cublasSspr_v2(
@@ -714,7 +714,7 @@ cublasStatus_t cublasCher2_v2(
 );
 ```
 
-对矩阵添加秩为2的对称矩阵或Hermite对称矩阵，可用A=α·(xy^T^+yx^T^)+A公式或A=α·(xy^H^+yx^H^)+A公式表示。其中，参数uplo表示矩阵元素的访问方式。
+对矩阵添加秩为2的对称矩阵或Hermite对称矩阵，可用A=α·(xy^T^+yx^T^)+A公式或A=α·(xy^H^+yx^H^)+A公式表示。其中，参数uplo表示矩阵元素的填充部分。
 
 ```c++
 cublasStatus_t cublasSspr2_v2(
@@ -820,7 +820,7 @@ cublasStatus_t cublasChemm_v2(
 );
 ```
 
-执行对称矩阵-矩阵乘法或Hermite对称矩阵-矩阵乘法，可用C=α·AB+β·C公式或C=α·BA+β·C公式表示。其中，参数A表示对称矩阵或Hermite对称矩阵；参数B,C表示普通矩阵；参数side表示矩阵A位于左侧还是右侧，CUBLAS_SIDE_LEFT表示矩阵位于左侧，即作AB乘法，CUBLAS_SIDE_RIGHT表示矩阵位于右侧，即作BA乘法；参数uplo表示矩阵元素的访问方式，CUBLAS_FILL_MODE_LOWER表示仅访问矩阵下三角部分，CUBLAS_FILL_MODE_UPPER表示仅访问矩阵上三角部分；参数m,n分别表示矩阵B,C的行数与列数，矩阵A的行数和列数根据所作乘法相匹配。
+执行对称矩阵-矩阵乘法或Hermite对称矩阵-矩阵乘法，可用C=α·AB+β·C公式或C=α·BA+β·C公式表示。其中，参数A表示对称矩阵或Hermite对称矩阵；参数B,C表示普通矩阵；参数side表示矩阵A位于左侧还是右侧，CUBLAS_SIDE_LEFT表示矩阵位于左侧，即作AB乘法，CUBLAS_SIDE_RIGHT表示矩阵位于右侧，即作BA乘法；参数uplo表示矩阵元素的填充部分，CUBLAS_FILL_MODE_LOWER表示仅访问矩阵下三角部分，CUBLAS_FILL_MODE_UPPER表示仅访问矩阵上三角部分；参数m,n分别表示矩阵B,C的行数与列数，矩阵A的行数和列数根据所作乘法相匹配。
 
 ```c++
 cublasStatus_t cublasSsyrk_v2(
@@ -833,7 +833,7 @@ cublasStatus_t cublasCherk_v2(
 );
 ```
 
-向对称矩阵或Hermite对称矩阵添加秩为k的对称矩阵或Hermite对称矩阵，可用C=α·Op(A)Op(A)^T^+β·C公式表示。其中，参数n表示方阵的阶数；参数C表示n阶对称矩阵或Hermite对称矩阵；参数uplo表示矩阵元素的访问方式；参数n,k表示矩阵Op(A)的行数与列数。
+向对称矩阵或Hermite对称矩阵添加秩为k的对称矩阵或Hermite对称矩阵，可用C=α·Op(A)Op(A)^T^+β·C公式表示。其中，参数n表示方阵的阶数；参数C表示n阶对称矩阵或Hermite对称矩阵；参数uplo表示矩阵元素的填充部分；参数n,k表示矩阵Op(A)的行数与列数。
 
 ```c++
 cublasStatus_t cublasSsyrkx(
@@ -848,7 +848,7 @@ cublasStatus_t cublasCherkx(
 );
 ```
 
-向对称矩阵或Hermite对称矩阵添加秩为k的矩阵，可用C=α·Op(A)Op(B)^T^+β·C公式表示。其中，参数C表示n阶对称矩阵或Hermite对称矩阵；参数uplo表示矩阵元素的访问方式；参数n,k表示矩阵Op(A),Op(B)的行数与列数。
+向对称矩阵或Hermite对称矩阵添加秩为k的矩阵，可用C=α·Op(A)Op(B)^T^+β·C公式表示。其中，参数C表示n阶对称矩阵或Hermite对称矩阵；参数uplo表示矩阵元素的填充部分；参数n,k表示矩阵Op(A),Op(B)的行数与列数。
 
 ```c++
 cublasStatus_t cublasSsyr2k_v2(
@@ -863,7 +863,7 @@ cublasStatus_t cublasCher2k_v2(
 );
 ```
 
-向对称矩阵或Hermite对称矩阵添加秩为2k的对称矩阵或Hermite对称矩阵，可用C=α·(Op(A)Op(B)^T^+Op(B)Op(A)^T^)+β·C公式表示。其中，参数C表示n阶对称矩阵或Hermite对称矩阵；参数uplo表示矩阵元素的访问方式；参数n,k表示矩阵Op(A),Op(B)的行数与列数。
+向对称矩阵或Hermite对称矩阵添加秩为2k的对称矩阵或Hermite对称矩阵，可用C=α·(Op(A)Op(B)^T^+Op(B)Op(A)^T^)+β·C公式表示。其中，参数C表示n阶对称矩阵或Hermite对称矩阵；参数uplo表示矩阵元素的填充部分；参数n,k表示矩阵Op(A),Op(B)的行数与列数。
 
 ```c++
 cublasStatus_t cublasStrmm_v2(
@@ -874,7 +874,7 @@ cublasStatus_t cublasStrmm_v2(
 );
 ```
 
-执行三角矩阵-矩阵乘法，可用C=α·Op(A)B公式或C=α·BOp(A)公式表示。其中，参数A表示三角矩阵；参数B,C表示普通矩阵；参数side表示矩阵A位于左侧还是右侧；参数uplo表示矩阵元素的访问方式；参数diag表示矩阵主对角线元素的访问模式，CUBLAS_DIAG_NON_UNIT表示矩阵的主对角线元素正常参与计算并支持被修改，CUBLAS_DIAG_UNIT表示矩阵的主对角线元素以单位值1参与计算，并不支持被API函数修改；参数m,n表示矩阵B的行数与列数，矩阵Op(A)的行数和列数根据所作乘法相匹配。
+执行三角矩阵-矩阵乘法，可用C=α·Op(A)B公式或C=α·BOp(A)公式表示。其中，参数A表示三角矩阵；参数B,C表示普通矩阵；参数side表示矩阵A位于左侧还是右侧；参数uplo表示矩阵元素的填充部分；参数diag表示矩阵主对角线元素的访问模式，CUBLAS_DIAG_NON_UNIT表示矩阵的主对角线元素正常参与计算并支持被修改，CUBLAS_DIAG_UNIT表示矩阵的主对角线元素以单位值1参与计算，并不支持被API函数修改；参数m,n表示矩阵B的行数与列数，矩阵Op(A)的行数和列数根据所作乘法相匹配。
 
 ```c++
 cublasStatus_t cublasStrsm_v2(
@@ -910,7 +910,7 @@ cublasStatus_t cublasStpttr(
 );
 ```
 
-转换三角矩阵的存储模式，trttp从标准存储到紧凑存储，tpttr从紧凑存储到标准存储。其中，参数uplo表示矩阵元素的访问方式，CUBLAS_FILL_MODE_LOWER表示仅访问矩阵下三角部分，CUBLAS_FILL_MODE_UPPER表示仅访问矩阵上三角部分；参数n表示方阵的阶数；参数A表示标准存储方式的矩阵；参数lda表示矩阵A的前导维数；参数AP表示紧凑存储方式的矩阵。
+转换三角矩阵的存储模式，trttp从标准存储到紧凑存储，tpttr从紧凑存储到标准存储。其中，参数uplo表示矩阵元素的填充部分，CUBLAS_FILL_MODE_LOWER表示仅访问矩阵下三角部分，CUBLAS_FILL_MODE_UPPER表示仅访问矩阵上三角部分；参数n表示方阵的阶数；参数A表示标准存储方式的矩阵；参数lda表示矩阵A的前导维数；参数AP表示紧凑存储方式的矩阵。
 
 ```c++
 cublasStatus_t cublasSgetrfBatched(
