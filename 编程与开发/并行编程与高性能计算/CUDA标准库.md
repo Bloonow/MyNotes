@@ -147,7 +147,7 @@ float A_col_major[] = { 0.0, 3.0, 1.0, 4.0, 2.0, 5.0 };  // col-major
 
 在cuBLAS库函数中，可能会用到两类标量参数。一是gemm系列函数，使用alpha和beta控制结果的缩放和偏置；二是诸如amax、amin、asum、rotg、rotmg、dot、nrm2之类的函数，它们计算的结果是一个标量值。对于第一类函数，当指针模式设置为CUBLAS_POINTER_MODE_HOST时，标量参数alpha与beta可以位于主机的栈内存或堆内存上，不应该位于托管内存上，此时标量值会随着API调用传递到设备，在调用完成后即可释放标量变量的内存，而无需等待API核函数执行完毕；当指针模式设置为CUBLAS_POINTER_MODE_DEVICE时，标量参数alpha与beta必须位于设备内存上，且它们的值在API核函数执行完毕之前不允许修改。对于第二类函数，当指针模式设置为CUBLAS_POINTER_MODE_HOST时，这些API函数会阻塞CPU，直到GPU完成计算并将标量结果写回主机内存；当指针模式设置为CUBLAS_POINTER_MODE_DEVICE时，API调用会立刻返回不阻塞CPU，但结果需要在API核函数执行完毕后才能访问，因此需要进行同步。无论时哪一类函数，指针模式CUBLAS_POINTER_MODE_DEVICE都允许kernel异步执行，哪怕alpha与beta标量参数是由之前调用的CUDA核函数生成的。
 
-当应用程序存在多个相互独立的任务时，可使用多个CUDA流以重叠多个任务之间的计算。使用cudaStreamCreate()函数创建一个CUDA流，并使用cublasSetStream()函数为每个cuBLAS句柄设置对应的CUDA流。需要注意的是，cublasSetStream()函数会将用户提供的workspace工作空间重置为默认的工作空间池。当执行大量的小矩阵乘法kernel时，无法获得执行大矩阵乘法kernel时的FLOPS。例如，执行$n\times n$的矩阵乘法时，针对$n^2$的输入会执行$n^3$的浮点运算；而执行1024个$\frac{n}{32}\times\frac{n}{32}$的矩阵乘法时，同样是$n^2$的输入，但只会获得$1024\times(\frac{n}{32})^3=\frac{n^3}{32}$的浮点运算。但通过将小的矩阵乘法kernel并行执行，可以尽可能地获得更好的性能。这可以通过使用多个CUDA流来实现，使用cublasSetStream()函数创建相应个数的CUDA流，并在调用gemm系列函数之前，使用cublasSetStream()函数设置所使用的CUDA流。尽管可以创建许多CUDA流，但在实践应用中发现，同时并行执行的CUDA流不太可能超过32个。
+当应用程序存在多个相互独立的任务时，可使用多个CUDA流以重叠多个任务之间的计算。使用cudaStreamCreate()函数创建一个CUDA流，并使用cublasSetStream()函数为每个cuBLAS句柄设置对应的CUDA流。需要注意的是，cublasSetStream()函数会将用户提供的workspace工作缓冲区重置为默认的工作缓冲区池。当执行大量的小矩阵乘法kernel时，无法获得执行大矩阵乘法kernel时的FLOPS。例如，执行$n\times n$的矩阵乘法时，针对$n^2$的输入会执行$n^3$的浮点运算；而执行1024个$\frac{n}{32}\times\frac{n}{32}$的矩阵乘法时，同样是$n^2$的输入，但只会获得$1024\times(\frac{n}{32})^3=\frac{n^3}{32}$的浮点运算。但通过将小的矩阵乘法kernel并行执行，可以尽可能地获得更好的性能。这可以通过使用多个CUDA流来实现，使用cublasSetStream()函数创建相应个数的CUDA流，并在调用gemm系列函数之前，使用cublasSetStream()函数设置所使用的CUDA流。尽管可以创建许多CUDA流，但在实践应用中发现，同时并行执行的CUDA流不太可能超过32个。
 
 在某些设备上，L1 Cache缓存与共享内存使用相同的硬件资源，可以使用cudaDeviceSetCacheConfig()进行cache配置，或使用cudaFuncSetCacheConfig()为特定函数进行cache配置。因为修改cache配置会影响kernel的并发性，cuBLAS库并未设置任何cache配置首选项，而是使用当前的设置。然而一些cuBLAS API函数，特别是矩阵乘法函数，其性能严重依赖于共享内存的空间，这一点需特别注意。
 
@@ -383,7 +383,7 @@ cublasStatus_t cublasGetSmCountTarget(cublasHandle_t handle, int* smCountTarget)
 cublasStatus_t cublasSetWorkspace_v2(cublasHandle_t handle, void* workspace, size_t workspaceSizeInBytes);
 ```
 
-函数cublasSetWorkspace()，用于设置cuBLAS库所使用的工作空间，工作空间的指针地址必须至少256字节对齐。如果未指定，则会使用在创建cuBLAS上下文时分配的默认工作空间池（workspace pool）。将workspaceSizeInBytes参数指定为0时，指定cuBLAS库函数不使用工作空间，而指定过小空间可能会使得某些API函数导致CUBLAS_STATUS_ALLOC_FAILED错误。根据GPU架构推荐（也是默认工作空间池），在Hopper以上的架构使用32MiB空间，而其它架构使用4MiB空间。
+函数cublasSetWorkspace_v2()，用于设置cuBLAS库所使用的工作缓冲区，工作缓冲区的指针地址必须至少256字节对齐。如果未指定，则会使用在创建cuBLAS上下文时分配的默认工作缓冲区池（workspace pool）。将workspaceSizeInBytes参数指定为0时，指定cuBLAS库函数不使用工作缓冲区，而指定过小空间可能会使得某些API函数导致CUBLAS_STATUS_ALLOC_FAILED错误。根据GPU架构推荐（也是默认工作缓冲区池），在Hopper以上的架构使用32MiB空间，而其它架构使用4MiB空间。
 
 ```c++
 cublasStatus_t cublasSetVector(int n, int elemSize, const void* x, int incx, void* y, int incy);
@@ -1343,7 +1343,7 @@ typedef enum {
 } cublasLtMatmulStages_t;
 ```
 
-类型cublasLtMatmulStages_t，表示矩阵乘法kernel在沿着维度K迭代时，在一轮迭代中，使用共享内存进行缓存的输入元素的数目。缓存区的数目即是矩阵乘法kernel流水线的深度。
+类型cublasLtMatmulStages_t，表示矩阵乘法kernel在沿着维度K迭代时，在一轮迭代中，使用共享内存进行缓存的输入元素的数目。缓冲区的数目即是矩阵乘法kernel流水线的深度。
 
 ```c++
 typedef enum {
@@ -1598,357 +1598,181 @@ typedef enum {
 | CUBLASLT_MATMUL_DESC_FAST_ACCUM                 | int8_t   | 快速FP8模式的标志位，是否损失精度获得更快的FP8执行速度，值0禁用 |
 | CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE             | int32_t  | Bias偏差向量或Bias梯度数据的数值类型，若未指定则采用默认-1值，表示与输出矩阵D的数据类型一致，由cudaDataType类型指定 |
 
-# cuBLASLt
+## Function API Reference
 
-cuBLASLt库是一个新的专用于执行GeMM（General Matrix-to-Matrix multiply）操作的轻量级库，它提供了灵活的API接口。它支持更灵活的矩阵数据布局，输入类型，计算类型，还可以通过编程参数灵活选择算法的实现和启发式方法。用户只需指定一次GeMM操作的选项集合，就可以将其重复应用于不同的输入。
+此处列举cuBLASLt库提供的API函数，其中一些函数在之前内容提起过，此处只简要列出。
 
-在使用cuBLASt库时，需要在代码中包含cublasLt.h头文件，并在链接时指定动态库cublasLt，如下所示。
-
-```shell
-nvcc demo.cu -o demo.exe -l cublasLt
+```c++
+size_t cublasLtGetCudartVersion(void);
+size_t cublasLtGetVersion(void);
+cublasStatus_t cublasLtGetProperty(libraryPropertyType type, int* value);
+const char* cublasLtGetStatusName(cublasStatus_t status);
+const char* cublasLtGetStatusString(cublasStatus_t status);
 ```
 
-## 执行配置
-
-句柄cublasLtHandle_t是一个结构体指针，该结构体对象持有cuBLASLt库的上下文。可以使用cublasLtCreate()函数初始化句柄，使用cublasLtDestroy()函数释放资源。
+```c++
+cublasStatus_t cublasLtLoggerForceDisable();
+cublasStatus_t cublasLtLoggerSetLevel(int level);
+cublasStatus_t cublasLtLoggerSetMask(int mask);
+cublasStatus_t cublasLtLoggerSetCallback(cublasLtLoggerCallback_t callback);
+cublasStatus_t cublasLtLoggerSetFile(FILE* file);
+cublasStatus_t cublasLtLoggerOpenFile(const char* logFile);
+```
 
 ```c++
 cublasStatus_t cublasLtCreate(cublasLtHandle_t* lightHandle);
 cublasStatus_t cublasLtDestroy(cublasLtHandle_t lightHandle);
 ```
 
-值得注意的是，cublasHandle_t句柄中包含着一个cublasLtHandle_t句柄，一个合法的cublasHandle_t句柄可以简单的替换cublasLtHandle_t的位置，然而，所不同的是，cublasLtHandle_t句柄不绑定任何具体的CUDA上下文。
+```c++
+cublasStatus_t cublasLtMatrixLayoutCreate(
+    cublasLtMatrixLayout_t* matLayout, cudaDataType type,
+    uint64_t rows, uint64_t cols, int64_t ld
+);
+cublasStatus_t cublasLtMatrixLayoutInit(
+    cublasLtMatrixLayout_t matLayout, cudaDataType type,
+    uint64_t rows, uint64_t cols, int64_t ld
+);
+cublasStatus_t cublasLtMatrixLayoutDestroy(cublasLtMatrixLayout_t matLayout);
+cublasStatus_t cublasLtMatrixLayoutSetAttribute(
+    cublasLtMatrixLayout_t matLayout, cublasLtMatrixLayoutAttribute_t attr,
+    const void* buf, size_t sizeInBytes
+);
+cublasStatus_t cublasLtMatrixLayoutGetAttribute(
+    cublasLtMatrixLayout_t matLayout, cublasLtMatrixLayoutAttribute_t attr,
+    void* buf, size_t sizeInBytes, size_t* sizeWritten
+);
+```
 
-cublasLtMatmulDesc_t是一个结构体指针，其描述了矩阵乘法的操作，用于cublasLtMatmul()函数。可以使用cublasLtMatmulDescCreate()函数创建也给描述，使用cublasLtMatmulDescDestroy()函数销毁。它用于表示计算操作的各种细节，由cublasLtMatmulDescAttributes_t各种属性指定，包括计算过程中的数据类型，矩阵存储顺序，矩阵布局等，可通过cublasLtMatmulDescSetAttribute()函数对其进行设置，当然，也可以使用后续介绍的描述符，分别指定相应的属性。
+```c++
+cublasStatus_t cublasLtMatrixTransformDescCreate(cublasLtMatrixTransformDesc_t* transformDesc, cudaDataType scaleType);
+cublasStatus_t cublasLtMatrixTransformDescInit(cublasLtMatrixTransformDesc_t transformDesc, cudaDataType scaleType);
+cublasStatus_t cublasLtMatrixTransformDescDestroy(cublasLtMatrixTransformDesc_t transformDesc);
+cublasStatus_t cublasLtMatrixTransformDescSetAttribute(
+    cublasLtMatrixTransformDesc_t transformDesc, cublasLtMatrixTransformDescAttributes_t attr,
+    const void* buf, size_t sizeInBytes
+);
+cublasStatus_t cublasLtMatrixTransformDescGetAttribute(
+    cublasLtMatrixTransformDesc_t transformDesc, cublasLtMatrixTransformDescAttributes_t attr,
+    void* buf, size_t sizeInBytes, size_t* sizeWritten
+);
+```
+
+```c++
+cublasStatus_t cublasLtMatrixTransform(
+    cublasLtHandle_t lightHandle, cublasLtMatrixTransformDesc_t transformDesc,
+    const void* alpha, const void* A, cublasLtMatrixLayout_t Adesc,
+    const void* beta, const void* B, cublasLtMatrixLayout_t Bdesc,
+    void* C, cublasLtMatrixLayout_t Cdesc, cudaStream_t stream
+);
+```
+
+该函数对矩阵执行变换操作，可用C=α·trans(A)+β·trans(B)公式表示。其中，参数transformDesc是一个矩阵变换的描述符，通过配置其cublasLtMatrixTransformDescAttributes_t属性来指定要执行的矩阵变换操作，即trans()操作；参数alpha与beta时标量缩放因子；参数A与B是输入矩阵，参数C是输出矩阵；参数Adesc与Bdesc分别描述输入矩阵A与B的布局，参数Cdesc描述输出矩阵C的布局。注意，若仅对一个矩阵进行操作，另一个矩阵可指定为nullptr空指针。
+
+```c++
+cublasStatus_t cublasLtMatmulAlgoInit(
+    cublasLtHandle_t lightHandle, cublasComputeType_t computeType, cudaDataType_t scaleType,
+    cudaDataType_t Atype, cudaDataType_t Btype, cudaDataType_t Ctype, cudaDataType_t Dtype,
+    int algoId, cublasLtMatmulAlgo_t* algo
+);
+cublasStatus_t cublasLtMatmulAlgoCapGetAttribute(
+    const cublasLtMatmulAlgo_t* algo, cublasLtMatmulAlgoCapAttributes_t attr,
+    void* buf, size_t sizeInBytes, size_t* sizeWritten
+);
+cublasStatus_t cublasLtMatmulAlgoConfigSetAttribute(
+    cublasLtMatmulAlgo_t* algo, cublasLtMatmulAlgoConfigAttributes_t attr,
+    const void* buf, size_t sizeInBytes
+);
+cublasStatus_t cublasLtMatmulAlgoConfigGetAttribute(
+    const cublasLtMatmulAlgo_t* algo, cublasLtMatmulAlgoConfigAttributes_t attr,
+    void* buf, size_t sizeInBytes, size_t* sizeWritten
+);
+```
+
+```c++
+cublasStatus_t cublasLtMatmulAlgoCheck(
+    cublasLtHandle_t lightHandle, cublasLtMatmulDesc_t operationDesc, 
+    cublasLtMatrixLayout_t Adesc, cublasLtMatrixLayout_t Bdesc, cublasLtMatrixLayout_t Cdesc, cublasLtMatrixLayout_t Ddesc,
+    const cublasLtMatmulAlgo_t* algo, cublasLtMatmulHeuristicResult_t* result
+);
+```
+
+该函数检测矩阵乘法与实现算法的正确性，以及是否支持当前设备，并返回相关信息。
+
+```c++
+cublasStatus_t cublasLtMatmulAlgoGetIds(
+    cublasLtHandle_t lightHandle, cublasComputeType_t computeType, cudaDataType_t scaleType,
+    cudaDataType_t Atype, cudaDataType_t Btype, cudaDataType_t Ctype, cudaDataType_t Dtype,
+    int requestedAlgoCount, int algoIdsArray[], int* returnAlgoCount
+);
+cublasStatus_t cublasLtMatmulAlgoGetHeuristic(
+    cublasLtHandle_t lightHandle, cublasLtMatmulDesc_t operationDesc,
+    cublasLtMatrixLayout_t Adesc, cublasLtMatrixLayout_t Bdesc, cublasLtMatrixLayout_t Cdesc, cublasLtMatrixLayout_t Ddesc,
+    cublasLtMatmulPreference_t preference, int requestedAlgoCount,
+    cublasLtMatmulHeuristicResult_t heuristicResultsArray[], int* returnAlgoCount
+);
+```
+
+函数cublasLtMatmulAlgoGetIds()获取所有可行的矩阵乘法算法的编号，所返回的算法无特定顺序。函数cublasLtMatmulAlgoGetHeuristic()获取所有可行的矩阵乘法算法，并以执行时间升序的顺序返回。
+
+```c++
+unsigned cublasLtDisableCpuInstructionsSetMask(unsigned mask);
+```
+
+该函数指定cuBLASLt库不使用某些CPU指令集，优先级高于CUBLASLT_DISABLE_CPU_INSTRUCTIONS_MASK环境变量。其中，参数mask用于指定指令集掩码，目前只支持取0x1值，表示x86-64 AVX512 ISA指令集。
+
+```c++
+cublasStatus_t cublasLtHeuristicsCacheSetCapacity(size_t capacity);
+cublasStatus_t cublasLtHeuristicsCacheGetCapacity(size_t* capacity);
+```
+
+函数cublasLtHeuristicsCacheSetCapacity()用于设置启发式信息的cache缓存空间，设为0表示禁用。函数cublasLtHeuristicsCacheGetCapacity()用于获取启发式信息的cache缓存空间。
+
+```c++
+cublasStatus_t cublasLtMatmulPreferenceCreate(cublasLtMatmulPreference_t* pref);
+cublasStatus_t cublasLtMatmulPreferenceInit(cublasLtMatmulPreference_t pref);
+cublasStatus_t cublasLtMatmulPreferenceDestroy(cublasLtMatmulPreference_t pref);
+cublasStatus_t cublasLtMatmulPreferenceSetAttribute(
+    cublasLtMatmulPreference_t pref, cublasLtMatmulPreferenceAttributes_t attr,
+    const void* buf, size_t sizeInBytes
+);
+cublasStatus_t cublasLtMatmulPreferenceGetAttribute(
+    cublasLtMatmulPreference_t pref, cublasLtMatmulPreferenceAttributes_t attr,
+    void* buf, size_t sizeInBytes, size_t* sizeWritten
+);
+```
 
 ```c++
 cublasStatus_t cublasLtMatmulDescCreate(
     cublasLtMatmulDesc_t* matmulDesc, cublasComputeType_t computeType, cudaDataType_t scaleType
 );
+cublasStatus_t cublasLtMatmulDescInit(
+    cublasLtMatmulDesc_t matmulDesc, cublasComputeType_t computeType, cudaDataType_t scaleType
+);
 cublasStatus_t cublasLtMatmulDescDestroy(cublasLtMatmulDesc_t matmulDesc);
 cublasStatus_t cublasLtMatmulDescSetAttribute(
-    cublasLtMatmulDesc_t matmulDesc,
-    cublasLtMatmulDescAttributes_t attr,
-    const void* buf,
-    size_t sizeInBytes
+    cublasLtMatmulDesc_t matmulDesc, cublasLtMatmulDescAttributes_t attr,
+    const void* buf, size_t sizeInBytes
+);
+cublasStatus_t cublasLtMatmulDescGetAttribute(
+    cublasLtMatmulDesc_t matmulDesc, cublasLtMatmulDescAttributes_t attr,
+    void* buf, size_t sizeInBytes, size_t* sizeWritten
 );
 ```
-
-其中，cublasComputeType_t是一个枚举类型，用于表示计算过程中所以使用的数据类型，而cudaDataType_t是一个枚举类型，用于表示参与计算的数据类型。这两个枚举类型的定义如下所示。
-
-```c++
-typedef enum {
-  CUBLAS_COMPUTE_32F           = 68,  /* float - default */
-  CUBLAS_COMPUTE_32F_PEDANTIC  = 69,  /* float - pedantic */
-  CUBLAS_COMPUTE_64F           = 70,  /* double - default */
-  CUBLAS_COMPUTE_64F_PEDANTIC  = 71,  /* double - pedantic */
-  CUBLAS_COMPUTE_32I           = 72,  /* signed 32-bit int - default */
-  CUBLAS_COMPUTE_32I_PEDANTIC  = 73,  /* signed 32-bit int - pedantic */
-} cublasComputeType_t;
-```
-
-```c++
-typedef enum cudaDataType_t {
-    CUDA_R_32F  =  0,  /* real as a float */
-    CUDA_C_32F  =  4,  /* complex as a pair of float numbers */
-    CUDA_R_64F  =  1,  /* real as a double */
-    CUDA_C_64F  =  5,  /* complex as a pair of double numbers */
-    CUDA_R_32I  = 10,  /* real as a signed 32-bit int */
-    CUDA_C_32I  = 11,  /* complex as a pair of signed 32-bit int numbers */
-    CUDA_R_64I  = 24,  /* real as a signed 64-bit int */
-    CUDA_C_64I  = 25,  /* complex as a pair of signed 64-bit int numbers */
-} cudaDataType;
-```
-
-cublasLtMatrixLayout_t是一个结构体指针，其描述了矩阵布局，默认存储是列主序（column-major）的。可以使用cublasLtMatrixLayoutCreate()函数创建一个描述，使用cublasLtMatrixLayoutDestroy()函数销毁。
-
-```c++
-cublasStatus_t cublasLtMatrixLayoutCreate(
-    cublasLtMatrixLayout_t* matLayout, cudaDataType type, uint64_t rows, uint64_t cols, int64_t ld
-);
-cublasStatus_t cublasLtMatrixLayoutDestroy(cublasLtMatrixLayout_t matLayout);
-```
-
-其中，rows参数和cols参数指定矩阵所期望的行数与列数，这里的“所期望”表示的意思是，即使矩阵实际数据就1行N列，对其广播到M行N列，则这里的rows仍是M而不是实际数据存储的1行。ld参数指定矩阵的前导维数（leading dimension），在列主序的布局当中，它表示每经过ld个连续元素后就会到达下一列，因此ld会大于等于rows行的数目。将ld参数置为0，表示对前导维度进行广播。
-
-cublasLtMatmulAlgo_t是一个结构体指针，用于表示矩阵相乘的算法。该结构可以被序列化并重新加载，它会使用与原来相同的cuBLAS库，能够节省再次进行算法配置的时间，可使用cublasLtMatmulAlgoConfigSetAttribute()方法设置算法的细节。若使用NULL指针，则表示使用默认的启发式方法选择矩阵相乘的算法。
-
-cuBLASLt库所提供的矩阵乘法API接口为cublasLtMatmul()函数，该函数的原型如下所示。
 
 ```c++
 cublasStatus_t cublasLtMatmul(
-    cublasLtHandle_t lightHandle,
-    cublasLtMatmulDesc_t computeDesc,
-    const void* alpha, /* host or device pointer */
-    const void* A,
-    cublasLtMatrixLayout_t Adesc,
-    const void* B,
-    cublasLtMatrixLayout_t Bdesc,
-    const void* beta, /* host or device pointer */
-    const void* C,
-    cublasLtMatrixLayout_t Cdesc,
-    void* D,
-    cublasLtMatrixLayout_t Ddesc,
-    const cublasLtMatmulAlgo_t* algo,
-    void* workspace,
-    size_t workspaceSizeInBytes,
-    cudaStream_t stream
+    cublasLtHandle_t lightHandle, cublasLtMatmulDesc_t computeDesc,
+    const void* alpha, const void* A, cublasLtMatrixLayout_t Adesc,
+    const void* B, cublasLtMatrixLayout_t Bdesc, const void* beta,
+    const void* C, cublasLtMatrixLayout_t Cdesc, void* D, cublasLtMatrixLayout_t Ddesc,
+    const cublasLtMatmulAlgo_t* algo, void* workspace, size_t workspaceSizeInBytes, cudaStream_t stream
 );
 ```
 
-其所执行的计算如下面的公式所示，其中$A,B,C$是输入矩阵，$\alpha,\beta$是标量，$D$是输出矩阵。
-$$
-D = \alpha \times AB + \beta \times C
-$$
-注意，这个函数支持就地矩阵乘法（$C,\text{Cdesc}$与$D,\text{Ddesc}$相等，即指向同一内存地址）；以及非就地的矩阵乘法（$C$与$D$不相等，即指向不同内存地址），它们应该具有相同的数据类型，rows行数与cols列数，相同的batch size大小，以及相同的内存存储顺序。在非就地的矩阵乘法中，$C$的前导维数可以与$D$的前导维数不同，特别地，将矩阵$C$的前导维数置为0，表示对其按行或列进行广播，如果省略Cdesc参数，则矩阵$C$自动采用矩阵$D$的布局描述Ddesc。
+执行矩阵乘法，可用D=α·AB+β·C公式表示。其中，参数computeDesc描述矩阵乘法的配置属性；参数algo表示执行矩阵乘法所用的实现算法，若指定为nullptr空指针，则每次执行会搜索最佳的实现算法；参数workspace提供的工作缓冲区，若指定为nullptr空指针，则会使用默认的工作缓冲区池；参数workspaceSizeInBytes指定工作缓冲区的空间，若指定为0则会禁用工作缓冲区。
 
-其中，stream参数表示当前矩阵操作要在哪个CUDA流上执行，若为NULL，则使用默认的空流。
-
-其中，workspace参数是指向GPU内存的指针（地址必须16字节对齐），用作cuBlas库及cuBlasLt库的工作缓冲区，workspaceSizeInBytes表示缓冲区的字节数。可以使用cublasSetWorkspace()函数设置工作缓冲区的大小，函数原型如下所示。
-
-```c++
-cublasStatus_t cublasSetWorkspace(
-    cublasHandle_t handle, void* workspace, size_t workspaceSizeInBytes
-);
-```
-
-该函数用于设置cuBLAS库所使用的用户持有的设备缓冲区（必须256字节对齐），以用于在当前CUDA流上，执行所有cuBLAS库的函数调用。如果未设置工作区，也即将workspace参数置为NULL且将workspaceSizeInBytes置为0，表示采用默认的工作缓冲区，所有kernel将使用默认的在cuBLAS上下文创建时所分配的工作区池。注意，cublasSetStream()函数会无条件地将cuBLAS库的工作区重设为默认工作区池。特别地，该函数能够用于在不同kernel函数启动之间切换工作区。对于Hopper架构来说，推荐使用32 MiB的工作区大小，而其他架构推荐使用4 MiB的工作区大小。
-
-需要注意的是，对于cuBLAS库来说，将workspace设为0表示使用默认的缓冲区；而对于cuBLASLt来说，将workspace设为0表示不使用缓冲区，也即在使用cuBLASLt库时，需要手动的显式指定workspace缓冲区大小。当然缓冲区不是必要的，而且设置缓冲区并不一定能够提升性能。
-
-## 使用示例
-
-对于cublasLtMatmul()函数的一个使用示例如下所示。
-
-```c++
-#include <stdio.h>
-#include <cuda.h>
-#include <cublasLt.h>
-
-int main(int argc, char *argv[]) {
-    int M = 2;
-    int K = 3;
-    int N = 4;
-
-    float *h_A = (float*)malloc(sizeof(float) * M * K);
-    float *h_B = (float*)malloc(sizeof(float) * K * N);
-    float *h_C = (float*)malloc(sizeof(float) * M * N);
-    float *h_D = (float*)malloc(sizeof(float) * M * N);
-    for (int i = 0; i < M * K; i++) h_A[i] = i * 1.0;
-    for (int i = 0; i < K * N; i++) h_B[i] = i * 1.0;
-    for (int i = 0; i < M * N; i++) h_C[i] = i * 1.0;
-    for (int i = 0; i < M * N; i++) h_D[i] = 0.0;
-    printf("A\t=\t"); for (int i = 0; i < M * K; i++) printf("%.1f\t", h_A[i]); printf("\n");
-    printf("B\t=\t"); for (int i = 0; i < K * N; i++) printf("%.1f\t", h_B[i]); printf("\n");
-    printf("C\t=\t"); for (int i = 0; i < M * N; i++) printf("%.1f\t", h_C[i]); printf("\n");
-    
-    float *A, *B, *C, *D;
-    cudaMalloc(&A, sizeof(float) * M * K);
-    cudaMalloc(&B, sizeof(float) * K * N);
-    cudaMalloc(&C, sizeof(float) * M * N);
-    cudaMalloc(&D, sizeof(float) * M * N);
-    cudaMemcpy(A, h_A, sizeof(float) * M * K, cudaMemcpyHostToDevice);
-    cudaMemcpy(B, h_B, sizeof(float) * K * N, cudaMemcpyHostToDevice);
-    cudaMemcpy(C, h_C, sizeof(float) * M * N, cudaMemcpyHostToDevice);
-
-    cublasLtHandle_t handle;
-    cublasLtCreate(&handle);
-    cublasLtMatmulDesc_t computeDesc;
-    cublasLtMatmulDescCreate(&computeDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F);
-    cublasLtMatrixLayout_t Adesc, Bdesc, Cdesc, Ddesc;  // D = AB + C
-    cublasLtMatrixLayoutCreate(&Adesc, CUDA_R_32F, M, K, M);
-    cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_32F, K, N, K);
-    cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_32F, M, N, M);
-    cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_32F, M, N, M);
-
-    float alpha = 1.0, beta = 1.0;
-    // A, B, C, D are stored as column-major  // Not use workspace
-    cublasLtMatmul(
-        handle, computeDesc, &alpha, A, Adesc, B, Bdesc, &beta, 
-        C, Cdesc, D, Ddesc, NULL, NULL, 0, NULL
-    );
-    
-    cublasLtMatrixLayoutDestroy(Adesc);
-    cublasLtMatrixLayoutDestroy(Bdesc);
-    cublasLtMatrixLayoutDestroy(Cdesc);
-    cublasLtMatrixLayoutDestroy(Ddesc);
-    cublasLtMatmulDescDestroy(computeDesc);
-    cublasLtDestroy(handle);
-
-    cudaMemcpy(h_D, D, sizeof(float) * M * N, cudaMemcpyDeviceToHost);
-    printf("D\t=\t"); for (int i = 0; i < M * N; i++) printf("%.1f\t", h_D[i]); printf("\n");
-    cudaFree(A);
-    cudaFree(B);
-    cudaFree(C);
-    cudaFree(D);
-    free(h_A);
-    free(h_B);
-    free(h_C);
-    free(h_D);
-    return 0;
-}
-```
-
-```shell
-nvcc gemm.cu -o run -l cublasLt
-./run
-```
-
-```
-A       =       0.0     1.0     2.0     3.0     4.0     5.0
-B       =       0.0     1.0     2.0     3.0     4.0     5.0     6.0     7.0     8.0     9.0     10.0    11.0
-C       =       0.0     1.0     2.0     3.0     4.0     5.0     6.0     7.0
-D       =       10.0    14.0    30.0    43.0    50.0    72.0    70.0    101.0
-```
-
-在实际应用中，所需要进行的矩阵乘法往往更加复杂，这时可以使用cublasLtMatrixLayoutSetAttribute()函数，修改cublasLtMatrixLayout_t描述符的各种属性，精细控制矩阵布局，该函数原型如下所示。
-
-```c++
-cublasStatus_t cublasLtMatrixLayoutSetAttribute(
-    cublasLtMatrixLayout_t matLayout,
-    cublasLtMatrixLayoutAttribute_t attr,
-    const void* buf, size_t sizeInBytes
-);
-```
-
-其中，attr参数为要设置的矩阵布局属性，buf参数是新的属性值的地址，sizeInBytes参数是新的属性值所占用的字节数。
-
-矩阵布局属性cublasLtMatrixLayoutAttribute_t是一个枚举类，其定义如下所示，注意各个属性值所使用的类型必须匹配。
-
-```c++
-/** Attributes of memory layout */
-typedef enum {
-    /** Data type. See cudaDataType. 
-     *  value type: uint32_t
-     */
-    CUBLASLT_MATRIX_LAYOUT_TYPE = 0,
-    /** Memory order of the data. See cublasLtOrder_t.
-     *  value type: int32_t, default: CUBLASLT_ORDER_COL
-     */
-    CUBLASLT_MATRIX_LAYOUT_ORDER = 1,
-    /** Number of rows. 
-     *  value type: uint64_t
-     *  Usually only values that can be expressed as int32_t are supported.
-     */
-    CUBLASLT_MATRIX_LAYOUT_ROWS = 2,
-    /** Number of columns.
-     *  value type: uint64_t
-     *  Usually only values that can be expressed as int32_t are supported.
-     */
-    CUBLASLT_MATRIX_LAYOUT_COLS = 3,
-    /** Matrix leading dimension. Currently only non-negative values are supported.
-     *  value type: uint64_t
-     */
-    CUBLASLT_MATRIX_LAYOUT_LD = 4,
-    /** Number of matmul operations to perform in the batch. See also CUBLASLT_ALGO_CAP_STRIDED_BATCH_SUPPORT. 
-     *  value type: int32_t, default: 1
-     */
-    CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT = 5,
-    /** Stride (in elements) to the next matrix for strided batch operation.
-     *  value type: int64_t, default: 0
-     */
-    CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET = 6,
-    /** Stride (in bytes) to the imaginary plane for planar complex layout. 
-     *  value type: int64_t, default: 0
-     */
-    CUBLASLT_MATRIX_LAYOUT_PLANE_OFFSET = 7,
-} cublasLtMatrixLayoutAttribute_t;
-```
-
-此处，通过矩阵布局属性控制，实现批量的矩阵乘加操作的代码如下所示。
-
-```c++
-#include <stdio.h>
-#include <cuda.h>
-#include <cublasLt.h>
-
-int main(int argc, char *argv[]) {
-    int M = 2;
-    int K = 3;
-    int N = 2;
-    int32_t batch = 2;
-    float *h_A = (float*)malloc(sizeof(float) * M * K * batch);  // X, input
-    float *h_B = (float*)malloc(sizeof(float) * K * N);          // W, weight
-    float *h_C = (float*)malloc(sizeof(float) * 1 * N);          // B, bias
-    float *h_D = (float*)malloc(sizeof(float) * M * N * batch);  // Y = X W + B
-    for (int i = 0; i < M * K * batch; i++) h_A[i] = (i % (M * K)) * 1.0;
-    for (int i = 0; i < K * N; i++)         h_B[i] = i * 1.0;
-    for (int i = 0; i < 1 * N; i++)         h_C[i] = i * 0.1;
-    for (int i = 0; i < M * N * batch; i++) h_D[i] = 0.0;
-    printf("A\t=\t"); for (int i = 0; i < M * K * batch; i++) printf("%.1f\t", h_A[i]); printf("\n");
-    printf("B\t=\t"); for (int i = 0; i < K * N; i++)         printf("%.1f\t", h_B[i]); printf("\n");
-    printf("C\t=\t"); for (int i = 0; i < 1 * N; i++)         printf("%.1f\t", h_C[i]); printf("\n");
-    
-    float *A, *B, *C, *D;
-    cudaMalloc(&A, sizeof(float) * M * K * batch);
-    cudaMalloc(&B, sizeof(float) * K * N);
-    cudaMalloc(&C, sizeof(float) * 1 * N);
-    cudaMalloc(&D, sizeof(float) * M * N * batch);
-    cudaMemcpy(A, h_A, sizeof(float) * M * K * batch, cudaMemcpyHostToDevice);
-    cudaMemcpy(B, h_B, sizeof(float) * K * N, cudaMemcpyHostToDevice);
-    cudaMemcpy(C, h_C, sizeof(float) * 1 * N, cudaMemcpyHostToDevice);
-
-    cublasLtHandle_t handle;
-    cublasLtCreate(&handle);
-    cublasLtMatmulDesc_t computeDesc;
-    cublasLtMatmulDescCreate(&computeDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F);
-    cublasLtMatrixLayout_t Adesc, Bdesc, Cdesc, Ddesc;  // row-major
-    cublasLtMatrixLayoutCreate(&Adesc, CUDA_R_32F, M, K, K);
-    cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_32F, K, N, N);
-    cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_32F, M, N, 0);  // broadcast
-    cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_32F, M, N, N);
-    cublasLtOrder_t rm = CUBLASLT_ORDER_ROW;
-    cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &rm, sizeof(cublasLtOrder_t));
-    cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &rm, sizeof(cublasLtOrder_t));
-    cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &rm, sizeof(cublasLtOrder_t));
-    cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &rm, sizeof(cublasLtOrder_t));
-    cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
-    cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
-    cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
-    cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(int32_t));
-    int64_t aS = M * K;
-    int64_t bS = 0;
-    int64_t cS = 0;
-    int64_t dS = M * N;
-    cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &aS, sizeof(int64_t));
-    cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &bS, sizeof(int64_t));
-    cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &cS, sizeof(int64_t));
-    cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &dS, sizeof(int64_t));
-
-    float alpha = 1.0, beta = 1.0;
-    // Not use workspace
-    cublasLtMatmul(
-        handle, computeDesc, &alpha, A, Adesc, B, Bdesc, &beta,
-        C, Cdesc, D, Ddesc, NULL, NULL, 0, NULL
-    );
-
-    cublasLtMatrixLayoutDestroy(Adesc);
-    cublasLtMatrixLayoutDestroy(Bdesc);
-    cublasLtMatrixLayoutDestroy(Cdesc);
-    cublasLtMatrixLayoutDestroy(Ddesc);
-    cublasLtMatmulDescDestroy(computeDesc);
-    cublasLtDestroy(handle);
-
-    cudaMemcpy(h_D, D, sizeof(float) * M * N * batch, cudaMemcpyDeviceToHost);
-    printf("D\t=\t"); for (int i = 0; i < M * N * batch; i++) printf("%.1f\t", h_D[i]); printf("\n");
-    cudaFree(A);
-    cudaFree(B);
-    cudaFree(C);
-    cudaFree(D);
-    free(h_A);
-    free(h_B);
-    free(h_C);
-    free(h_D);
-    return 0;
-}
-```
-
-```
-A       =       0.0     1.0     2.0     3.0     4.0     5.0     0.0     1.0     2.0     3.0     4.0     5.0
-B       =       0.0     1.0     2.0     3.0     4.0     5.0
-C       =       0.0     0.1
-D       =       10.0    13.1    28.0    40.1    10.0    13.1    28.0    40.1
-```
+> 需要注意的是，对于cuBLAS库来说，将workspace设为0表示使用默认的缓冲区；而对于cuBLASLt来说，将workspace设为0表示不使用缓冲区，也即在使用cuBLASLt库时，需要手动的显式指定workspace缓冲区大小。当然缓冲区不是必要的，而且设置缓冲区并不一定能够提升性能。
 
 # cuFFT
 
