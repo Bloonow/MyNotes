@@ -1108,26 +1108,495 @@ cublasStatus_t cublasCherk3mEx(
 
 > 使用示例见www.bloonow.com网址。
 
-自CUDA 10.1以来，cuBLASLt库提供通用矩阵乘法GEMM操作的灵活的轻量级API接口，支持配置矩阵的数据布局，以参数启发式的方法选择算法。cuBLASLt库位于cublasLt.h头文件当中，而cublas_v2.h头文件又包含cublas_api.h头文件。
+自CUDA 10.1以来，cuBLASLt库提供通用矩阵乘法GEMM操作的灵活的轻量级API接口，支持配置矩阵的数据布局，以参数启发式的方法选择算法。cuBLASLt库位于cublasLt.h头文件当中，而cublasLt.h头文件又包含cublas_api.h头文件。
 
 要使用cuBLASLt库，在程序编译链接时需要链接到指定库，在Linux平台上是`libcublasLt.so`动态库，在`Windows`上是cublasLt.dll动态库。
-
-在描述API函数接口时，使用\<type\>表示可能的数值类型，使用\<t\>表示相应类型的缩写，其小写表示计算结果是标量。大写表示计算结果是张量，如下所示。为简化表述，在介绍API函数接口时，通常只以s与S表示的单精度浮点数类型为示例。
-
-| \<type\>        | \<t\> | Meaning                  |
-| --------------- | ----- | ------------------------ |
-| float           | s, S  | real single-precision    |
-| double          | d, D  | real double-precision    |
-| cuComplex       | c, C  | complex single-precision |
-| cuDoubleComplex | z, Z  | complex double-precision |
-
-使用Re()表示复数的实部，使用Im()表示复数的虚部，使用小写希腊字母α,β等表示标量，使用小写拉丁字母a,b表示向量，使用大写拉丁字母A,B表示矩阵，使用上划线表示一个复数的共轭转置。
 
 ## General Description
 
 由于CUDA编程模型的固有限制，在使用cuBLASLt库时会存在问题规模限制，例如，因为网格在z维度上的维数不能超过65535，将导致许多kernel核函数不支持超过65535的batch大小。在问题规模无法由单个kernel核函数处理时，cuBLASLt会尝将问题分解成多个子问题，并在每个子问题上启动kernel核函数。
 
-cuBLASLt会基于问题规模和GPU配置以及其他参数，使用heuristics启发式方法选择最合适的矩阵乘法kernel实现，这需要先在CPU执行一些计算，会消耗几十微秒（microsecond）的时间。对于多次计算的问题规模，推荐先使用cublasLtMatmulAlgoGetHeuristic()函数获取启发式信息，并在后续计算中直接传入。
+cuBLASLt会基于问题规模和GPU配置以及其他参数，使用heuristics启发式方法选择最合适的矩阵乘法kernel实现，这需要先在CPU执行一些计算，会消耗几十微秒（microsecond）的时间。对于多次计算的问题规模，推荐先使用cublasLtMatmulAlgoGetHeuristic()函数获取启发式信息，并在后续计算中直接传入。对于不能查询一次执行多次的情况，cuBLASLt提供一个启发式cache缓存，用于存储多个问题规模的启发式信息以及其执行kernel配置，该缓存使用LRU替换策略并且是线程安全的。用户可以使用CUBLASLT_HEURISTICS_CACHE_CAPACITY环境变量或者是cublasLtHeuristicsCacheSetCapacity()函数控制缓存空间。缓存空间的大小使用缓存项的条目数量来衡量，默认为8192条目，每条目大约占360字节，但可能会改变。值得注意的是，缓存cache不总是理想的，实际设置时通常会设为问题数目的1.5倍到2.0倍。
+
+cuBLASLt使用启发式方法会在CPU上执行一些计算密集型操作，为加速该过程，库实现会检测CPU特性并使用可能的特殊指令，例如x86-64指令集架构的CPU上，会使用高级向量扩展（Advanced Vector Extensions，AVE）指令。然而有时这种高级指令会导致CPU以低频运行，从而影响其它主机端代码性能。用户可使用CUBLASLT_DISABLE_CPU_INSTRUCTIONS_MASK环境变量或cublasLtDisableCpuInstructionsSetMask()函数指示cuBLASLt库不使用某些CPU指令，默认设为0，表示无限制。
+
+cuBLASLt库支持log日志输出，可通过CUBLASLT_LOG_LEVEL环境变量控制日志级别，使用CUBLASLT_LOG_MASK环境变量设置日志类别，使用CUBLASLT_LOG_FILE环境变量指定输出的日志文件，若未指定则打印到标准输出。同时，该库提供一些函数，例如cublasLtLoggerSetLevel()、cublasLtLoggerSetMask()、cublasLtLoggerSetFile()等用于控制cuBLASLt库的日志行为。
+
+FP8计算精度类型首次在Ada及Hopper架构（计算能力8.9及更新）的GPU设备上引入，用于加速矩阵乘法运算。包括CUDA_R_8F_E4M3和CUDA_R_8F_E5M2两种数值精度类型，其中E指的是指数的二进制位数，M指的是尾数的二进制位数。为保持FP8矩阵乘法的精度，cuBLASLt在标准矩阵乘法公式中，加入缩放因子，具体信息参考官方文档。
+
+该特性目前尽在Hopper架构用于FP8计算精度的非batched情况下，属于实验性功能。原子同步（atomics synchronization）使得cublasLtMatmul()函数与其他并发执行的kernel函数构成生产者或消费者关系，能够优化矩阵乘法的工作负载，这允许在更小粒度上重叠计算与通信。概念上，cublasLtMatmul()持有一个32位整数计数器的数组。在消费者模式，要么是矩阵A按行划分块，要么是矩阵B按列划分块，当前实现不支持同时划分行和列，不支持Batched批量情况；当相应原子计数器的值变为0时，可以从内存中读取一个块并用于计算；生产者应该执行内存栅栏（memory fence）以确保所写的值对于同时并发执行的cublasLtMatmul()核函数是可见的。在生产者模式，输出矩阵C或D将被按行或按列划分，当一个块计算完毕时，相应的原子计数器将被设为0值；每个一原子计数器会被cublasLtMatmul()核函数初始化为1值。
+
+> 内存栅栏（memory fence）的一个可能实现是使用cuda::atomic_thread_fence()函数，或者是cuda::memory_order_seq_cst()函数或cuda::thread_scope::thread_scope_device()函数。
+
+计数器数组必须具有足够的元素来表示所有的分块，并且计数器数组将通过CUBLASLT_MATMUL_DESC_ATOMIC_SYNC_IN_COUNTERS_POINTER计算描述符或CUBLASLT_MATMUL_DESC_ATOMIC_SYNC_OUT_COUNTERS_POINTER计算描述符分别传递给消费者和生产者模式。分块的数目将由CUBLASLT_MATMUL_DESC_ATOMIC_SYNC_NUM_CHUNKS_D_ROWS和CUBLASLT_MATMUL_DESC_ATOMIC_SYNC_NUM_CHUNKS_D_COLS计算描述符控制，这些属性必须大于0以启用分块功能。
+
+## cuBLASLt Type Reference
+
+头文件cublasLt.h提供一些cuBLASLt库的类型定义，用于控制cuBLASLt API函数的特定行为。某个问题规模的矩阵乘法操作，可以采用不同的实现算法，可以进行启发式信息搜索以获得最合适的实现算法。
+
+```c++
+typedef void (*cublasLtLoggerCallback_t)(int logLevel, const char* functionName, const char* message);
+```
+
+类型cublasLtLoggerCallback_t，表示一个用于日志回调的函数指针。可用cublasLtLoggerSetCallback()设置一个回调函数。
+
+```c++
+typedef struct cublasLtContext* cublasLtHandle_t;
+```
+
+类型cublasLtHandle_t，指向cuBLASLt库上下文环境的指针类型。使用cublasLtCreate()函数创建，使用cublasLtDestroy()函数释放。注意，一个cublasHandle_t句柄会封装一个cublasLtHandle_t句柄，可将cublasHandle_t句柄简单转换为cublasLtHandle_t句柄，并替换使用。然而，与cublasHandle_t句柄不一样的是，cublasLtHandle_t句柄不与任何CUDA上下文环境绑定。
+
+```c++
+typedef enum {
+    CUBLASLT_POINTER_MODE_HOST = CUBLAS_POINTER_MODE_HOST,      // 主机内存上的标量
+    CUBLASLT_POINTER_MODE_DEVICE = CUBLAS_POINTER_MODE_DEVICE,  // 设备内存上的标量
+    CUBLASLT_POINTER_MODE_DEVICE_VECTOR = 2,                    // 设备内存上的数组，表示向量
+    CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_ZERO = 3,    // alpha是设备内存上的一个向量，beta取值0无需指定
+    CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST = 4,    // alpha是设备内存上的一个向量，beta是主机内存上的一个标量
+} cublasLtPointerMode_t;
+```
+
+类型cublasLtPointerMode_t，指针模式，表示指向alpha和beta的指针所指向的地址类型，也即缩放因子alpha与beta所存储的地址空间范围。
+
+```c++
+typedef enum {
+    CUBLASLT_POINTER_MODE_MASK_NO_FILTERING = 0,
+    CUBLASLT_POINTER_MODE_MASK_HOST = 1,
+    CUBLASLT_POINTER_MODE_MASK_DEVICE = 2,
+    CUBLASLT_POINTER_MODE_MASK_DEVICE_VECTOR = 4,
+    CUBLASLT_POINTER_MODE_MASK_ALPHA_DEVICE_VECTOR_BETA_ZERO = 8,
+    CUBLASLT_POINTER_MODE_MASK_ALPHA_DEVICE_VECTOR_BETA_HOST = 16,
+} cublasLtPointerModeMask_t;
+```
+
+类型cublasLtPointerModeMask_t，用于定义和查询指针模式能力的掩码。
+
+```c++
+typedef enum {
+    CUBLASLT_ORDER_COL = 0,    // 以元素为单位，列主序存储，前导维数为矩阵行数 R
+    CUBLASLT_ORDER_ROW = 1,    // 以元素为单位，行主序存储，前导维数为矩阵列数 C
+    CUBLASLT_ORDER_COL32 = 2,         // 以一个Tile[ :,32]分片为单位，列主序存储，前导维数为 32 * R
+    CUBLASLT_ORDER_COL4_4R2_8C = 3,   // 以一个Tile[ 8,32]分片为单位，列主序存储，前导维数为 32 * 8 * ceil(R/8)
+    CUBLASLT_ORDER_COL32_2R_4R4 = 4,  // 以一个Tile[32,32]分片为单位，列主序存储，前导维数为 32 * 32 * ceil(R/32)
+} cublasLtOrder_t;
+```
+
+类型cublasLtOrder_t，表示矩阵元素的存储顺序。其中，后三种存储方式是针对Ampere和Turing架构特定优化的存储方式，其组织方式如下图所示。
+
+<img src="CUDA标准库.assets/cuBlasLtOrder.png" style="zoom: 25%;" />
+
+```c++
+typedef struct {
+    uint64_t data[8];
+} cublasLtMatrixLayoutOpaque_t;
+typedef cublasLtMatrixLayoutOpaque_t* cublasLtMatrixLayout_t;
+```
+
+类型cublasLtMatrixLayout_t，表示矩阵布局的描述符。使用cublasLtMatrixLayoutCreate()函数创建一个矩阵布局描述符，使用cublasLtMatrixLayoutDestroy()函数释放一个矩阵布局描述符。
+
+```c++
+    typedef enum {
+    CUBLASLT_MATRIX_LAYOUT_TYPE = 0,
+    CUBLASLT_MATRIX_LAYOUT_ORDER = 1,
+    CUBLASLT_MATRIX_LAYOUT_ROWS = 2,
+    CUBLASLT_MATRIX_LAYOUT_COLS = 3,
+    CUBLASLT_MATRIX_LAYOUT_LD = 4,
+    CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT = 5,
+    CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET = 6,
+    CUBLASLT_MATRIX_LAYOUT_PLANE_OFFSET = 7,
+} cublasLtMatrixLayoutAttribute_t;
+```
+
+类型cublasLtMatrixLayoutAttribute_t，表示矩阵布局的详细配置属性，如下表所示。使用cublasLtMatrixLayoutSetAttribute()函数为一个矩阵布局配置某个属性，使用cublasLtMatrixLayoutGetAttribute()函数从一个矩阵布局中获取某个属性。
+
+| cublasLtMatrixLayoutAttribute_t类型         | 值类型   | 描述                                                         |
+| ------------------------------------------- | -------- | ------------------------------------------------------------ |
+| CUBLASLT_MATRIX_LAYOUT_TYPE                 | uint32_t | 矩阵元素的数值精度类型                                       |
+| CUBLASLT_MATRIX_LAYOUT_ORDER                | int32_t  | 矩阵元素的存储顺序，默认为CUBLASLT_ORDER_COL，由cublasLtOrder_t类型指定 |
+| CUBLASLT_MATRIX_LAYOUT_ROWS                 | uint64_t | 矩阵的行数，通常情况下只接受int32_t范围的值                  |
+| CUBLASLT_MATRIX_LAYOUT_COLS                 | uint64_t | 矩阵的列数，通常情况下只接受int32_t范围的值                  |
+| CUBLASLT_MATRIX_LAYOUT_LD                   | int64_t  | 前导维数；目前不支持负数；必须足够大以保证矩阵元素不重叠     |
+| CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT          | int32_t  | 在批量矩阵乘法操作时，表示批量数目                           |
+| CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET | int64_t  | 在批量矩阵乘法操作时，表示批量中两个相邻矩阵的存储位置之间的跨步差距；当数据是二维复数的情况时，描述的是对于复数实部而言的存储位置之间的跨步差距 |
+| CUBLASLT_MATRIX_LAYOUT_PLANE_OFFSET         | int64_t  | 二维复数（planar-complex）的虚部相对于起始地址的偏置，以字节为单位；值为0表示采用标准复数存储，即实部与虚部交替连续存储 |
+
+```c++
+typedef struct {
+    uint64_t data[8];
+} cublasLtMatrixTransformDescOpaque_t;
+typedef cublasLtMatrixTransformDescOpaque_t* cublasLtMatrixTransformDesc_t;
+```
+
+类型cublasLtMatrixTransformDesc_t，表示矩阵变换的描述符。使用cublasLtMatrixTransformDescCreate()函数创建一个矩阵变换描述符，使用cublasLtMatrixTransformDescDestroy()函数释放一个矩阵布局描述符。
+
+```c++
+typedef enum {
+    CUBLASLT_MATRIX_TRANSFORM_DESC_SCALE_TYPE,    // 缩放因子的数值精度类型，由cudaDataType_t类型指定
+    CUBLASLT_MATRIX_TRANSFORM_DESC_POINTER_MODE,  // 指针模式，由cublasLtPointerMode_t类型指定
+    CUBLASLT_MATRIX_TRANSFORM_DESC_TRANSA,        // 对矩阵A所执行的变换操作，由cublasOperation_t类型指定
+    CUBLASLT_MATRIX_TRANSFORM_DESC_TRANSB,        // 对矩阵B所执行的变换操作，由cublasOperation_t类型指定
+} cublasLtMatrixTransformDescAttributes_t;
+```
+
+类型cublasLtMatrixTransformDescAttributes_t，表示矩阵变换的详细配置属性。使用cublasLtMatrixTransformDescSetAttribute()函数为一个矩阵变换配置某个属性，使用cublasLtMatrixTransformDescGetAttribute()函数从一个矩阵变换中获取某个属性。
+
+```c++
+typedef enum {
+    CUBLASLT_EPILOGUE_DEFAULT = 1,
+    CUBLASLT_EPILOGUE_RELU = 2,
+    CUBLASLT_EPILOGUE_RELU_AUX = (CUBLASLT_EPILOGUE_RELU | 128),
+    CUBLASLT_EPILOGUE_BIAS = 4,
+    CUBLASLT_EPILOGUE_RELU_BIAS = (CUBLASLT_EPILOGUE_RELU | CUBLASLT_EPILOGUE_BIAS),
+    CUBLASLT_EPILOGUE_RELU_AUX_BIAS = (CUBLASLT_EPILOGUE_RELU_AUX | CUBLASLT_EPILOGUE_BIAS),
+    CUBLASLT_EPILOGUE_DRELU = 8 | 128,
+    CUBLASLT_EPILOGUE_DRELU_BGRAD = CUBLASLT_EPILOGUE_DRELU | 16,
+    CUBLASLT_EPILOGUE_GELU = 32,
+    CUBLASLT_EPILOGUE_GELU_AUX = (CUBLASLT_EPILOGUE_GELU | 128),
+    CUBLASLT_EPILOGUE_GELU_BIAS = (CUBLASLT_EPILOGUE_GELU | CUBLASLT_EPILOGUE_BIAS),
+    CUBLASLT_EPILOGUE_GELU_AUX_BIAS = (CUBLASLT_EPILOGUE_GELU_AUX | CUBLASLT_EPILOGUE_BIAS),
+    CUBLASLT_EPILOGUE_DGELU = 64 | 128,
+    CUBLASLT_EPILOGUE_DGELU_BGRAD = CUBLASLT_EPILOGUE_DGELU | 16,
+    CUBLASLT_EPILOGUE_BGRADA = 256,
+    CUBLASLT_EPILOGUE_BGRADB = 512,
+} cublasLtEpilogue_t;
+```
+
+类型cublasLtEpilogue_t，表示矩阵乘法的后置操作，如下表所示。即在矩阵乘法cublasLtMatmul()计算得到结果之后，函数调用结束之前，对矩阵乘法结果所要执行的可选后置操作；将执行后置操作之后的最终结果写回到输出矩阵C或D当中。需要注意的是，许多后置操作会产生额外输出或者会用到额外输入。若无特殊说明，通常使用cublasLtMatmulDescAttributes_t类型的CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER属性设置额外输入或输出的地址指针，并且需要使用CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_LD属性设置额外输入或输出的前导维数；而对于与Bias偏差向量相关的额外输入或输出，通常使用cublasLtMatmulDescAttributes_t类型的CUBLASLT_MATMUL_DESC_BIAS_POINTER属性设置额外输入或输出的地址指针。
+
+| cublasLtEpilogue_t类型          | 描述                                                         |
+| ------------------------------- | ------------------------------------------------------------ |
+| CUBLASLT_EPILOGUE_DEFAULT       | 无特殊后置操作，仅在必要时执行缩放或量化操作                 |
+| CUBLASLT_EPILOGUE_RELU          | 应用逐元素的ReLU变换                                         |
+| CUBLASLT_EPILOGUE_RELU_AUX      | 应用逐元素的ReLU变换，产生额外输出，即ReLU位掩码矩阵（bit-mask matrix）；ReLU位掩码矩阵没有数据类型的概念，只是二进制位矩阵，每个有效二进制位都对应输出矩阵的一个元素；置位1表示对应矩阵元素大于等于0未被ReLU过滤，置位0表示对应矩阵元素小于0已被ReLU过滤；二进制矩阵以列主序的方式存储，每列即是一个二进制位序列，根据系统配置会以小端序或大端序在内存中存储；在实现上，要求二进制矩阵按列主序存储的前导维数，应该大于等于结果输出矩阵的行数，且应该是128的整数倍，以用于地址对齐 |
+| CUBLASLT_EPILOGUE_BIAS          | 添加Bias偏差向量，以广播形式将偏差向量添加到结果矩阵的每一列，然后可能会执行其它后置操作；Bias偏差向量长度等于结果矩阵D的行数，且向量元素连续存储，由CUBLASLT_MATMUL_DESC_BIAS_POINTER指定 |
+| CUBLASLT_EPILOGUE_RELU_BIAS     | 添加Bias偏差向量，然后应用逐元素的ReLU变换                   |
+| CUBLASLT_EPILOGUE_RELU_AUX_BIAS | 添加Bias偏差向量，然后应用逐元素的ReLU变换，产生额外的输出，即ReLU位掩码矩阵 |
+| CUBLASLT_EPILOGUE_DRELU         | 应用ReLU梯度，需要额外输入，即正向过程中的ReLU位掩码矩阵；用于反向过程，假设正向过程存在B=ReLU(A)计算，并根据A产生ReLU位掩码矩阵，则在反向过程中使用cublasLtMatmul()计算矩阵B的梯度G~B~时，此后置操作可以对G~B~进一步应用ReLU梯度，并根据ReLU位掩码矩阵，求得矩阵A的梯度G~A~并输出 |
+| CUBLASLT_EPILOGUE_DRELU_BGRAD   | 应用ReLU梯度和Bias梯度，需要额外收入，即正向过程中的ReLU位掩码矩阵；ReLU梯度存储到输出矩阵，Bias梯度存储到额外输出，由CUBLASLT_MATMUL_DESC_BIAS_POINTER指定 |
+| CUBLASLT_EPILOGUE_GELU          | 应用逐元素的GeLU变换                                         |
+| CUBLASLT_EPILOGUE_GELU_AUX      | 应用逐元素的GeLU变换，产生额外输出，即GeLU输入矩阵，也即矩阵乘法结果；在实现上，要求GeLU输入矩阵按列主序存储的前导维数，应该大于等于结果输出矩阵的行数，且应该是8的整数倍，以用于地址对齐 |
+| CUBLASLT_EPILOGUE_GELU_BIAS     | 添加Bias偏差向量，然后应用逐元素的GeLU变换                   |
+| CUBLASLT_EPILOGUE_GELU_AUX_BIAS | 添加Bias偏差向量，然后应用逐元素的GeLU变换，产生额外输出，即GeLU输入矩阵，也即矩阵乘法结果添加Bias偏差向量之后的结果 |
+| CUBLASLT_EPILOGUE_DGELU         | 应用GeLU梯度，需要额外输入，即正向过程中的GeLU输入矩阵；用于反向过程 |
+| CUBLASLT_EPILOGUE_DGELU_BGRAD   | 应用GeLU梯度和Bias梯度，需要额外收入，即正向过程中的GeLU()输入；GeLU梯度存储到输出矩阵，Bias梯度存储到额外输出，由CUBLASLT_MATMUL_DESC_BIAS_POINTER指定 |
+| CUBLASLT_EPILOGUE_BGRADA        | 针对矩阵乘法的输入矩阵A应用Bias梯度，Bias偏差向量长度等于结果矩阵D的行数，会在矩阵K维度上归约 |
+| CUBLASLT_EPILOGUE_BGRADB        | 针对矩阵乘法的输入矩阵B应用Bias梯度，Bias偏差向量长度等于结果矩阵D的列数，会在矩阵K维度上归约 |
+
+```c++
+typedef enum {
+    CUBLASLT_CLUSTER_SHAPE_AUTO = 0,
+    CUBLASLT_CLUSTER_SHAPE_1x1x1 = 2,
+    CUBLASLT_CLUSTER_SHAPE_2x1x1 = 3,
+    CUBLASLT_CLUSTER_SHAPE_4x1x1 = 4,
+    /* ... */
+    CUBLASLT_CLUSTER_SHAPE_END
+} cublasLtClusterShape_t;
+```
+
+类型cublasLtClusterShape_t，用于配置线程块簇在各个维度上的维数。
+
+```c++
+typedef enum {
+    CUBLASLT_MATMUL_INNER_SHAPE_UNDEFINED = 0,
+    CUBLASLT_MATMUL_INNER_SHAPE_MMA884 = 1,
+    CUBLASLT_MATMUL_INNER_SHAPE_MMA1684 = 2,
+    CUBLASLT_MATMUL_INNER_SHAPE_MMA1688 = 3,
+    CUBLASLT_MATMUL_INNER_SHAPE_MMA16816 = 4,
+    CUBLASLT_MATMUL_INNER_SHAPE_END
+} cublasLtMatmulInnerShape_t;
+```
+
+类型cublasLtMatmulInnerShape_t，表示矩阵乘法kernel设计的各种情况，不会影响CUDA的网格规模，但会对kernel产生细微影响。其中，矩阵乘法累加操作MMA是Matrix Multiply Accumulate的缩写，它是矩阵乘法kernel中在沿着维度K迭代时，一个线程所执行的最基本操作，采用MNK顺序描述一个线程所计算的矩阵块。例如，MMA1688表示M16N8K8，表示在一轮迭代中，一个线程负责16×8的矩阵A、8×8的矩阵B、16×8的矩阵C，计算得到16×8的矩阵D的部分局部累加结果。
+
+```c++
+typedef enum {
+    CUBLASLT_MATMUL_TILE_UNDEFINED = 0,
+    CUBLASLT_MATMUL_TILE_8x8 = 1,   // Tile size is 8 rows x 8 columns
+    CUBLASLT_MATMUL_TILE_8x16 = 2,  // Tile size is 8 rows x 16 columns
+    CUBLASLT_MATMUL_TILE_16x8 = 3,  // Tile size is 16 rows x 8 columns
+    /* 8x32, 16x16, 32x8, 8x64, 16x32, 32x16, 64x8 */
+    /* 32x32, 32x64, 64x32, 32x128, 64x64, 128x32 */
+    /* 64x128, 128x64, 64x256, 128x128, 256x64, 64x512, 128x256, 256x128, 512x64 */
+    /* 64x96, 96x64, 96x128, 128x160, 160x128, 192x128, 128x192, 128x96 */
+    CUBLASLT_MATMUL_TILE_END
+} cublasLtMatmulTile_t;
+```
+
+类型cublasLtMatmulTile_t，表示矩阵乘法kernel对矩阵进行划分时，各种规模的Tile分片。
+
+```c++
+typedef enum {
+    CUBLASLT_MATMUL_STAGES_UNDEFINED = 0,
+    CUBLASLT_MATMUL_STAGES_16x1 = 1,   // Stage size is 16, number of stages is 1
+    CUBLASLT_MATMUL_STAGES_16x2 = 2,   // Stage size is 16, number of stages is 2
+    /* 16x3, 16x4, 16x5, 16x6 */
+    /* 32x1, 32x2, 32x3, 32x4, 32x5, 32x6 */
+    /* 64x1, 64x2, 64x3, 64x4, 64x5, 64x6 */
+    /* 128x1, 128x2, 128x3, 128x4, 128x5, 128x6 */
+    /* 32x10, 8x4, 16x10, 8x5, 16x80, 64x80, 8x3 */
+    CUBLASLT_MATMUL_STAGES_8xAUTO = 32,    // Stage size is 8, number of stages is selected automatically
+    CUBLASLT_MATMUL_STAGES_16xAUTO = 33,   // Stage size is 16, number of stages is selected automatically
+    CUBLASLT_MATMUL_STAGES_32xAUTO = 34,   // Stage size is 32, number of stages is selected automatically
+    CUBLASLT_MATMUL_STAGES_64xAUTO = 35,   // Stage size is 64, number of stages is selected automatically
+    CUBLASLT_MATMUL_STAGES_128xAUTO = 36,  // Stage size is 128, number of stages is selected automatically
+    CUBLASLT_MATMUL_STAGES_END
+} cublasLtMatmulStages_t;
+```
+
+类型cublasLtMatmulStages_t，表示矩阵乘法kernel在沿着维度K迭代时，在一轮迭代中，使用共享内存进行缓存的输入元素的数目。缓存区的数目即是矩阵乘法kernel流水线的深度。
+
+```c++
+typedef enum {
+    CUBLASLT_REDUCTION_SCHEME_NONE = 0,     // 不应用归约，依次计算求得点积
+    CUBLASLT_REDUCTION_SCHEME_INPLACE = 1,  // 使用输出缓冲区就地执行归约，工作缓冲区中持有用于保证顺序的计数器，中间结果采用输出精度类型
+    CUBLASLT_REDUCTION_SCHEME_COMPUTE_TYPE = 2,  // 以单独步骤非就地执行归约，使用自定义的工作缓冲区，中间结果采用输出精度类型
+    CUBLASLT_REDUCTION_SCHEME_OUTPUT_TYPE = 4,   // 以单独步骤非就地执行归约，使用自定义的工作缓冲区，中间结果采用计算精度类型
+    CUBLASLT_REDUCTION_SCHEME_MASK = 0x7,        // 允许所有归约模式
+} cublasLtReductionScheme_t;
+```
+
+类型cublasLtReductionScheme_t，指定矩阵乘法中对点积局部和进行归约时的归约模式，即split-K算法所使用的归约模式。
+
+```c++
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_FMA                   (0x01ull << 0)   // 基于[H,F,D]FMA（fused multiply-add）指令集
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_HMMA                  (0x02ull << 0)   // 基于HMMA（tensor operation）指令集
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_IMMA                  (0x04ull << 0)   // 基于IMMA（integer tensor operation）指令集
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_DMMA                  (0x08ull << 0)   // 基于DMMA（double precision tensor operation）指令集
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_TENSOR_OP_MASK        (0xfeull << 0)   // 用于过滤使用HMMA,IMMA,DMMA的任意实现
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_OP_TYPE_MASK          (0xffull << 0)   // 用于过滤乘加指令的实现
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_ACCUMULATOR_16F       (0x01ull << 8)   // 内部点积计算使用半精度累加器
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_ACCUMULATOR_32F       (0x02ull << 8)   // 内部点积计算使用单精度累加器
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_ACCUMULATOR_64F       (0x04ull << 8)   // 内部点积计算使用双精度累加器
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_ACCUMULATOR_32I       (0x08ull << 8)   // 内部点积计算使用32位整型累加器
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_ACCUMULATOR_TYPE_MASK (0xffull << 8)   // 用于过滤累加器相关的实现
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_INPUT_16F             (0x01ull << 16)  // 内部点积计算的乘加指令使用半精度输入
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_INPUT_16BF            (0x02ull << 16)  // 内部点积计算的乘加指令使用BF16精度输入
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_INPUT_TF32            (0x04ull << 16)  // 内部点积计算的乘加指令使用TF32精度输入
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_INPUT_32F             (0x08ull << 16)  // 内部点积计算的乘加指令使用单精度输入
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_INPUT_64F             (0x10ull << 16)  // 内部点积计算的乘加指令使用双精度输入
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_INPUT_8I              (0x20ull << 16)  // 内部点积计算的乘加指令使用8位整型输入
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_INPUT_8F_E4M3         (0x40ull << 16)  // 内部点积计算的乘加指令使用8位E4M3浮点输入
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_INPUT_8F_E5M2         (0x80ull << 16)  // 内部点积计算的乘加指令使用8位E5M2浮点输入
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_OP_INPUT_TYPE_MASK    (0xffull << 16)  // 用于过滤累加器所使用的输入类型
+#define CUBLASLT_NUMERICAL_IMPL_FLAGS_GAUSSIAN              (0x01ull << 32)  // 在复数矩阵乘法中使用高斯归约算法以降低计算复杂度
+typedef uint64_t cublasLtNumericalImplFlags_t;
+```
+
+类型cublasLtNumericalImplFlags_t，一组用于选择实现细节的二进制标志的集合，可使用按位或运算符`|`组合不同的标志，会影响算法的数值行为。
+
+```c++
+typedef struct {
+    uint64_t data[8];
+} cublasLtMatmulAlgo_t;
+```
+
+类型cublasLtMatmulAlgo_t，表示矩阵乘法的一个实现算法。半透明结构体，可序列化存储并在相同版本的cuBLAS库中使用，以节省算法选择开销。使用cublasLtMatmulAlgoInit()函数初始化矩阵乘法的一个实现算法。
+
+```c++
+typedef enum {
+    CUBLASLT_ALGO_CAP_SPLITK_SUPPORT = 0,
+    CUBLASLT_ALGO_CAP_REDUCTION_SCHEME_MASK = 1,
+    CUBLASLT_ALGO_CAP_CTA_SWIZZLING_SUPPORT = 2,
+    CUBLASLT_ALGO_CAP_STRIDED_BATCH_SUPPORT = 3,
+    CUBLASLT_ALGO_CAP_OUT_OF_PLACE_RESULT_SUPPORT = 4,
+    CUBLASLT_ALGO_CAP_UPLO_SUPPORT = 5,
+    CUBLASLT_ALGO_CAP_TILE_IDS = 6,
+    CUBLASLT_ALGO_CAP_CUSTOM_OPTION_MAX = 7,
+    CUBLASLT_ALGO_CAP_MATHMODE_IMPL = 8,
+    CUBLASLT_ALGO_CAP_GAUSSIAN_IMPL = 9,
+    CUBLASLT_ALGO_CAP_CUSTOM_MEMORY_ORDER = 10,
+    CUBLASLT_ALGO_CAP_POINTER_MODE_MASK = 11,
+    CUBLASLT_ALGO_CAP_EPILOGUE_MASK = 12,
+    CUBLASLT_ALGO_CAP_STAGES_IDS = 13,
+    CUBLASLT_ALGO_CAP_LD_NEGATIVE = 14,
+    CUBLASLT_ALGO_CAP_NUMERICAL_IMPL_FLAGS = 15,
+    CUBLASLT_ALGO_CAP_MIN_ALIGNMENT_A_BYTES = 16,
+    CUBLASLT_ALGO_CAP_MIN_ALIGNMENT_B_BYTES = 17,
+    CUBLASLT_ALGO_CAP_MIN_ALIGNMENT_C_BYTES = 18,
+    CUBLASLT_ALGO_CAP_MIN_ALIGNMENT_D_BYTES = 19,
+} cublasLtMatmulAlgoCapAttributes_t;
+```
+
+类型cublasLtMatmulAlgoCapAttributes_t，表示矩阵乘法的某个算法所支持的功能特性，如下表所示。使用cublasLtMatmulAlgoCapGetAttribute()函数从一个已初始化的矩阵乘法算法中获取该算法所支持的功能特性。
+
+| cublasLtMatmulAlgoCapAttributes_t类型         | 值类型            | 描述                                                         |
+| --------------------------------------------- | ----------------- | ------------------------------------------------------------ |
+| CUBLASLT_ALGO_CAP_SPLITK_SUPPORT              | int32_t           | 是否支持split-K算法，值0不支持，其它值支持                   |
+| CUBLASLT_ALGO_CAP_REDUCTION_SCHEME_MASK       | uint32_t          | 所支持的归约模式的掩码，未被掩码屏蔽的模式即是所支持的模式，归约模式由cublasLtReductionScheme_t类型指定 |
+| CUBLASLT_ALGO_CAP_CTA_SWIZZLING_SUPPORT       | uint32_t          | 是否支持线程块重排（CTA-swizzling），值0不支持，值1支持      |
+| CUBLASLT_ALGO_CAP_STRIDED_BATCH_SUPPORT       | int32_t           | 是否支持批量跨步算法，值0不支持，其它值支持                  |
+| CUBLASLT_ALGO_CAP_OUT_OF_PLACE_RESULT_SUPPORT | int32_t           | 是否支持非就地（out-of-place）算法，值0不支持，其它值支持    |
+| CUBLASLT_ALGO_CAP_UPLO_SUPPORT                | int32_t           | 是否支持syrk与herk更新，值0不支持，其它值支持                |
+| CUBLASLT_ALGO_CAP_TILE_IDS                    | Array of uint32_t | 可能用到的tile分片策略的编号，由cublasLtMatmulTile_t类型指定 |
+| CUBLASLT_ALGO_CAP_STAGES_IDS                  | Array of uint32_t | 可能用到的stage阶段策略的编号，由cublasLtMatmulStages_t类型指定 |
+| CUBLASLT_ALGO_CAP_CUSTOM_OPTION_MAX           | int32_t           | 表示自定义选项的范围，从0到该值且包含该值                    |
+| CUBLASLT_ALGO_CAP_MATHMODE_IMPL               | int32_t           | 是使用标准计算还是使用Tensor Core计算核心，值0为标准计算，值1为Tensor Core计算核心，已弃用 |
+| CUBLASLT_ALGO_CAP_GAUSSIAN_IMPL               | int32_t           | 是否实现复数矩阵乘法的高斯优化，值0为标准计算，值1为高斯优化，已弃用 |
+| CUBLASLT_ALGO_CAP_CUSTOM_MEMORY_ORDER         | int32_t           | 是否支持自定义内存布局，值0为仅支持行主序或列主序，值1为支持cublasLtOrder_t的不同内存布局 |
+| CUBLASLT_ALGO_CAP_POINTER_MODE_MASK           | uint32_t          | 所支持的指针模式的掩码，指针模式由cublasLtPointerModeMask_t类型指定 |
+| CUBLASLT_ALGO_CAP_EPILOGUE_MASK               | uint32_t          | 所支持后置操作的掩码，后置操作由cublasLtEpilogue_t类型指定   |
+| CUBLASLT_ALGO_CAP_LD_NEGATIVE                 | uint32_t          | 是否支持负数作为ld前导维数，值0不支持，其它值支持            |
+| CUBLASLT_ALGO_CAP_NUMERICAL_IMPL_FLAGS        | uint64_t          | 影响数值行为的算法实现的详细信息，由cublasLtNumericalImplFlags_t类型指定 |
+| CUBLASLT_ALGO_CAP_MIN_ALIGNMENT_A_BYTES       | uint32_t          | 矩阵A所要求的最小对齐字节数                                  |
+| CUBLASLT_ALGO_CAP_MIN_ALIGNMENT_B_BYTES       | uint32_t          | 矩阵B所要求的最小对齐字节数                                  |
+| CUBLASLT_ALGO_CAP_MIN_ALIGNMENT_C_BYTES       | uint32_t          | 矩阵C所要求的最小对齐字节数                                  |
+| CUBLASLT_ALGO_CAP_MIN_ALIGNMENT_D_BYTES       | uint32_t          | 矩阵D所要求的最小对齐字节数                                  |
+| CUBLASLT_ALGO_CAP_ATOMIC_SYNC                 | int32_t           | 是否支持使用原子计数器进行同步                               |
+
+```c++
+typedef enum {
+    CUBLASLT_ALGO_CONFIG_ID = 0,
+    CUBLASLT_ALGO_CONFIG_TILE_ID = 1,
+    CUBLASLT_ALGO_CONFIG_SPLITK_NUM = 2,
+    CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME = 3,
+    CUBLASLT_ALGO_CONFIG_CTA_SWIZZLING = 4,
+    CUBLASLT_ALGO_CONFIG_CUSTOM_OPTION = 5,
+    CUBLASLT_ALGO_CONFIG_STAGES_ID = 6,
+    CUBLASLT_ALGO_CONFIG_INNER_SHAPE_ID = 7,
+    CUBLASLT_ALGO_CONFIG_CLUSTER_SHAPE_ID = 8,
+} cublasLtMatmulAlgoConfigAttributes_t;
+```
+
+类型cublasLtMatmulAlgoConfigAttributes_t，表示矩阵乘法的某个算法所配置的属性，如下表所示。在对某个算法进行属性配置时，首先应该确保该算法支持相应的功能特性。可使用cublasLtMatmulAlgoConfigSetAttribute()函数为一个算法设置属性，使用cublasLtMatmulAlgoConfigGetAttribute()函数从一个算法中获取属性。
+
+| cublasLtMatmulAlgoConfigAttributes_t类型 | 值类型   | 描述                                                         |
+| ---------------------------------------- | -------- | ------------------------------------------------------------ |
+| CUBLASLT_ALGO_CONFIG_ID                  | int32_t  | 标识一个算法的索引编号，只读；使用cublasLtMatmulAlgoInit()函数初始化一个cublasLtMatmulAlgo_t矩阵乘法的实现算法 |
+| CUBLASLT_ALGO_CONFIG_TILE_ID             | uint32_t | tile分片策略的编号，由cublasLtMatmulTile_t类型指定           |
+| CUBLASLT_ALGO_CONFIG_SPLITK_NUM          | uint32_t | 进行split-K划分的数目，若划分数大于1，则SPLIT_NUM个部分矩阵乘法同时执行，其结果根据CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME所指定的模式执行归约 |
+| CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME    | uint32_t | 当split-K划分的数目大于1时，所使用的归约模式，由cublasLtReductionScheme_t类型指定 |
+| CUBLASLT_ALGO_CONFIG_CTA_SWIZZLING       | uint32_t | 启用或关闭线程块重排（CTA-swizzling），会改变CUDA线程坐标所映射到的矩阵块 |
+| CUBLASLT_ALGO_CONFIG_CUSTOM_OPTION       | uint32_t | 自定义选项值，每个算法能支持一些自定义选项，这些选项不至于作为通用属性描述 |
+| CUBLASLT_ALGO_CONFIG_STAGES_ID           | uint32_t | stage阶段策略的编号，由cublasLtMatmulStages_t类型指定        |
+| CUBLASLT_ALGO_CONFIG_INNER_SHAPE_ID      | uint16_t | 内部形状编号，由cublasLtMatmulInnerShape_t类型指定           |
+| CUBLASLT_ALGO_CONFIG_CLUSTER_SHAPE_ID    | uint16_t | 簇形状编号，由cublasLtClusterShape_t类型指定                 |
+
+```c++
+typedef enum {
+    CUBLASLT_SEARCH_BEST_FIT = 0,            // 针对给定问题规模，搜索最合适算法
+    CUBLASLT_SEARCH_LIMITED_BY_ALGO_ID = 1,  // 仅在指定的算法范围内进行搜索
+} cublasLtMatmulSearch_t;
+```
+
+类型cublasLtMatmulSearch_t，指定进行启发式信息搜索时的模式。
+
+```c++
+typedef struct {
+    uint64_t data[10];
+} cublasLtMatmulPreferenceOpaque_t;
+typedef cublasLtMatmulPreferenceOpaque_t* cublasLtMatmulPreference_t;
+```
+
+类型cublasLtMatmulPreference_t，指示cublasLtMatmulAlgoGetHeuristic()函数搜索启发式信息时的偏好。使用cublasLtMatmulPreferenceCreate()函数创建一个偏好，使用cublasLtMatmulPreferenceDestroy()函数释放。
+
+```c++
+typedef enum {
+    CUBLASLT_MATMUL_PREF_SEARCH_MODE = 0,
+    CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES = 1,
+    CUBLASLT_MATMUL_PREF_REDUCTION_SCHEME_MASK = 3,
+    CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_A_BYTES = 5,
+    CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_B_BYTES = 6,
+    CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_C_BYTES = 7,
+    CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_D_BYTES = 8,
+    CUBLASLT_MATMUL_PREF_MAX_WAVES_COUNT = 9,
+    CUBLASLT_MATMUL_PREF_IMPL_MASK = 12,
+} cublasLtMatmulPreferenceAttributes_t;
+```
+
+类型cublasLtMatmulPreferenceAttributes_t，表示搜索启发式信息时的偏好的配置属性，如下表所示。使用cublasLtMatmulPreferenceSetAttribute()函数为一个偏好设置属性，使用cublasLtMatmulPreferenceGetAttribute()函数从一个偏好中获取属性。
+
+| cublasLtMatmulPreferenceAttributes_t类型   | 值类型   | 描述                                                         |
+| ------------------------------------------ | -------- | ------------------------------------------------------------ |
+| CUBLASLT_MATMUL_PREF_SEARCH_MODE           | uint32_t | 启发式信息的搜索模式，由cublasLtMatmulSearch_t类型指定       |
+| CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES   | uint64_t | 工作缓冲区允许使用的最大内存空间，默认为0表示禁用工作缓冲区  |
+| CUBLASLT_MATMUL_PREF_REDUCTION_SCHEME_MASK | uint32_t | 归约模式，仅搜索未被掩码屏蔽的模式，由cublasLtReductionScheme_t类型指定 |
+| CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_A_BYTES | uint32_t | 矩阵A缓冲区的最小对齐字节数，默认256字节，较小的值会过排除需要严格对齐的算法 |
+| CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_B_BYTES | uint32_t | 矩阵B缓冲区的最小对齐字节数，默认256字节，较小的值会过排除需要严格对齐的算法 |
+| CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_C_BYTES | uint32_t | 矩阵C缓冲区的最小对齐字节数，默认256字节，较小的值会过排除需要严格对齐的算法 |
+| CUBLASLT_MATMUL_PREF_MIN_ALIGNMENT_D_BYTES | uint32_t | 矩阵D缓冲区的最小对齐字节数，默认256字节，较小的值会过排除需要严格对齐的算法 |
+| CUBLASLT_MATMUL_PREF_MAX_WAVES_COUNT       | float    | 允许的最大wavesCount值，表示设备利用率，较大的值会排除对设备占用更高的算法 |
+| CUBLASLT_MATMUL_PREF_IMPL_MASK             | uint64_t | 允许的数值行为，默认为-1表示允许所有，由cublasLtNumericalImplFlags_t类型指定 |
+
+```c++
+typedef struct {
+    cublasLtMatmulAlgo_t algo;
+    size_t workspaceSize;
+    cublasStatus_t state;
+    float wavesCount;
+    int reserved[4];
+} cublasLtMatmulHeuristicResult_t;
+```
+
+类型cublasLtMatmulHeuristicResult_t，表示cublasLtMatmulAlgoGetHeuristic()函数进行启发式信息搜索的结果，或者用该类型的数组指定要搜索的算法范围。其中，成员algo表示矩阵乘法的一个实现算法，若指定cublasLtMatmulSearch_t搜索模式为CUBLASLT_SEARCH_LIMITED_BY_ALGO_ID范围搜索时，使用algo表示待搜索算法，此时需手动调用cublasLtMatmulAlgoInit()函数初始化algo成员；成员workspaceSize表示实现算法实际所需的工作缓冲区空间；成员wavesCount表示算法对设备的利用率，值为1.0表示kernel执行时完全占用设备资源；成员state表示搜索结果状态，只有为CUBLAS_STATUS_SUCCESS时才表示搜索成功，此时其它成员才为有效值。
+
+```c++
+typedef struct {
+    uint64_t data[23];
+} cublasLtMatmulDescOpaque_t;
+typedef cublasLtMatmulDescOpaque_t* cublasLtMatmulDesc_t;
+```
+
+类型cublasLtMatmulDesc_t，表示一个矩阵乘法操作的描述符。使用cublasLtMatmulDescCreate()函数创建一个矩阵乘法操作描述符，使用cublasLtMatmulDescDestroy()函数释放。
+
+```c++
+typedef enum {
+    CUBLASLT_MATMUL_DESC_COMPUTE_TYPE = 0,
+    CUBLASLT_MATMUL_DESC_SCALE_TYPE = 1,
+    CUBLASLT_MATMUL_DESC_POINTER_MODE = 2,
+    CUBLASLT_MATMUL_DESC_TRANSA = 3,
+    CUBLASLT_MATMUL_DESC_TRANSB = 4,
+    CUBLASLT_MATMUL_DESC_TRANSC = 5,
+    CUBLASLT_MATMUL_DESC_FILL_MODE = 6,
+    CUBLASLT_MATMUL_DESC_EPILOGUE = 7,
+    CUBLASLT_MATMUL_DESC_BIAS_POINTER = 8,
+    CUBLASLT_MATMUL_DESC_BIAS_BATCH_STRIDE = 10,
+    CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER = 11,
+    CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_LD = 12,
+    CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_BATCH_STRIDE = 13,
+    CUBLASLT_MATMUL_DESC_ALPHA_VECTOR_BATCH_STRIDE = 14,
+    CUBLASLT_MATMUL_DESC_SM_COUNT_TARGET = 15,
+    CUBLASLT_MATMUL_DESC_A_SCALE_POINTER = 17,
+    CUBLASLT_MATMUL_DESC_B_SCALE_POINTER = 18,
+    CUBLASLT_MATMUL_DESC_C_SCALE_POINTER = 19,
+    CUBLASLT_MATMUL_DESC_D_SCALE_POINTER = 20,
+    CUBLASLT_MATMUL_DESC_AMAX_D_POINTER = 21,
+    CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_DATA_TYPE = 22,
+    CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_SCALE_POINTER = 23,
+    CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_AMAX_POINTER = 24,
+    CUBLASLT_MATMUL_DESC_FAST_ACCUM = 25,
+    CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE = 26,
+} cublasLtMatmulDescAttributes_t;
+```
+
+类型cublasLtMatmulDescAttributes_t，表示一个矩阵乘法操作所配置的属性，如下表所示。使用cublasLtMatmulDescSetAttribute()函数为一个矩阵乘法操作设置属性，使用cublasLtMatmulDescGetAttribute()函数从一个矩阵乘法操作中获取属性。
+
+| cublasLtMatmulDescAttributes_t类型              | 值类型   | 描述                                                         |
+| ----------------------------------------------- | -------- | ------------------------------------------------------------ |
+| CUBLASLT_MATMUL_DESC_COMPUTE_TYPE               | int32_t  | 计算类型，乘法操作和累加操作所使用的数值类型，由cublasComputeType_t指定 |
+| CUBLASLT_MATMUL_DESC_SCALE_TYPE                 | int32_t  | 缩放类型，缩放因子alpha与beta所使用的数值类型，矩阵乘法AB的累加值与矩阵C的值首先转换为缩放类型，然后再转换为矩阵D的数值类型，默认情况下与CUBLASLT_MATMUL_DESC_COMPUTE_TYPE所指定数值类型一致 |
+| CUBLASLT_MATMUL_DESC_POINTER_MODE               | int32_t  | 指针模式，指定传递alpha参数和beta参数的指针是主机指针还是设备指针，由cublasLtPointerMode_t类型指定 |
+| CUBLASLT_MATMUL_DESC_TRANSA                     | int32_t  | 在矩阵乘法之前对矩阵A所执行的变换操作，由cublasOperation_t类型指定 |
+| CUBLASLT_MATMUL_DESC_TRANSB                     | int32_t  | 在矩阵乘法之前对矩阵B所执行的变换操作，由cublasOperation_t类型指定 |
+| CUBLASLT_MATMUL_DESC_TRANSC                     | int32_t  | 在矩阵乘法之前对矩阵C所执行的变换操作，由cublasOperation_t类型指定，目前只支持CUBLAS_OP_N操作 |
+| CUBLASLT_MATMUL_DESC_FILL_MODE                  | int32_t  | 矩阵元素的填充部分，即矩阵的哪一部分参与计算，可以是矩阵的下三角部分或上三角部分，或整个矩阵的元素，由cublasFillMode_t类型指定 |
+| CUBLASLT_MATMUL_DESC_EPILOGUE                   | uint32_t | 表示矩阵乘法的后置操作，由cublasLtEpilogue_t类型指定         |
+| CUBLASLT_MATMUL_DESC_BIAS_POINTER               | void\*   | Bias偏差向量或Bias梯度的设备内存地址指针，用于cublasLtEpilogue_t设置为某些与Bias偏差向量相关后置操作时的情况 |
+| CUBLASLT_MATMUL_DESC_BIAS_BATCH_STRIDE          | int64_t  | 使用批量跨步Bias向量的情况，两个相邻向量的存储位置之间的跨步差距 |
+| CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER       | void\*   | 额外输入或输出的设备内存地址指针，用于cublasLtEpilogue_t设置为某些会产生额外输出或会使用额外输入时的情况，需要同时设置CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_LD属性 |
+| CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_LD            | int64_t  | 额外输入或输出的前导维数，为地址对齐，在ReLU情况时应是128的整数倍，在GeLU情况时应是8的整数倍 |
+| CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_BATCH_STRIDE  | int64_t  | 使用批量跨步矩阵乘法的情况，两个相邻批量对象的存储位置之间的跨步差距，为地址对齐，在ReLU情况时应是128的整数倍，在GeLU情况时应是8的整数倍 |
+| CUBLASLT_MATMUL_DESC_ALPHA_VECTOR_BATCH_STRIDE  | int64_t  | 使用批量跨步alpha向量的情况，两个相邻的alpha向量的存储位置之间的跨步差距；当矩阵D布局属性CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT大于1，并使用CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_ZERO指针模式时才启用；批量中的一个alpha向量对应一个矩阵乘法，且alpha向量中的一个元素对应输出矩阵D的一行，也即每个alpha向量的长度应与矩阵D的行数匹配 |
+| CUBLASLT_MATMUL_DESC_SM_COUNT_TARGET            | int32_t  | 并行执行所使用的SM数目，当用户期望并发流使用某些设备资源时，优化在不同数目SM上执行时的heuristics启发式信息 |
+| CUBLASLT_MATMUL_DESC_A_SCALE_POINTER            | void\*   | 标量缩放因子的设备指针，将矩阵A元素转换为计算类型，执行缩放  |
+| CUBLASLT_MATMUL_DESC_B_SCALE_POINTER            | void\*   | 标量缩放因子的设备指针，将矩阵B元素转换为计算类型，执行缩放  |
+| CUBLASLT_MATMUL_DESC_C_SCALE_POINTER            | void\*   | 标量缩放因子的设备指针，将矩阵C元素转换为计算类型，执行缩放  |
+| CUBLASLT_MATMUL_DESC_D_SCALE_POINTER            | void\*   | 标量缩放因子的设备指针，将矩阵D元素转换为计算类型，执行缩放  |
+| CUBLASLT_MATMUL_DESC_AMAX_D_POINTER             | void\*   | 设备指针，在矩阵乘法计算完成后，将输出矩阵中绝对值最大的元素写到该地址 |
+| CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_DATA_TYPE     | int32_t  | 额外输入或输出数据的数值类型，若未指定则采用默认-1值，表示与输出矩阵D的数据类型一致，由cudaDataType类型指定；当额外输入或输出是ReLU位掩码矩阵时，额外数据的数值类型固定为二进制位 |
+| CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_SCALE_POINTER | void\*   | 标量缩放因子的设备指针，将结果矩阵从计算类型转换为额外数据类型，执行缩放 |
+| CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_AMAX_POINTER  | void\*   | 设备指针，当CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER所指向的额外输入或输出数据计算完成后，将额外数据中绝对值最大的元素写到该地址 |
+| CUBLASLT_MATMUL_DESC_FAST_ACCUM                 | int8_t   | 快速FP8模式的标志位，是否损失精度获得更快的FP8执行速度，值0禁用 |
+| CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE             | int32_t  | Bias偏差向量或Bias梯度数据的数值类型，若未指定则采用默认-1值，表示与输出矩阵D的数据类型一致，由cudaDataType类型指定 |
 
 # cuBLASLt
 
