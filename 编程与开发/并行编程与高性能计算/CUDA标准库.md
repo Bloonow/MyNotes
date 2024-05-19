@@ -347,7 +347,7 @@ typedef enum libraryPropertyType_t {
 
 ## Helper Function Reference
 
-此处列举cuBLAS库提供的辅助函数。
+此处列举cuBLAS库提供的辅助函数，其中一些函数在之前内容提起过，此处只简要列出。
 
 ```c++
 cublasStatus_t cublasGetVersion_v2(cublasHandle_t handle, int* version);
