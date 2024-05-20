@@ -115,6 +115,7 @@ body {
 
 /* 导出设置 */
 @media print {
+
     html {
         font-size: 10px;
     }
@@ -159,7 +160,7 @@ body {
     margin: 1rem 0;
     line-height: 1.2;
     text-align: center;
-    border-bottom: 1px solid var(--light-color);
+    border-bottom: 1px solid var(--gray-color);
 }
 
 #write h2 {
@@ -295,12 +296,12 @@ body {
 
 #write table th {
     text-align: center;
-    padding: 0.25rem 0.25rem;
+    padding: 0.2rem 0.2rem;
     border: 1px solid var(--theme-color);
 }
 
 #write table td {
-    padding: 0.25rem 0.25rem;
+    padding: 0.2rem 0.2rem;
     border: 1px solid var(--theme-color);
 }
 
