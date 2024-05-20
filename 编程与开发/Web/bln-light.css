@@ -39,8 +39,8 @@
     --head-text-color: #1C8D6C;
     --link-text-color: #5AA4AE;
     --refer-text-color: #878f94;
-    --del-text-color: #b2b8a3;
-    --code-text-color: #108B96;
+    --del-text-color: #B2B8A3;
+    --code-text-color: #0E6C75;
     --code-bg-color: #F8F8F8;
     --latex-bg-color: #FAFFFF;
     --mark-bg-color: #ACD2D4;
@@ -117,14 +117,6 @@ body {
 @media print {
     html {
         font-size: 10px;
-    }
-
-    pre,
-    table {
-        /* 避免插入分页符 */
-        page-break-inside: avoid;
-        /* 在长单词或URL地址内部进行换行 */
-        word-wrap: break-word;
     }
 }
 

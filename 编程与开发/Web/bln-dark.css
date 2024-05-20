@@ -39,7 +39,7 @@
     --head-text-color: #86D060;
     --link-text-color: #C16124;
     --refer-text-color: #C9CBD2;
-    --del-text-color: #b2b8a3;
+    --del-text-color: #B2B8A3;
     --code-text-color: #A9B7C6;
     --code-bg-color: #19292D;
     --latex-bg-color: #1f202A;
@@ -117,14 +117,6 @@ body {
 @media print {
     html {
         font-size: 10px;
-    }
-
-    pre,
-    table {
-        /* 避免插入分页符 */
-        page-break-inside: avoid;
-        /* 在长单词或URL地址内部进行换行 */
-        word-wrap: break-word;
     }
 }
 
