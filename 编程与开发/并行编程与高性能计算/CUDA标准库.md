@@ -1598,7 +1598,7 @@ typedef enum {
 | CUBLASLT_MATMUL_DESC_FAST_ACCUM                 | int8_t   | 快速FP8模式的标志位，是否损失精度获得更快的FP8执行速度，值0禁用 |
 | CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE             | int32_t  | Bias偏差向量或Bias梯度数据的数值类型，若未指定则采用默认-1值，表示与输出矩阵D的数据类型一致，由cudaDataType类型指定 |
 
-## Function API Reference
+## cuBLASLt API Reference
 
 此处列举cuBLASLt库提供的API函数，其中一些函数在之前内容提起过，此处只简要列出。
 
