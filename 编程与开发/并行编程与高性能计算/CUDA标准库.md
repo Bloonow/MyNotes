@@ -1106,7 +1106,7 @@ cublasStatus_t cublasCherk3mEx(
 
 # cuBLASLt API
 
-> 使用示例见www.bloonow.com网址。
+> 使用示例见https://github.com/Bloonow/BlnCuda/tree/master/learn/cublas网址。
 
 自CUDA 10.1以来，cuBLASLt库提供通用矩阵乘法GEMM操作的灵活的轻量级API接口，支持配置矩阵的数据布局，以参数启发式的方法选择算法。cuBLASLt库位于cublasLt.h头文件当中，而cublasLt.h头文件又包含cublas_api.h头文件。
 
@@ -1262,6 +1262,8 @@ typedef enum {
 ```
 
 类型cublasLtEpilogue_t，表示矩阵乘法的后置操作，如下表所示。即在矩阵乘法cublasLtMatmul()计算得到结果之后，函数调用结束之前，对矩阵乘法结果所要执行的可选后置操作；将执行后置操作之后的最终结果写回到输出矩阵C或D当中。需要注意的是，许多后置操作会产生额外输出或者会用到额外输入。若无特殊说明，通常使用cublasLtMatmulDescAttributes_t类型的CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER属性设置额外输入或输出的地址指针，并且需要使用CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_LD属性设置额外输入或输出的前导维数；而对于与Bias偏差向量相关的额外输入或输出，通常使用cublasLtMatmulDescAttributes_t类型的CUBLASLT_MATMUL_DESC_BIAS_POINTER属性设置额外输入或输出的地址指针。
+
+> 注意，凡是涉及到额外输入输出缓冲区的后置操作，此时必须要求矩阵乘法结果的输出矩阵按照列主序存储，目前暂不支持行主序存储，否则会发生未定义行为。并且，无论是CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER额外存储空间，还是CUBLASLT_MATMUL_DESC_BIAS_POINTER额外存储空间，都需要以列主序的方式存储。
 
 | cublasLtEpilogue_t类型          | 描述                                                         |
 | ------------------------------- | ------------------------------------------------------------ |
