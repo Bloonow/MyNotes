@@ -118,6 +118,24 @@ float A_col_major[] = { 0.0, 3.0, 1.0, 4.0, 2.0, 5.0 };  // col-major
 
 注意，对于一个矩阵来说，若对其底层存储的一维数组，采用逻辑上不同的存储方式进行解释，会得到不同的存储顺序。例如，行主序存储的M行N列的矩阵，也可以看作是列存储的N行M列的矩阵。这种逻辑上的解释方式不同于矩阵转置，矩阵转置不会改变逻辑上对存储方式的解释，只会真正改变矩阵元素在内存中的存储位置。例如行主序存储的M行N列的矩阵，在执行转置操作后，会变为行主序存储的N行M列的矩阵。
 
+## cuFFT
+
+快速傅里叶变换（FFT，Fast Fourier Transform）是一种分治算法，用于高效计算复数或实数的离散傅立叶变换，是物理计算和通用信号处理中最重要和应用最广泛的数值算法之一。cuFFT库是FFT基于CUDA运⾏时的实现，并提供简单易用的API接口。cuFFT库提供四个API接⼝集合，分别描述如下所⽰。
+
+- cuFFT API，标准FFT的CUDA运行时实现，计算所使⽤到的数据必须位于GPU设备内存中。
+- cuFFTXt API，将FFT计算扩展到单节点多GPU环境。
+- cuFFTMp API，将FFT计算扩展到多节点分布式环境。
+- cuFFTDx API，属于MathDx库的⼀部分，需要单独配置。用于在kernel核函数中执行FFT计算，可进行算子融合。
+
+离散傅立叶变换（Discrete Fourier transform，DFT）将复数向量从时域$x_n$映射到频域$X_k$，离散傅里叶逆变换则与之相反。这两个过程可由下式给出。
+$$
+\begin{align}
+X_k &= \sum_{n=0}^{N-1} x_n \cdot \exp(\frac{-2\pi i}{N}\cdot nk) \\
+x_n &= \frac{1}{N}\sum_{k=0}^{N-1} X_k \cdot \exp(\frac{+2\pi i}{N}\cdot nk)
+\end{align}
+$$
+其中，$x_n$与$X_k$​​都是长度为N的复数向量。需要注意的是，注意，在逆变换时需要对结果除以N进行标准化，但由于正变换与逆变换仅相差一个正负号，故可以直接由一个函数实现，因此并未考虑缩放，所以在执行逆变换时，需要手动对元素数据执行1/N的标准化，在变换之前或之后均可。
+
 # cuBLAS API
 
 > 使用示例见https://github.com/Bloonow/BlnCuda/tree/master/learn/cublas网址。
@@ -1776,7 +1794,7 @@ cublasStatus_t cublasLtMatmul(
 
 > 需要注意的是，对于cuBLAS库来说，将workspace设为0表示使用默认的缓冲区；而对于cuBLASLt来说，将workspace设为0表示不使用缓冲区，也即在使用cuBLASLt库时，需要手动的显式指定workspace缓冲区大小。当然缓冲区不是必要的，而且设置缓冲区并不一定能够提升性能。
 
-# cuFFT
+# cuFFT API
 
 快速傅里叶变换（FFT，Fast Fourier Transform）是一种分治算法，用于高效计算复数或实数的离散傅立叶变换，它是计算物理和通用信号处理中最重要和最广泛使用的数值算法之一。而FFTW是最流行、最高效的基于CPU的FFT库之一。
 
