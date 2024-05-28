@@ -2026,7 +2026,7 @@ cufftResult cufftSetWorkArea(cufftHandle plan, void *workArea);
 
 该函数为一个计划设置工作缓冲区，如果该计划已经自动分配缓冲区，则cuFFT会首先释放掉已分配的工作缓冲区。cuFFT库假设该函数设置的工作缓冲区地址指针是合法的且不与其它地址空间重叠。
 
-## Transform
+## Transform API
 
 ```c++
 cufftResult cufftExecC2C(cufftHandle plan, cufftComplex       *idata, cufftComplex       *odata, int direction);
@@ -2038,6 +2038,84 @@ cufftResult cufftExecZ2D(cufftHandle plan, cufftDoubleComplex *idata, cufftDoubl
 ```
 
 该系列函数执行傅里叶变换，包括复数到复数C2C变换、实数到复数R2C变换（隐式地为正向变换）、复数到实数C2R变换（隐式地为逆向变换）。其中，参数direction指示通用变换的方向，使用CUFFT_FORWARD表示正向变换，使用CUFFT_INVERSE表示逆向变换。
+
+## Callback Routines
+
+回调例程是用户提供的设备函数，用于指定cuFFT库在加载数据或存储数据时执行的函数调用，允许用户在不使用额外kernel函数的情况下，在执行FFT操作之前，重定向输入数据的加载并对数据执行特定操作，并在执行FFT操作之后，重定向计算结果的存储并对结果执行特定操作。
+
+对于预处理（pre-processing）回调，cuFFT库会为其参数传入数据的地址指针、当前值相对于第一个值的元素数目偏移（不是字节偏移）、可选的用户提供信息、可选的共享内存地址，并将其返回值作为FFT操作实际用到的数据。对于后处理（post-processing）回调，cuFFT库会为其参数传入数据存储的地址指针、当前值相对于第一个值的元素数目偏移（不是字节偏移）、FFT操作计算求得的结果值、可选的用户提供信息、可选的共享内存地址。
+
+通过对load/store、real/complex、float/double组合，cuFFT库共支持八种类型的回调函数，需要由用户确保所执行变换的种类与所使用的数值精度类型。
+
+```c++
+typedef cufftReal          (*cufftCallbackLoadR)(void *dataIn, size_t offset, void *callerInfo, void *sharedPointer);
+typedef cufftDoubleReal    (*cufftCallbackLoadD)(void *dataIn, size_t offset, void *callerInfo, void *sharedPointer);
+typedef cufftComplex       (*cufftCallbackLoadC)(void *dataIn, size_t offset, void *callerInfo, void *sharedPointer);
+typedef cufftDoubleComplex (*cufftCallbackLoadZ)(void *dataIn, size_t offset, void *callerInfo, void *sharedPointer);
+typedef void (*cufftCallbackStoreR)(void *dataOut, size_t offset, cufftReal          val, void *callerInfo, void *sharedPointer);
+typedef void (*cufftCallbackStoreD)(void *dataOut, size_t offset, cufftDoubleReal    val, void *callerInfo, void *sharedPointer);
+typedef void (*cufftCallbackStoreC)(void *dataOut, size_t offset, cufftComplex       val, void *callerInfo, void *sharedPointer);
+typedef void (*cufftCallbackStoreZ)(void *dataOut, size_t offset, cufftDoubleComplex val, void *callerInfo, void *sharedPointer);
+```
+
+其中，参数dataIn表示输入数据的设备地址；参数dataOut表示存储结果的设备地址；参数offset表示当前值相对于第一个值的元素数目偏移（不是字节偏移）；参数callerInfo表示用户提供的可选信息的设备地址；参数sharedPointer表示所请求的共享内存地址指针，仅当调用cufftXtSetCallbackSharedSize()函数之后才有效；参数val表示执行变换所得的计算结果。
+
+例如，为R2C变换执行变换时，一个加载数据的回调函数可以如下所示。
+
+```c++
+__device__ cufftReal callback_function(void *dataIn, size_t offset, void *callerInfo, void *sharedPtr) {
+	cufftReal val = *(reinterpret_cast<cufftReal*>(dataIn) + offset);
+    return val > 0 ? val : 0;  // 对数据的操作
+}
+__device__ cufftCallbackLoadR gpu_callback_ptr = callback_function;  // 设备指针，持有设备函数的设备内存地址
+```
+
+需要注意的是，说明符\_\_device\_\_是一种存储类型说明符，所以在尝试获取设备函数地址指针时，其地址实际上是设备内存中的地址，故需要使用设备指针变量gpu_callback_ptr接受设备函数的地址。而在设置时，需要使用主机指针变量，需要使用cudaMemcpyFromSymbol()函数将设备函数的设备内存地址，从设备指针中拷贝到主机指针当中，如下所示。
+
+```c++
+cufftCallbackLoadR host_callback_ptr;  // 主机指针，持有设备函数的设备内存地址
+cudaMemcpyFromSymbol(&host_callback_ptr, gpu_callback_ptr, sizeof(cufftCallbackLoadR), 0, cudaMemcpyDeviceToHost);
+```
+
+如上述，主机指针变量host_callback_ptr指向一个设备函数的地址，可以用来设置cuFFT库的回调函数。当多GPU情况时，应该使用一个指针数组，并依次遍历每个GPU上的设备函数地址。
+
+要给cuFFT提供回调函数，可使用cufftXtSetCallback()函数为一个计划配置绑定相关联的回调函数，如下所示。若某个计划配置已存在一个回调函数，则新设置的回调函数会替换掉原有的回调函数。调用者也可是指定一个不透明结构体的设备地址指针以提供可选信息，该指针会由cuFFT库传递给相应的回调函数；调用者可使用该结构保存计划的维度、跨步、额外数据等信息。回调函数可以请求使用共享内存，如果所请求的共享内存空间可用，则cuFFT会将共享内存的指针传递给相应的回调函数。
+
+```c++
+cufftResult cufftXtSetCallback(cufftHandle plan, void **callbackRoutine, cufftXtCallbackType type, void **callerInfo);
+```
+
+其中，参数callbackRoutine指向一个设备函数的内存地址；参数callerInfo表示提供给回调函数的用户信息；参数cufftXtCallbackType表示回调函数的类型。
+
+> 注意，当维数不可分解为小于等于127的质数之积时，无法为这种计划配置指定回调函数；当维数能够分解为2,3,5,7的整数次幂之积时，可以安全地使用__syncthreads()同步函数，否则会产生未定义结果。
+
+```c++
+cufftResult cufftXtClearCallback(cufftHandle plan, cufftXtCallbackType type);
+```
+
+该函数用于清除一个计划配置所关联的回调函数。
+
+```c++
+cufftResult cufftXtSetCallbackSharedSize(cufftHandle plan, cufftXtCallbackType type, size_t sharedSize);
+```
+
+该函数指示cuFFT在启动变换的kernel时动态分配共享内存，以传给回调函数使用。其中，参数sharedSize表示给回调函数分配的共享内存空间大小，最大可用空间为16KiB。该共享内存空格仅在预处理回调或后处理回调中有效，在变换操作执行期间，该共享内存可能被cuFFT库用作其它用途。
+
+```c++
+typedef enum cufftXtCallbackType_t {
+    CUFFT_CB_LD_COMPLEX = 0x0,
+    CUFFT_CB_LD_COMPLEX_DOUBLE = 0x1,
+    CUFFT_CB_LD_REAL = 0x2,
+    CUFFT_CB_LD_REAL_DOUBLE = 0x3,
+    CUFFT_CB_ST_COMPLEX = 0x4,
+    CUFFT_CB_ST_COMPLEX_DOUBLE = 0x5,
+    CUFFT_CB_ST_REAL = 0x6,
+    CUFFT_CB_ST_REAL_DOUBLE = 0x7,
+    CUFFT_CB_UNDEFINED = 0x8
+} cufftXtCallbackType;
+```
+
+类型cufftXtCallbackType，用于指定回调函数所使用的数值精度类型。
 
 # CUTLASS
 
