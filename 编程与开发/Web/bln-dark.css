@@ -277,7 +277,6 @@ body {
     background-color: var(--code-bg-color);
     color: var(--code-text-color);
     font-size: 1rem;
-    margin: 0 1px;
     border-radius: 2px;
     border: 1px solid var(--theme-color-alpha);
 }

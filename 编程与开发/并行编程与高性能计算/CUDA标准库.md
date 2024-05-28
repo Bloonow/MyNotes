@@ -130,11 +130,25 @@ float A_col_major[] = { 0.0, 3.0, 1.0, 4.0, 2.0, 5.0 };  // col-major
 离散傅立叶变换（Discrete Fourier transform，DFT）将复数向量从时域$x_n$映射到频域$X_k$，离散傅里叶逆变换则与之相反。这两个过程可由下式给出。
 $$
 \begin{align}
-X_k &= \sum_{n=0}^{N-1} x_n \cdot \exp(\frac{-2\pi i}{N}\cdot nk) \\
-x_n &= \frac{1}{N}\sum_{k=0}^{N-1} X_k \cdot \exp(\frac{+2\pi i}{N}\cdot nk)
+X_k &= \sum_{n=0}^{N-1} x_n \cdot \exp(-2\pi i\cdot\frac{nk}{N}) \\
+x_n &= \frac{1}{N}\sum_{k=0}^{N-1} X_k \cdot \exp(+2\pi i\cdot\frac{nk}{N})
 \end{align}
 $$
-其中，$x_n$与$X_k$​​都是长度为N的复数向量。需要注意的是，注意，在逆变换时需要对结果除以N进行标准化，但由于正变换与逆变换仅相差一个正负号，故可以直接由一个函数实现，因此并未考虑缩放，所以在执行逆变换时，需要手动对元素数据执行1/N的标准化，在变换之前或之后均可。
+其中，$x_n$与$X_k$​​​都是长度为N的复数向量。需要注意的是，注意，在逆变换时需要对结果除以N进行标准化，但由于正变换与逆变换仅相差一个正负号，故可以直接由一个函数实现，因此并未考虑缩放，所以在执行逆变换时，需要手动对元素数据执行1/N的标准化，在变换之前或之后均可。
+
+当执行多维变换时，需要将数据坐标改写为多维形式，过程由下式给出。
+$$
+\begin{align}
+X_{(k_1,k_2,\cdots,k_d)} &= \sum_{n_1=0}^{N_1-1}\sum_{n_2=0}^{N_2-1}\cdots\sum_{n_d=0}^{N_d-1}
+x_{(n_1,n_2,\cdots,n_d)} \cdot
+\exp(-2\pi i\cdot(\frac{n_1k_1}{N_1}+\frac{n_2k_2}{N_2}+\cdots+\frac{n_dk_d}{N_d})) \\
+x_{(n_1,n_2,\cdots,n_d)} &= \dfrac{1}{N_1N_2\cdots N_d}
+\sum_{k_1=0}^{N_1-1}\sum_{k_2=0}^{N_2-1}\cdots\sum_{k_d=0}^{N_d-1}
+X_{(k_1,k_2,\cdots,k_d)} \cdot
+\exp(+2\pi i\cdot(\frac{n_1k_1}{N_1}+\frac{n_2k_2}{N_2}+\cdots+\frac{n_dk_d}{N_d}))
+\end{align}
+$$
+其中，d为数据的维度的数目。
 
 # cuBLAS API
 
@@ -153,7 +167,7 @@ $$
 | cuComplex       | c, C  | complex single-precision |
 | cuDoubleComplex | z, Z  | complex double-precision |
 
-使用Re()表示复数的实部，使用Im()表示复数的虚部，使用小写希腊字母α,β等表示标量，使用小写拉丁字母a,b表示向量，使用大写拉丁字母A,B表示矩阵，使用上划线表示一个复数的共轭转置。
+使用Re()表示复数的实部，使用Im()表示复数的虚部，使用小写希腊字母α,β等表示标量，使用小写拉丁字母a,b表示向量，使用大写拉丁字母A,B表示矩阵。
 
 ## General Description
 
@@ -1796,35 +1810,155 @@ cublasStatus_t cublasLtMatmul(
 
 # cuFFT API
 
-快速傅里叶变换（FFT，Fast Fourier Transform）是一种分治算法，用于高效计算复数或实数的离散傅立叶变换，它是计算物理和通用信号处理中最重要和最广泛使用的数值算法之一。而FFTW是最流行、最高效的基于CPU的FFT库之一。
+> 使⽤⽰例⻅https://github.com/Bloonow/BlnCuda/tree/master/learn/cufft⽹址。
 
-cuFFT库包含四个API，具体为：(1)cuFFT API，标准FFT的CUDA运行时实现；(2)cuFFTXt API，将FFT计算扩展到单节点多GPU环境；(3)cuFFTMp API，将FFT计算扩展到多节点分布式环境；(4)cuFFTDx API，在CUDA核函数中执行FFT计算，用于算子融合以降低全局访存开销，属于MathDx的一部分，需要单独下载。
+cuFFT库位于cufft.h头文件中，仿照FFTW接口构建，提供名为计划（plan）的配置机制，它使用内部构建块来优化基于给定配置和GPU硬件的傅里叶变换。然后，当调用执行函数时，实际的变换操作将按照计划执行。这种方式好处是，一旦用户创建计划句柄，库就会保留执行该计划所需的状态，而无需重新计算配置。
 
-cuFFT API是FFT在CUDA运行时的实现，由两个独立的库组成，即cuFFT和cuFFTW，其中cuFFT库旨在于NVIDIA GPU上提供高性能，cuFFTW库作为FFTW库的移植版本提供，使FFTW用户能够快速上手cuFFT库。
+要使⽤cuFFT库，在程序编译链接时需要链接到指定库，在Linux平台上是libcufft.so动态库，在Windows上是cufft.dll动态库。
 
-cuFFT库支持以下功能：
+在描述API函数接口时，使用\<type\>表示可能的数值类型，使用\<t\>表示相应类型的缩写，其小写表示计算结果是标量，大写表示计算结果是张量，如下所示。
 
-- 提供针对任意输入规模的$O(n\log n)$时间复杂度的算法，对于可以分解为$2^a\times3^b\times5^c\times7^d$​形式的输入规模，cuFFT算法性能是高度优化的，且质因数越小性能越快，为2的次幂时性能最好。
-- 支持半精度（16位浮点）、单精度（32位浮点）、双精度（64位浮点）数据类型，较低精度的转换具有较高的性能。
-- 支持复数和实数的输入和输出，实数输入或输出比复数需要更少的计算和数据，并且通常具有更快的求解时间。支持的类型有，C2C（complex to complex）复数输入到复数输出，R2C（real to complex）实数输入到复数输出，C2R（complex to real）复数输入到实数输出。
-- 支持一维、二维、三维变换，同时执行多个1D、2D、3D变换时，批量变换比单个变换具有更高的性能。
-- 支持就地（in-place）变换和异地（out-of-place）变换。支持任意维度之内和之间的元素跨步布局。支持跨多个GPU执行变换。在CUDA流上执行，支持异步计算和数据移动。
+| \<type\>        | \<t\> | Meaning                  |
+| --------------- | ----- | ------------------------ |
+| float           | R     | real single-precision    |
+| double          | D     | real double-precision    |
+| cuComplex       | c, C  | complex single-precision |
+| cuDoubleComplex | z, Z  | complex double-precision |
 
-离散傅立叶变换（DFT）映射时域复值向量$x_k$，将之转换为频域表示，由下式给出，
-$$
-X_k = \sum_{n=0}^{N-1} x_n e^{-2\pi i\cdot\frac{nk}{N}}
-$$
-其中，$X_k$​​是相同大小的复值向量。该过程成为正向傅里叶变换，如果指数e之上的幂的符号变为正号+，则过程是逆向傅里叶变换，注意，在离散傅里叶逆变换的公式中，需要除以N作标准化，上式中并没有体现出来，这点需要特别注意。根据N的值不同，会采用不同算法以获得最佳性能。
+使用Re()表示复数的实部，使用Im()表示复数的虚部，使用小写希腊字母α,β等表示标量，使用小写拉丁字母a,b表示向量，使用大写拉丁字母A,B表示矩阵。
 
-在许多实际应用中，输入向量是实值，可以证明，在这种情况下，输出满足Hermite对称性（$X_k=X^H_{N-k}$）。反之，对于满足Hermite对称性的复值输入，逆变换将是纯实值的。cuFFT利用这种冗余，仅使用Hermite向量的前半部分。复数到实数的C2R变换接受Hermite复数输入，对于一维信号，这需要索引为0的元素为实数（如果N为偶数则$\frac{N}{2}$索引元素也应为实数），对于D维信号，这意味着$x(n_1,n_2,\cdots,n_d)=x^H(N_1-n_1,N_2-n_2,\cdots,N_d-n_d)$​，否则变换的行为是未定义的。
+## General Description
 
-DFT可以使用矩阵向量乘法实现，需要$O(N^2)$​时间复杂度。不过，cuFFT采用[Cooley-Tukey](http://en.wikipedia.org/wiki/Cooley-Tukey_FFT_algorithm)算法实现来减少所需操作的数量，以优化特定变换规模下的性能。该算法将DFT矩阵表示为稀疏构建块（sparse building block）矩阵的乘积，cuFFT实现以2、3、5、7为基数的构建块，因此，任何能够分解为$2^a\times3^b\times5^c\times7^d$​形式（其中a、b、c、d为非负整数）的输入规模都由cuFFT库提供了优化。此外，对于所有采用[2,128)之间质数的构建块，也有特定优化，当长度无法分解为[2,128)之间质数幂的倍数时，使用[Bluestein](http://en.wikipedia.org/wiki/Bluestein's_FFT_algorithm)算法。由于Bluestein实现对每个输出点比Cooley-Tukey实现需要更多的计算，因此Cooley-Tukey算法的准确性更好，纯Cooley-Tukey算法的相对误差按$\log_2(N)$的比例增长，其中N为参与变换的元素数目。
+某个特定规模与数值精度类型的计划配置，cuFFT库会生成所需执行的内部步骤，可能包含多次kernel核函数启动、内存复制等，所有中间缓冲区会在创建计划时分配，并在销毁计划时释放。根据计划配置，最坏情况下，cuFFT库会分配$8\times\text{Batch}\times N_0\times\cdots\times N_{\text{rank}-1}$个元素的存储空间，最好情况下，cuFFT库会分配$1\times\text{Batch}\times N_0\times\cdots\times N_{\text{rank}-1}$​​​​​个元素的存储空间，其中rank表示数据维度，N表示数据在对应维度上的维数，元素类型可以是cufftComplex数值类型或cufftDoubleComplex数值类型。
 
-cuFFT库位于cufft.h头文件中，它仿照FFTW接口建模，提供一种称为plan的配置机制，使用内部构建块来优化基于给定配置和GPU硬件的傅里叶变换。然后，当调用执行函数时，实际的变换将按照plan执行。该方法优点是，一旦用户创建plan，库就会保留多次执行该plan所需的任何状态，而无需重新计算配置。
+一个cuFFT计划与一个CUDA流相关，一旦绑定则该计划所有的内部步骤都会在该CUDA流上执行，不同的计划可以绑定不同的CUDA流以重叠计算与通信。使⽤cudaStreamCreateWithFlags()函数可创建⼀个流，使⽤cufftSetStream()函数可为plan配置指定所使⽤的流对象。值得注意的是，如果希望用一个计划句柄重叠多个变换，需要用户手动管理缓冲区，每个变换都需要专用缓冲区，可使用cufftSetWorkArea()函数设置缓冲区。
 
-## 执行配置
+在主机多线程情况的下，只要每个主机线程使用不同的计划句柄，且每个变换的输出内存空间不重叠，则cuFFT库可以保证API函数是线程安全的。
 
-cuFFT使用cufftHandle句柄类型存储plan配置，可使用cufftCreate()函数创建一个句柄，并使用cufftDestroy()函数释放一个句柄。在句柄上可使用如下一些函数创建plan配置。对任何cuFFT函数的第一个调用会导致cuFFT内核的初始化，如果GPU上没有足够的可用内存，此操作可能会失败。
+离散傅里叶变换DFT可以使⽤矩阵向量乘法实现，需要O(N^2^)的时间复杂度。不过，cuFFT库采⽤[Cooley-Tukey](http://en.wikipedia.org/wiki/Cooley-Tukey_FFT_algorithm)实现算法来减少所需操作的数量，能够取得针对任意输入规模的O(NlogN)时间复杂度，并对特定规模下的变换提供特定性能优化。
+
+Cooley-Tukey算法将DFT矩阵表⽰为稀疏构建块（sparse building block）矩阵的乘积，cuFFT实现以2、3、5、7为基数的构建块，因此，任何能够分解为$2^a\times3^b\times5^c\times7^d$形式的输⼊规模都由cuFFT库提供了优化（其中a、b、c、d为⾮负整数）。此外，对于所有采⽤[2,128)之间质数的构建块，也有特定优化，当⻓度⽆法分解为[2,128)之间质数幂的倍数时，使⽤[Bluestein](http://en.wikipedia.org/wiki/Bluestein's_FFT_algorithm)算法。由于Bluestein实现对每个输出点的计算⽐Cooley-Tukey实现更多，因此Cooley-Tukey算法的准确性更好，纯Cooley-Tukey算法的相对误差按log~2~(N)的⽐例增⻓，其中N为参与变换的元素数⽬。
+
+## Type Reference
+
+头⽂件cufft.h提供⼀些cuFFT库的类型定义，⽤于控制cuFFT API函数的特定⾏为。
+
+```c++
+typedef enum cufftResult_t {
+    CUFFT_SUCCESS        = 0x0,
+    CUFFT_INVALID_PLAN   = 0x1,
+    CUFFT_ALLOC_FAILED   = 0x2,
+    CUFFT_INVALID_TYPE   = 0x3,
+    CUFFT_INVALID_VALUE  = 0x4,
+    CUFFT_INTERNAL_ERROR = 0x5,
+    CUFFT_EXEC_FAILED    = 0x6,
+    CUFFT_SETUP_FAILED   = 0x7,
+    CUFFT_INVALID_SIZE   = 0x8,
+    CUFFT_UNALIGNED_DATA = 0x9,
+    CUFFT_INCOMPLETE_PARAMETER_LIST = 0xA,
+    CUFFT_INVALID_DEVICE  = 0xB,
+    CUFFT_PARSE_ERROR     = 0xC,
+    CUFFT_NO_WORKSPACE    = 0xD,
+    CUFFT_NOT_IMPLEMENTED = 0xE,
+    CUFFT_LICENSE_ERROR   = 0x0F,
+    CUFFT_NOT_SUPPORTED   = 0x10
+} cufftResult;
+```
+
+类型cufftResult，表示cuFFT API函数的返回状态。
+
+```c++
+typedef enum cufftType_t {
+    CUFFT_R2C = 0x2a,     // Real to Complex (interleaved)
+    CUFFT_C2R = 0x2c,     // Complex (interleaved) to Real
+    CUFFT_C2C = 0x29,     // Complex to Complex, interleaved
+    CUFFT_D2Z = 0x6a,     // Double to Double-Complex
+    CUFFT_Z2D = 0x6c,     // Double-Complex to Double
+    CUFFT_Z2Z = 0x69      // Double-Complex to Double-Complex
+} cufftType;
+```
+
+类型cufftType，表示cuFFT库傅里叶变换所支持的变换类型。
+
+```c++
+#define CUFFT_FORWARD -1  // Forward FFT
+#define CUFFT_INVERSE  1  // Inverse FFT
+```
+
+预定义宏CUFFT_FORWARD和CUFFT_INVERSE分别表示正向变换与逆向变换，使用正负符号标识。cuFFT执行非标准化的快速傅里叶变换，也即对输入数据执行正向变换之后立即执行逆向变换，所得结果并不等于输入结果，而是输入结果的N倍缩放，需要手动对数据进行缩放。
+
+```c++
+typedef int cufftHandle;
+```
+
+类型cufftHandle，表示一个傅里叶变换的计划，即一个句柄，持有执行相关变换所需的配置与资源。
+
+```c++
+typedef float           cufftReal;           // single-precision
+typedef double          cufftDoubleReal;     // double-precision
+typedef cuComplex       cufftComplex;        // interleaved real and imaginary, single-point
+typedef cuDoubleComplex cufftDoubleComplex;  // interleaved real and imaginary, double-precision
+```
+
+数据数值精度类型，表示数据的一个元素的数值类型。
+
+## Data Layout
+
+cuFFT库提供复数到复数（complex-to-complex，C2C）变换、实数到复数（real-to-complex，R2C）变换、复数到实数（complex-to-real，C2R）变换。在许多应用场景中，输入数据是实数向量，则此时输出数据满足Hermite对称性，也即$X_k=X_{N-k}^H$，其中上标H表示共轭，对于多维情况，也存在类似的多维Hermite对称性，也即$X_{k_1,k_2,\cdots,k_d}=X^H_{N_1-k_1,N_2-k_2,\cdots,N_d-k_d}$​，其中d表示数据的维度数目。同样地，逆变换亦然，对于满足Hermite对称性的复数输入数据，其输出数据为实数。
+
+cuFFT库可以基于Hermite对称性，仅对Hermite对称的复数数据的前一半进行操作和存储，下表展示不同情况下变换的维度与维数。
+
+| Dims | FFT Type | input data size                  | output data size                 |
+| ---- | -------- | -------------------------------- | -------------------------------- |
+| 1D   | C2C      | N, cufftComplex                  | N, cufftComplex                  |
+| 1D   | R2C      | N, cufftReal                     | N/2+1, cufftComplex              |
+| 1D   | C2R      | N/2+1, cufftComplex              | N, cufftReal                     |
+| 2D   | C2C      | N~1~N~2~, cufftComplex           | N~1~N~2~, cufftComplex           |
+| 2D   | R2C      | N~1~N~2~, cufftReal              | N~1~(N~2~/2+1), cufftComplex     |
+| 2D   | C2R      | N~1~(N~2~/2+1), cufftComplex     | N~1~N~2~, cufftReal              |
+| 3D   | C2C      | N~1~N~2~N~3~, cufftComplex       | N~1~N~2~N~3~, cufftComplex       |
+| 3D   | R2C      | N~1~N~2~N~3~, cufftReal          | N~1~N~2~(N~3~/2+1), cufftComplex |
+| 3D   | C2R      | N~1~N~2~(N~3~/2+1), cufftComplex | N~1~N~2~N~3~, cufftReal          |
+
+⼀般情况下，C2C变换的输⼊输出具有相同数⽬的元素，为N个复数元素；⽽R2C和C2R变换的输⼊元素数⽬和输出元素数⽬并不相等，分别为N个实数元素和N/2+1个复数元素。R2C隐式地是正向变换，对于就地执⾏，输入数据的N个实数元素，其存储空间需要填充到N/2+1个复数元素，即N+2个实数元素的存储空间；C2R隐式地是逆向变换，对于就地执⾏，输入数据假定具有N/2+1个复数元素。
+
+## Plan Configuration
+
+此处列举cuFFT库创建计划句柄的函数API，用于配置特定的变换。
+
+```c++
+cufftResult cufftCreate(cufftHandle *handle);
+cufftResult cufftDestroy(cufftHandle plan);
+```
+
+函数cufftCreate()仅创建一个计划句柄，但不进行初始化配置。函数cufftDestroy()销毁一个计划句柄，并释放相关资源。
+
+```c++
+cufftResult cufftMakePlan1d(cufftHandle plan, int nx, cufftType type, int batch, size_t *workSize);
+cufftResult cufftMakePlan2d(cufftHandle plan, int nx, int ny, cufftType type, size_t *workSize);
+cufftResult cufftMakePlan3d(cufftHandle plan, int nx, int ny, int nz, cufftType type, size_t *workSize);
+```
+
+函数cufftMakePlanXd()用于在一个已创建的计划句柄上进行变换配置。其中，参数nx,ny,nz表示数据在三个维度上的维数；参数workSize用于指定或接受工作缓冲区的内存空间大小，在多GPU情况下，该参数是一个数组。
+
+```c++
+cufftResult cufftMakePlanMany(
+    cufftHandle plan, int rank, int *n,
+    int *inembed, int istride, int idist,
+    int *onembed, int ostride, int odist,
+    cufftType type, int batch, size_t *workSize
+);
+```
+
+函数cufftMakePlanMany()用于配置变换的高级数据布局。其中，参数n表示数据在每个维度上的维数，其值应该小于等于inembed和onembed参数所指定的值；参数idist和odist，表⽰批量数据元素中，两个相邻张量对象的存储位置之间的跨步差距，也即一个批次的数据元素的数目；参数istride和ostride，表示最内层（最右侧）维度轴上，两个相邻元素的存储位置之间的差距，为1时则表示数据元素在内存中连续存储；参数inembed和onembed，表⽰数据元素在每个维度轴上的维数，即每个维度轴上的元素数⽬，使⽤索引0表⽰最左侧维度轴（最外层），使⽤索引rank-1表⽰最右侧维度轴（最内层）；参数nembed[rank-1]，表⽰最内层维度上有效元素的数⽬，并不计入stride跨步的填充，⽽总数据的个数为nembed[rank-1]与stride之积；参数nembed[0]，表⽰最外层维度上数据元素的数⽬，但提供的dist参数可以更⾼效取代该参数的功能，故通常忽略nembed[0]参数。
+
+设批量数据中批量索引为batch，数据索引为[x,y,z]的元素，在采⽤⾼级数据布局时，实际访问的数据地址如下所⽰。
+
+```c++
+value = data[batch * dist + (x * nembed[1] * nembed[2] + y * nembed[2] + z) * stride];
+```
+
+值得注意的是，可以将inembed参数或onembed参数设置为nullptr，这是⼀种特殊情况，指示cuFFT API函数将采⽤与n相同的值作为实参，这与基本数据布局相同，并且其他⾼级布局参数如stride或dist将被忽略。
 
 ```c++
 cufftResult cufftPlan1d(cufftHandle *plan, int nx, cufftType type, int batch);
@@ -1836,167 +1970,74 @@ cufftResult cufftPlanMany(
     int *onembed, int ostride, int odist,
     cufftType type, int batch
 );
-cufftResult cufftMakePlanMany(
-    cufftHandle plan, int rank, int *n,
+```
+
+函数cufftPlanXd()和函数cufftPlanMany()用于创建一个计划句柄，并进行初始化配置，等价于cufftCreate()函数与cufftMakePlanXd()函数。
+
+## Workspace
+
+在计划执行期间，cuFFT库会使用额外的临时缓冲区来保存中间结果，不同的问题规模可能需要不同的工作缓冲区。使用cuFFT库提供的一些函数可以管理工作缓冲区及其行为。
+
+```c++
+cufftResult cufftEstimate1d(int nx, cufftType type, int batch, size_t *workSize);
+cufftResult cufftEstimate2d(int nx, int ny, cufftType type, size_t *workSize);
+cufftResult cufftEstimate3d(int nx, int ny, int nz, cufftType type, size_t *workSize);
+cufftResult cufftEstimateMany(
+    int rank, int *n, 
     int *inembed, int istride, int idist,
     int *onembed, int ostride, int odist,
     cufftType type, int batch, size_t *workSize
 );
 ```
 
-执行特定大小和类型的变换可能需要几个处理阶段。生成变换的plan配置后，cuFFT会得出需要执行的内部步骤，可能包括多个内核启动、内存复制等。
-
-接下来即可调用诸如cufftExecC2C()的执行函数，该函数将按照plan定义的配置执行变换。
+该系列函数用于评估在指定问题规模下，所需的工作缓冲区的空间大小。其中，参数workSize用于接受所评估的缓冲区空间大小，以字节为单位。
 
 ```c++
-#define CUFFT_FORWARD -1  // Forward FFT
-#define CUFFT_INVERSE  1  // Inverse FFT
-cufftResult cufftExecC2C(cufftHandle plan, cufftComplex *idata, cufftComplex *odata, int direction);
-cufftResult cufftExecR2C(cufftHandle plan, cufftReal *idata, cufftComplex *odata);
-cufftResult cufftExecC2R(cufftHandle plan, cufftComplex *idata, cufftReal *odata);
-cufftResult cufftExecZ2Z(cufftHandle plan, cufftDoubleComplex *idata, cufftDoubleComplex *odata, int direction);
-cufftResult cufftExecD2Z(cufftHandle plan, cufftDoubleReal *idata, cufftDoubleComplex *odata);
-cufftResult cufftExecZ2D(cufftHandle plan, cufftDoubleComplex *idata, cufftDoubleReal *odata);
-```
-
-在最坏的情况下，cuFFT库会分配$8\times\text{batch}\times n[0]\times\cdots\times n[\text{rank}-1]$个元素的空间，元素可以是cufftComplex或cufftDoubleComplex数据类型，其中，batch是并行执行的变换批量，rank是数据的维度，n[]是存储每个维度上维数的数组。根据plan配置，可能会使用更少的内存。在某些特定情况下，临时空间分配可以低至$1\times\text{batch}\times n[0]\times\cdots\times n[\text{rank}-1]$个元素。
-
-cuFFT库的plan配置可能会使用额外的缓冲区存储中间结果，所有（在CPU和GPU内存上的）中间缓冲区分配都在生成plan配置的期间进行，当plan配置被释放时，这些缓冲区被释放。当手动指定plan配置的工作缓冲区空间时，可使用cufftEstimateXXX()函数获取特定plan配置的缓冲区空间大小，使用cufftSetWorkArea()函数设置缓冲区空间。或者，可以使用cufftSetAutoAllocation()函数设置是否自动分配缓冲区。
-
-此外，可指定FFT在异步流Stream上执行，使用cudaStreamCreateWithFlags()函数可创建一个流，使用cufftSetStream()函数可为plan配置指定所使用的流对象。
-
-## 数据类型与布局
-
-在cuFFT库中，数据类型与布局严格取决于plan配置和变换类型，如下所示。
-
-```c++
-typedef float cufftReal;
-typedef double cufftDoubleReal;
-typedef cuComplex cufftComplex;
-typedef cuDoubleComplex cufftDoubleComplex;
-typedef enum cufftType_t {
-    CUFFT_R2C = 0x2a,     // Real to Complex (interleaved)
-    CUFFT_C2R = 0x2c,     // Complex (interleaved) to Real
-    CUFFT_C2C = 0x29,     // Complex to Complex, interleaved
-    CUFFT_D2Z = 0x6a,     // Double to Double-Complex
-    CUFFT_Z2D = 0x6c,     // Double-Complex to Double
-    CUFFT_Z2Z = 0x69      // Double-Complex to Double-Complex
-} cufftType;
-```
-
-一般情况下，C2C变换的输入输出具有相同数目的元素，而R2C和C2R变换的输入元素数目和输出元素数目并不相等（因为Hermite对称性）。当R2C或C2R输入输出元素数目不一致时，异地（out-of-place）变换会创建适当大小的单独数组，而就地（in-place）变换则需要采用padded填充布局。由于Hermite对称性，R2C和C2R变换仅需要信号阵列的一半元素进行操作。
-
-多维傅里叶变换将d维数组$x_\mathbf{n},\mathbf{n}=(n_1,n_2,\cdots,n_n)$映射到频域数组，由下式给出，
-$$
-X_\mathbf{k} = \sum_{n=0}^{N-1} x_\mathbf{n} e^{-2\pi i\cdot\mathbf{\frac{nk}{N}}}
-$$
-其中，求和符号$\sum\limits_{n=0}^{N-1}$表示嵌套求和$\sum\limits_{n_1=0}^{N_1-1}\sum\limits_{n_2=0}^{N_2-1}\cdots\sum\limits_{n_d=0}^{N_d-1}$，向量$\mathbf{\frac{nk}{N}}=\frac{n_1k_1}{N_1}+\frac{n_2k_2}{N_2}+\cdots+\frac{n_dk_d}{N_d}$，注意，在离散傅里叶逆变换的公式中，需要除以$\mathbf{N}$作标准化，上式中并没有体现出来，这点需要特别注意。与一维情况类似，实值输入数据的频域表示满足Hermite对称性，这意味着$x(n_1,n_2,\cdots,n_d)=x^H(N_1-n_1,N_2-n_2,\cdots,N_d-n_d)$。
-
-| Dims | FFT Type | input data size                         | output data size                        |
-| ---- | -------- | --------------------------------------- | --------------------------------------- |
-| 1D   | C2C      | $N$, cufftComplex                       | $N$, cufftComplex                       |
-| 1D   | R2C      | $N$, cufftReal                          | $\frac{N}{2}+1$, cufftComplex           |
-| 1D   | C2R      | $\frac{N}{2}+1$, cufftComplex           | $N$, cufftReal                          |
-| 2D   | C2C      | $N_1N_2$, cufftComplex                  | $N_1N_2$, cufftComplex                  |
-| 2D   | R2C      | $N_1N_2$, cufftReal                     | $N_1(\frac{N_2}{2}+1)$, cufftComplex    |
-| 2D   | C2R      | $N_1(\frac{N_2}{2}+1)$, cufftComplex    | $N_1N_2$, cufftReal                     |
-| 3D   | C2C      | $N_1N_2N_3$, cufftComplex               | $N_1N_2N_3$, cufftComplex               |
-| 3D   | R2C      | $N_1N_2N_3$, cufftReal                  | $N_1N_2(\frac{N_3}{2}+1)$, cufftComplex |
-| 3D   | C2R      | $N_1N_2(\frac{N_3}{2}+1)$, cufftComplex | $N_1N_2N_3$, cufftReal                  |
-
-R2C隐式地是正向变换，对于就地执行，输入数据需要填充到N/2+1个复数元素。C2R隐式地是逆向变换，对于就地执行，输入数据假定为N/2+1个复数元素。
-
-高级数据布局（advanced data layout）特性允许仅对输入数据的一部分进行转换，或者仅计算输出数据的一部分，可以通过cufftPlanMany()函数或cufftMakePlanMany()函数中的输入数据或输出数据的nembed、stride、dist参数进行设置。
-
-```c++
-cufftResult cufftPlanMany(
-    cufftHandle *plan, int rank, int *n,
+cufftResult cufftGetSize1d(cufftHandle handle, int nx, cufftType type, int batch, size_t *workSize);
+cufftResult cufftGetSize2d(cufftHandle handle, int nx, int ny, cufftType type, size_t *workSize);
+cufftResult cufftGetSize3d(cufftHandle handle, int nx, int ny, int nz, cufftType type, size_t *workSize);
+cufftResult cufftGetSizeMany(
+    cufftHandle handle, int rank, int *n,
     int *inembed, int istride, int idist,
     int *onembed, int ostride, int odist,
-    cufftType type, int batch
+    cufftType type, int batch, size_t *workArea
 );
 ```
 
-参数idist和odist，表示批量数据元素中，同一元素位置在两个批次之间的距离，也即一个批次的数据元素的数目。
+该系列函数用于评估在指定问题规模下，所需的工作缓冲区的空间大小，相比cufftEstimateXd()系列函数更准确。
 
-参数istride和ostride，表示最内层维度轴上，两个数据元素之间的距离，为1时则表示数据元素连续存储。
-
-参数inembed和onembed，表示数据元素在每个维度轴上的维数，即每个维度轴上的元素数目，使用索引0表示第一个维度轴（最外层），使用索引rank-1表示最后一个维度轴（最内层）。参数nembed[rank-1]表示最内层维度上采用stride跨步后有效元素的数目，而总数据的个数为nembed[rank-1]与stride之积。参数nembed[0]表示最外层维度上数据元素的数目，但提供的dist参数可以更高效取代该参数的功能，故通常忽略nembed[0]参数。
-
-参数n，表示完整数据元素在每个维度轴上的维数，即上述的$N_1N_2N_3$等值。值得注意的是，数据每个维度轴上的维数都应该小于等于inembed和onembed参数所指定的值。
-
-使用高级数据布局时，需要使用正确的元素数据类型，即cufftReal、cufftComplex、cufftDoubeReal、cufftDoubleComplex类型。值得注意的是，将inembed参数或onembed参数设置为NULL是一种特殊情况，将采用与n相同的值作为实参，这与基本数据布局相同，并且其他高级布局参数如stride或dist将被忽略。
-
-设批量数据中批量索引为batch，数据索引为[x,y,z]的元素，在采用高级数据布局时，实际访问的数据地址如下所示。
+> 注意，当维数不可分解为2,3,5,7的整数次幂之积时，由函数cufftEstimateXd()所评估的缓冲区空间大小可能仍然小于实际所需的空间，由函数cufftGetSizeXd()可返回更精确的缓冲区空间大小，但仍然可能是保守的。
 
 ```c++
-data[batch * dist + (x * nembed[1] * nembed[2] + y * nembed[2] + z) * stride]
+cufftResult cufftGetSize(cufftHandle handle, size_t *workSize);
 ```
 
-## 使用示例
-
-对于cufftExecR2C()和cufftExecC2R()函数的一个使用示例如下所示。
+该函数用于返回一个计划实际所需的缓冲区空间大小。一旦一个计划配置完毕，则其所需的缓冲区空间即被确定，该函数必须在计划配置完成后调用才有意义，用于手动管理工作缓冲区的场景。
 
 ```c++
-#include <stdio.h>
-#include <cuda.h>
-#include <cufft.h>
-
-__global__ void scale_kernel(cufftComplex* data, float factor, const int count) {
-    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (tid < count) {
-        data[tid].x *= factor;
-        data[tid].y *= factor;
-    }
-}
-
-int main(int argc, char *argv[]) {
-    int batch = 8;
-    int N1 = 256, N2 = 128;
-    cufftReal *h_input = (cufftReal*)malloc(batch * N1 * N2 * sizeof(cufftReal));
-    cufftReal *h_reslut = (cufftReal*)malloc(batch * N1 * N2 * sizeof(cufftReal));
-    for (int i = 0; i < batch * N1 * N2; i++) h_input[i] = i * 1.f / batch;
-    cufftReal *input, *result;
-    cufftComplex *intermediate;
-    cudaMalloc((cufftReal**)(&input), batch * N1 * N2 * sizeof(cufftReal));
-    cudaMalloc((cufftReal**)(&result), batch * N1 * N2 * sizeof(cufftReal));
-    cudaMalloc((cufftComplex**)(&intermediate), batch * N1 * (N2 / 2 + 1) * sizeof(cufftComplex));
-    cudaMemcpy(input, h_input, batch * N1 * N2 * sizeof(cufftReal), cudaMemcpyHostToDevice);
-
-    int N[2] = {N1, N2};
-    cufftHandle plan2D_r2c, plan2D_c2r;
-    cufftCreate(&plan2D_r2c);
-    cufftCreate(&plan2D_c2r);
-    // 构建plan配置
-    cufftPlanMany(&plan2D_r2c, 2, N, nullptr, 1, N1 * N2, nullptr, 1, N1 * (N2 / 2 + 1), CUFFT_R2C, batch);
-    cufftPlanMany(&plan2D_c2r, 2, N, nullptr, 1, N1 * (N2 / 2 + 1), nullptr, 1, N1 * N2, CUFFT_C2R, batch);
-    cufftExecR2C(plan2D_r2c, input, intermediate);   // 正变换
-    // 因为傅里叶逆变换需要除以N，故在变换之前先进行标准化，也可以在变换之后进行标准化
-    scale_kernel<<<(batch * N1 * (N2 / 2 + 1) + 127) / 128, 128>>>(
-        intermediate, 1.f / (N1 * N2), batch * N1 * (N2 / 2 + 1)
-    );
-    cufftExecC2R(plan2D_c2r, intermediate, result);  // 逆变换
-    cufftDestroy(plan2D_r2c);
-    cufftDestroy(plan2D_c2r);
-
-    bool all_same = true;
-    cudaMemcpy(h_reslut, result, batch * N1 * N2 * sizeof(cufftReal), cudaMemcpyDeviceToHost);
-    for (int i = 0; i < batch * N1 * N2; i++) {
-        if (abs(h_input[i] - h_reslut[i]) > 1.e-3) {
-            all_same = false;
-            break;
-        }
-    }
-    printf("The data are %s.\n", all_same ? "all same" : "not all same");
-
-    cudaFree(input);
-    cudaFree(result);
-    cudaFree(intermediate);
-    free(h_input);
-    free(h_reslut);
-    return 0;
-}
+cufftResult cufftSetAutoAllocation(cufftHandle plan, int autoAllocate);
 ```
+
+该函数用于设置是否自动为计划创建工作缓冲区。因为默认情况下工作缓冲区会在创建计划时分配，将值设置为0表示在创建计划时不再自动分配缓冲区，此时用户可手动设置并提供工作缓冲区。
+
+```c++
+cufftResult cufftSetWorkArea(cufftHandle plan, void *workArea);
+```
+
+该函数为一个计划设置工作缓冲区，如果该计划已经自动分配缓冲区，则cuFFT会首先释放掉已分配的工作缓冲区。cuFFT库假设该函数设置的工作缓冲区地址指针是合法的且不与其它地址空间重叠。
+
+## Transform
+
+```c++
+cufftResult cufftExecC2C(cufftHandle plan, cufftComplex       *idata, cufftComplex       *odata, int direction);
+cufftResult cufftExecR2C(cufftHandle plan, cufftReal          *idata, cufftComplex       *odata);
+cufftResult cufftExecC2R(cufftHandle plan, cufftComplex       *idata, cufftReal          *odata);
+cufftResult cufftExecZ2Z(cufftHandle plan, cufftDoubleComplex *idata, cufftDoubleComplex *odata, int direction);
+cufftResult cufftExecD2Z(cufftHandle plan, cufftDoubleReal    *idata, cufftDoubleComplex *odata);
+cufftResult cufftExecZ2D(cufftHandle plan, cufftDoubleComplex *idata, cufftDoubleReal    *odata);
+```
+
+该系列函数执行傅里叶变换，包括复数到复数C2C变换、实数到复数R2C变换（隐式地为正向变换）、复数到实数C2R变换（隐式地为逆向变换）。其中，参数direction指示通用变换的方向，使用CUFFT_FORWARD表示正向变换，使用CUFFT_INVERSE表示逆向变换。
 
 # CUTLASS
 
