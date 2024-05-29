@@ -2119,8 +2119,11 @@ typedef enum cufftXtCallbackType_t {
 
 # CUTLASS
 
-CUTLASS是CUDA Templates for Linear Algebra Subroutines and Solvers的缩写，是基于CUDA运行时的线性代数例程与求解器的C++抽象模板库，用于实现高性能的矩阵乘法GEMM及其相关计算。除GEMM之外，CUTLASS通过隐式GEMM算法实现高性能的卷积操作。
+> 文档可参阅https://github.com/NVIDIA/cutlass/tree/main/media/docs网址。
 
-CUTLASS其采用与cuBLAS和cuDNN相似的层级分解与数据移动策略，并将这些功能组件实现为C++模板类。通过自定义Tile大小、数据类型、算法策略，可以对并行层级分解中的不同层级的基本操作（primitive）进行定制和微调。为支持各种应用，CUTLASS提供对特定数据移动、乘法累加（multiply-accumulate）抽象的混合精度支持，包括FP16、BF16、Tensor Float 32，FP32、FP64，以及整型和二进制数据类型。
+CUTLASS是CUDA Templates for Linear Algebra Subroutines and Solvers的缩写，是基于CUDA运行时的线性代数例程与求解器的C++抽象模板库，用于实现高性能的矩阵乘法GEMM及其相关计算。除通用矩阵乘法之外，CUTLASS通过隐式GEMM算法实现高性能的卷积操作。
 
-CUTLASS 3.0引入一个新的核心库CuTe，是一个C++抽象模板的集合，用于对线程和数据的层级多维布局进行定义和操作。CuTe提供Layout和Tensor对象，将类型、形状、内存空间、数据布局等概念结合在一起，为用户执行复杂的索引操作。CuTe的核心抽象是层级多维布局（hierarchically multidimensional layout），可以与数据数组一起表示张量。在CUTLASS 3.0及之后的版本中，大量采用CuTe以简化设计并提高代码可读性。
+CUTLASS其采用与cuBLAS和cuDNN相似的层级分解（hierarchical decomposition）与数据移动策略，并将这些功能组件实现为C++模板类。通过自定义Tile大小、数据类型、算法策略，可以对并行层级分解中的不同层级的基本操作（primitive）进行定制和微调。为支持各种应用，CUTLASS提供对特定数据移动、乘法累加（multiply-accumulate）抽象的混合精度支持，包括FP16、BF16、Tensor Float 32，FP32、FP64，以及整型和二进制数据类型。
+
+CUTLASS 3.0引入一个新的核心库CuTe，是一个C++抽象模板的集合，用于对线程和数据的层级多维布局进行定义和操作。CuTe提供Layout和Tensor对象，将类型、形状、内存空间、数据布局等概念结合在一起，为用户执行复杂的索引操作。CuTe的核心抽象是层级多维布局（hierarchically multidimensional layout），可以与数据数组一起表示张量。在CUTLASS 3.0及之后的版本中，广泛使用CuTe以简化设计并提高代码可读性。可参阅[CuTe文档](https://github.com/NVIDIA/cutlass/tree/main/media/docs/cute)描述。
+
