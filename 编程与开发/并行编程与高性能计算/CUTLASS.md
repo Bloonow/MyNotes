@@ -10,7 +10,7 @@ CUTLASS 3.0引入一个新的核心库CuTe，是一个C++模板的集合，用�
 
 ## Code Organization
 
-注意，CUTLASS模板库的内容位于cutlass命名空间，CuTe模板库的内容位于cute命名空间。
+注意，CUTLASS模板库的内容位于cutlass命名空间，CuTe模板库的内容位于cute命名空间，且其子目录下的定义进一步位于子命名空间当中。
 
 CUTLASS Template Library是线性代数例程与求解器CUDA模板库，仅提供头文件；CuTe Template Library由CUTLASS模板库的核心术语构成，包括布局类型和相关操作，仅提供头文件。若要使用CUTLASS模板库，应该将顶层include目录添加到编译器的头文件搜索路径。
 
@@ -272,6 +272,101 @@ struct multiply_add {
 
 其中，CUTLASS扩展了multiply_add\<T\>的定义，支持复数complex\<T\>类型的乘加操作，并尽可能调用本地硬件指令。
 
+## Layouts and Tensors
+
+> 注意，本节讨论的布局仅用于CUTLASS 2.x版本，在CUTLASS 3.x版本中，使用cute::Layout<Shape,Stride>的概念描述线程和数据张量的布局。
+
+张量是一个多维对象，由内存中多维的数值元素数组表示。例如，二维矩阵通常用于经典数值计算，多维张量通常用于深度学习任务等。本节描述CUTLASS库的设计，如何使用Layout概念将逻辑索引空间映射到内存布局，如何使用TensorRef和TensorView概念间接访问内存中的张量元素。同时，CUTLASS提供一些与C++标准库一致的概念；size指张量的元素总数；capacity指实际存储的元素总数；rank指张量逻辑维度的数目；extent指张量每个维度上的维数。
+
+布局Layout将逻辑索引空间映射到内存空间中存储位置的实际偏移，并存储用于计算映射的状态，定义其它CUTLASS组件需要使用的部分实例化。
+
+在cutlass/layout目录的若干头文件中，提供各种布局类型的定义。例如cutlass/layout/vector.h头文件、cutlass/layout/matrix.h头文件、cutlass/layout/tensor.h头文件等，还有cutlass/layout/permute.h头文件提供变换概念的定义。一个通用设计如下。
+
+```c++
+struct LayoutConcept {
+    static const int kRank;                        // Logical rank of tensor
+    static const int kStrideRank;                  // Rank of stride vector
+    using Index = int32_t;                         // Index type used for coordinates
+    using LongIndex = int64_t;                     // Long index type used for offsets
+    using TensorCoord = Coord<kRank, Index>;       // Logical coordinate
+    using Stride = Coord<kStrideRank, LongIndex>;  // Stride object
+    Stride stride_;                                // Stride data member  
+    ColumnMajor(LongIndex ldm = 0): stride_(ldm) {}          // Constructor with leading dimension
+    ColumnMajor(Stride stride): stride_(stride) {}           // Constructor
+    static LayoutConcept packed(const TensorCoord &extent);  // Return a layout to a tightly packed tensor
+    LongIndex operator()(const TensorCoord &coord) const;    // Return the offset of a coordinate in linear memory
+    TensorCoord inverse(LongIndex offset) const;             // mapping linear offset to logical coordinate
+    Stride stride() const();                                 // Returns the stride of the layout
+    LongIndex capacity(const TensorCoord &extent) const;     // The number of contiguous elements needed to store a tensor
+};
+```
+
+在cuBLAS库中，存在前导维数的概念，在默认采用列主序存储的矩阵布局时，这意味着矩阵元素{rid,cid}具有值为rid+cid\*ld的偏移，等价于CUTLASS提供的ColumnMajor布局类型；同时CUTLASS也提供RowMajor等布局类型，如下所示。
+
+```c++
+void demo() {
+    int64_t ld = 32;
+    ColumnMajor col_layout(ld);
+    RowMajor    row_layout(ld);
+    int64_t col_offset = col_layout({7, 23});  // rid + cid * ld
+    int64_t row_offset = row_layout({7, 23});  // rid * ld + cid
+    printf("%ld, %ld\n", col_offset, row_offset);  // 743, 247
+}
+```
+
+在上述两种情况下，逻辑坐标{rid,cid}表示矩阵中同一个元素，这允许采用逻辑索引空间的算法实现保持通用性，并由Layout提供到实际存储位置的映射。
+
+在cutlass/tensor_ref.h头文件中，提供TensorRef\<T,Layout\>结构体的定义，该结构体持有一个张量的数据地址指针以及布局对象，用于访问张量元素，可作为函数参数传递，如下所示。
+
+```c++
+template<typename Element, typename Layout>
+class TensorRef {
+    using Reference = Element&;
+    Element* ptr_;   // Pointer
+    Layout layout_;  // Layout object maps logical coordinates to linear offsets
+    TensorRef(Element *ptr, const Layout &layout): ptr_(ptr), layout_(layout) {}  // Constructs a TensorRef
+    // Returns the pointer to referenced data
+    Element* data() const { return ptr_; }
+    // Returns a reference to the element at a given linear index
+    Reference data(LongIndex idx) const { return ptr_[idx]; }
+    // Computes the offset of an index from the origin of the tensor
+    LongIndex offset(const TensorCoord &coord) const { return layout_(coord); }
+    // Returns a reference to the element at a given Coord
+    Reference operator[](const TensorCoord &coord) const { return data(offset(coord)); }
+};
+```
+
+在cutlass/tensor_view.h头文件中，提供TensorView\<T,Layout\>类的定义，用于描述线性代数计算中固定有限维的张量。该类继承自TensorRef\<T,Layout\>结构体，并提供extent()方法获得某个特定维度轴上的维数，如下所示。
+
+```c++
+template<typename Element, typename Layout>
+class TensorView : public TensorRef<Element, Layout> {
+    using Base = cutlass::TensorRef<Element, Layout>;
+    using TensorCoord = typename Layout::TensorCoord;
+    TensorCoord extent_;  // View extent
+    // Constructs a TensorView object
+    TensorView(Element *ptr, const Layout &layout, const TensorCoord &extent): Base(ptr, layout), extent_(extent) {}
+    TensorView(const TensorRef &ref, const TensorCoord &extent): Base(ref), extent_(extent) {}
+    const TensorCoord& extent() const { return extent_; }  // Returns the extent of the view
+};
+```
+
+使用TensorRef或TensorView访问张量元素的示例如下所示。
+
+```c++
+void demo() {
+    int8_t *ptr = (int8_t*)malloc(sizeof(int8_t) * 16 * 9);
+    for (int i = 0; i < 16 * 9; ptr[i++] = i);
+    TensorView<int8_t, ColumnMajor> view(ptr, ColumnMajor(16), MatrixCoord(16, 9));
+    if (view.contains({9, 5})) {
+        printf("%d\n", view[{9, 5}]);  // 89
+    }
+    free(ptr);
+}
+```
+
+注意，使用一个问题规模，以及每个操作数的TensorRef对象，可以避免在确定计算操作时的一些过度冗余指定。
+
 # Efficient GEMM in CUDA
 
 计算矩阵乘法的三层嵌套循环可以进行分块（blocked）与分片（tiled）以使用并行编程模式来匹配硬件的并发性、内存局部性。CUTLASS将通用矩阵乘法GEMM映射到GPU设备上，并使用CUDA并行编程模型，伪代码如下所示。
@@ -367,3 +462,4 @@ for (int bk = 0; bk < gemmK; bk += blockK)  // GEMM mainloop, no unrolling; one 
 ## Device-wide GEMM API
 
 设备层级接口在主机端代码中使用，用于在GPU设备上启动标准GEMM计算，与cuBLAS库相似。
+
