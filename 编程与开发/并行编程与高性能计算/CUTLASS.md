@@ -128,7 +128,7 @@ CUTLASS会额外定义一些数值类型与容器类型，而多数CUTLASS基本
 ```c++
 template<typename T, int N, bool RegisterSized = sizeof_bits<T>::value >= 32> struct Array;
 template<typename T, int N>
-struct Array<T,N,true> {
+struct Array<T, N, true> {
     static constexpr size_t kElements = N;
     using Storage = T;
     Storage storage[kElements];
@@ -151,7 +151,7 @@ AlignedArray\<T,N\>是一个固定大小的数组，可指定其内存空间按�
 ```c++
 template<typename T, int N, int Align = 16>
 struct AlignedBuffer {
-    static const int kBytes = (sizeof_bits<T>::value * N + 7) / 8;
+    static int const kBytes = (sizeof_bits<T>::value * N + 7) / 8;
     using Storage = uint8_t;
     alignas(Align) Storage storage[kBytes];
     typedef T value_type;
@@ -188,9 +188,9 @@ template<typename T, typename S, FloatRoundStyle Round = FloatRoundStyle::round_
 struct NumericConverter {
     using result_type = T;
     using source_type = S;
-    static const FloatRoundStyle round_style = Round;
-    static result_type convert(const source_type &s) { return static_cast<result_type>(s); }
-    result_type operator()(const source_type &s) const { return convert(s); }
+    static FloatRoundStyle const round_style = Round;
+    static result_type convert(source_type const &s) { return static_cast<result_type>(s); }
+    result_type operator()(source_type const &s) const { return convert(s); }
 };
 ```
 
@@ -198,7 +198,7 @@ NumericConverter\<T,S\>会尽可能地在目标架构上使用硬件加速，并
 
 ```c++
 void convert_demo() {
-    const int kN = 16;
+    int const kN = 16;
     Array<int8_t, kN> destination;
     Array<int, kN> source;
     NumericArrayConverter<int8_t, int, kN> convert;
@@ -211,7 +211,7 @@ void convert_demo() {
 ```c++
 template<int Rank, typename Index = int, typename LongIndex = int64_t>
 struct Coord {
-    static const int kRank = Rank;
+    static int const kRank = Rank;
     Index idx[kRank];
     Index& operator[](int dim) { return idx[dim]; }
 };
@@ -223,16 +223,16 @@ Coord\<Rank\>是一个通用的逻辑坐标，可用于张量中的索引下标�
 
 ```c++
 struct MatrixCoord : public Coord<2, int> {
-    static const int kRow = 0;
-    static const int kColumn = 1;
+    static int const kRow = 0;
+    static int const kColumn = 1;
     Index& row() { return this->at(kRow); }
     Index& column() { return this->at(kColumn); }
 };
 struct Tensor4DCoord : public Coord<4> {
-    static const int kN = 0;
-    static const int kH = 1;
-    static const int kW = 2;
-    static const int kC = 3;
+    static int const kN = 0;
+    static int const kH = 1;
+    static int const kW = 2;
+    static int const kC = 3;
     Index& n() { return this->at(kN); }
     Index& h() { return this->at(kH); }
     Index& w() { return this->at(kW); }
@@ -264,7 +264,7 @@ PredicateVector是一个由谓词构成的固定长度的向量，也即掩码�
 ```c++
 template<typename A, typename B = A, typename C = A>
 struct multiply_add {
-    C operator()(const A &a, const B &b, const C &c) const {
+    C operator()(A const &a, B const &b, C const &c) const {
 		return C(a) * C(b) + c;
     }
 };
@@ -284,8 +284,8 @@ struct multiply_add {
 
 ```c++
 struct LayoutConcept {
-    static const int kRank;                        // Logical rank of tensor
-    static const int kStrideRank;                  // Rank of stride vector
+    static int const kRank;                        // Logical rank of tensor
+    static int const kStrideRank;                  // Rank of stride vector
     using Index = int32_t;                         // Index type used for coordinates
     using LongIndex = int64_t;                     // Long index type used for offsets
     using TensorCoord = Coord<kRank, Index>;       // Logical coordinate
@@ -293,11 +293,11 @@ struct LayoutConcept {
     Stride stride_;                                // Stride data member  
     ColumnMajor(LongIndex ldm = 0): stride_(ldm) {}          // Constructor with leading dimension
     ColumnMajor(Stride stride): stride_(stride) {}           // Constructor
-    static LayoutConcept packed(const TensorCoord &extent);  // Return a layout to a tightly packed tensor
-    LongIndex operator()(const TensorCoord &coord) const;    // Return the offset of a coordinate in linear memory
+    static LayoutConcept packed(TensorCoord const &extent);  // Return a layout to a tightly packed tensor
+    LongIndex operator()(TensorCoord const &coord) const;    // Return the offset of a coordinate in linear memory
     TensorCoord inverse(LongIndex offset) const;             // mapping linear offset to logical coordinate
     Stride stride() const();                                 // Returns the stride of the layout
-    LongIndex capacity(const TensorCoord &extent) const;     // The number of contiguous elements needed to store a tensor
+    LongIndex capacity(TensorCoord const &extent) const;     // The number of contiguous elements needed to store a tensor
 };
 ```
 
@@ -324,15 +324,15 @@ class TensorRef {
     using Reference = Element&;
     Element* ptr_;   // Pointer
     Layout layout_;  // Layout object maps logical coordinates to linear offsets
-    TensorRef(Element *ptr, const Layout &layout): ptr_(ptr), layout_(layout) {}  // Constructs a TensorRef
+    TensorRef(Element *ptr, Layout const &layout): ptr_(ptr), layout_(layout) {}  // Constructs a TensorRef
     // Returns the pointer to referenced data
     Element* data() const { return ptr_; }
     // Returns a reference to the element at a given linear index
     Reference data(LongIndex idx) const { return ptr_[idx]; }
     // Computes the offset of an index from the origin of the tensor
-    LongIndex offset(const TensorCoord &coord) const { return layout_(coord); }
+    LongIndex offset(TensorCoord const &coord) const { return layout_(coord); }
     // Returns a reference to the element at a given Coord
-    Reference operator[](const TensorCoord &coord) const { return data(offset(coord)); }
+    Reference operator[](TensorCoord const &coord) const { return data(offset(coord)); }
 };
 ```
 
@@ -345,16 +345,16 @@ class TensorView : public TensorRef<Element, Layout> {
     using TensorCoord = typename Layout::TensorCoord;
     TensorCoord extent_;  // View extent
     // Constructs a TensorView object
-    TensorView(Element *ptr, const Layout &layout, const TensorCoord &extent): Base(ptr, layout), extent_(extent) {}
-    TensorView(const TensorRef &ref, const TensorCoord &extent): Base(ref), extent_(extent) {}
-    const TensorCoord& extent() const { return extent_; }  // Returns the extent of the view
+    TensorView(Element *ptr, Layout const &layout, TensorCoord const &extent): Base(ptr, layout), extent_(extent) {}
+    TensorView(TensorRef const &ref, TensorCoord const &extent): Base(ref), extent_(extent) {}
+    TensorCoord const& extent() const { return extent_; }  // Returns the extent of the view
 };
 ```
 
 使用TensorRef或TensorView访问张量元素的示例如下所示。
 
 ```c++
-void demo() {
+void tensor_view_demo() {
     int8_t *ptr = (int8_t*)malloc(sizeof(int8_t) * 16 * 9);
     for (int i = 0; i < 16 * 9; ptr[i++] = i);
     TensorView<int8_t, ColumnMajor> view(ptr, ColumnMajor(16), MatrixCoord(16, 9));

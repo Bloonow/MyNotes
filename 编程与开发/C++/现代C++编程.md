@@ -749,6 +749,8 @@ int main() {
 }
 ```
 
+> 在旧式C++编程风格中，常量限定符const通常位于类型左侧，例如const int *var；而在新式C++编程风格中，会将const置于类型右侧，例如int const *var表示一个指向常量值的指针，其表示更清晰。
+
 ### reinterpret_cast
 
 运算符`reinterpret_cast<type_id>`用于对位进行简单的重新解释（simple reinterpretation of bit），允许将任何指针转换为任何其他指针类型，也允许将任何整数类型转换为任何指针类型以及反向转换。滥用reinterpret_cast运算符可能很容易带来风险。
