@@ -343,12 +343,10 @@ class TensorRef {
 ```c++
 template<typename Element, typename Layout>
 class TensorView : public TensorRef<Element, Layout> {
-    using Base = cutlass::TensorRef<Element, Layout>;
     using TensorCoord = typename Layout::TensorCoord;
     TensorCoord extent_;  // View extent
     // Constructs a TensorView object
     TensorView(Element *ptr, Layout const &layout, TensorCoord const &extent): Base(ptr, layout), extent_(extent) {}
-    TensorView(TensorRef const &ref, TensorCoord const &extent): Base(ref), extent_(extent) {}
     TensorCoord const& extent() const { return extent_; }  // Returns the extent of the view
 };
 ```
