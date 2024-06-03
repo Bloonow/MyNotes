@@ -1293,19 +1293,19 @@ typedef enum {
 } cublasLtEpilogue_t;
 ```
 
-类型cublasLtEpilogue_t，表示矩阵乘法的后置操作，如下表所示。即在矩阵乘法cublasLtMatmul()计算得到结果之后，函数调用结束之前，对矩阵乘法结果所要执行的可选后置操作；将执行后置操作之后的最终结果写回到输出矩阵C或D当中。需要注意的是，许多后置操作会产生额外输出或者会用到额外输入。若无特殊说明，通常使用cublasLtMatmulDescAttributes_t类型的CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER属性设置额外输入或输出的地址指针，并且需要使用CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_LD属性设置额外输入或输出的前导维数；而对于与Bias偏差向量相关的额外输入或输出，通常使用cublasLtMatmulDescAttributes_t类型的CUBLASLT_MATMUL_DESC_BIAS_POINTER属性设置额外输入或输出的地址指针。
+类型cublasLtEpilogue_t，表示矩阵乘法的结尾操作，如下表所示。即在矩阵乘法cublasLtMatmul()计算得到结果之后，函数调用结束之前，对矩阵乘法结果所要执行的可选结尾操作；将执行结尾操作之后的最终结果写回到输出矩阵C或D当中。需要注意的是，许多结尾操作会产生额外输出或者会用到额外输入。若无特殊说明，通常使用cublasLtMatmulDescAttributes_t类型的CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER属性设置额外输入或输出的地址指针，并且需要使用CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_LD属性设置额外输入或输出的前导维数；而对于与Bias偏差向量相关的额外输入或输出，通常使用cublasLtMatmulDescAttributes_t类型的CUBLASLT_MATMUL_DESC_BIAS_POINTER属性设置额外输入或输出的地址指针。
 
-> 注意，凡是涉及到额外输入输出缓冲区的后置操作，此时必须要求矩阵乘法结果的输出矩阵按照列主序存储，目前暂不支持行主序存储，否则会发生未定义行为。并且，无论是CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER额外存储空间，还是CUBLASLT_MATMUL_DESC_BIAS_POINTER额外存储空间，都需要以列主序的方式存储。
+> 注意，凡是涉及到额外输入输出缓冲区的结尾操作，此时必须要求矩阵乘法结果的输出矩阵按照列主序存储，目前暂不支持行主序存储，否则会发生未定义行为。并且，无论是CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER额外存储空间，还是CUBLASLT_MATMUL_DESC_BIAS_POINTER额外存储空间，都需要以列主序的方式存储。
 
 | cublasLtEpilogue_t类型          | 描述                                                         |
 | ------------------------------- | ------------------------------------------------------------ |
-| CUBLASLT_EPILOGUE_DEFAULT       | 无特殊后置操作，仅在必要时执行缩放或量化操作                 |
+| CUBLASLT_EPILOGUE_DEFAULT       | 无特殊结尾操作，仅在必要时执行缩放或量化操作                 |
 | CUBLASLT_EPILOGUE_RELU          | 应用逐元素的ReLU变换                                         |
 | CUBLASLT_EPILOGUE_RELU_AUX      | 应用逐元素的ReLU变换，产生额外输出，即ReLU位掩码矩阵（bit-mask matrix）；ReLU位掩码矩阵没有数据类型的概念，只是二进制位矩阵，每个有效二进制位都对应输出矩阵的一个元素；置位1表示对应矩阵元素大于等于0未被ReLU过滤，置位0表示对应矩阵元素小于0已被ReLU过滤；二进制矩阵以列主序的方式存储，每列即是一个二进制位序列，根据系统配置会以小端序或大端序在内存中存储；在实现上，要求二进制矩阵按列主序存储的前导维数，应该大于等于结果输出矩阵的行数，且应该是128的整数倍，以用于地址对齐 |
-| CUBLASLT_EPILOGUE_BIAS          | 添加Bias偏差向量，以广播形式将偏差向量添加到结果矩阵的每一列，然后可能会执行其它后置操作；Bias偏差向量长度等于结果矩阵D的行数，且向量元素连续存储，由CUBLASLT_MATMUL_DESC_BIAS_POINTER指定 |
+| CUBLASLT_EPILOGUE_BIAS          | 添加Bias偏差向量，以广播形式将偏差向量添加到结果矩阵的每一列，然后可能会执行其它结尾操作；Bias偏差向量长度等于结果矩阵D的行数，且向量元素连续存储，由CUBLASLT_MATMUL_DESC_BIAS_POINTER指定 |
 | CUBLASLT_EPILOGUE_RELU_BIAS     | 添加Bias偏差向量，然后应用逐元素的ReLU变换                   |
 | CUBLASLT_EPILOGUE_RELU_AUX_BIAS | 添加Bias偏差向量，然后应用逐元素的ReLU变换，产生额外的输出，即ReLU位掩码矩阵 |
-| CUBLASLT_EPILOGUE_DRELU         | 应用ReLU梯度，需要额外输入，即正向过程中的ReLU位掩码矩阵；用于反向过程，假设正向过程存在B=ReLU(A)计算，并根据A产生ReLU位掩码矩阵，则在反向过程中使用cublasLtMatmul()计算矩阵B的梯度G~B~时，此后置操作可以对G~B~进一步应用ReLU梯度，并根据ReLU位掩码矩阵，求得矩阵A的梯度G~A~并输出 |
+| CUBLASLT_EPILOGUE_DRELU         | 应用ReLU梯度，需要额外输入，即正向过程中的ReLU位掩码矩阵；用于反向过程，假设正向过程存在B=ReLU(A)计算，并根据A产生ReLU位掩码矩阵，则在反向过程中使用cublasLtMatmul()计算矩阵B的梯度G~B~时，此结尾操作可以对G~B~进一步应用ReLU梯度，并根据ReLU位掩码矩阵，求得矩阵A的梯度G~A~并输出 |
 | CUBLASLT_EPILOGUE_DRELU_BGRAD   | 应用ReLU梯度和Bias梯度，需要额外收入，即正向过程中的ReLU位掩码矩阵；ReLU梯度存储到输出矩阵，Bias梯度存储到额外输出，由CUBLASLT_MATMUL_DESC_BIAS_POINTER指定 |
 | CUBLASLT_EPILOGUE_GELU          | 应用逐元素的GeLU变换                                         |
 | CUBLASLT_EPILOGUE_GELU_AUX      | 应用逐元素的GeLU变换，产生额外输出，即GeLU输入矩阵，也即矩阵乘法结果；在实现上，要求GeLU输入矩阵按列主序存储的前导维数，应该大于等于结果输出矩阵的行数，且应该是8的整数倍，以用于地址对齐 |
@@ -1457,7 +1457,7 @@ typedef enum {
 | --------------------------------------------- | ----------------- | ------------------------------------------------------------ |
 | CUBLASLT_ALGO_CAP_SPLITK_SUPPORT              | int32_t           | 是否支持split-K算法，值0不支持，其它值支持                   |
 | CUBLASLT_ALGO_CAP_REDUCTION_SCHEME_MASK       | uint32_t          | 所支持的归约模式的掩码，未被掩码屏蔽的模式即是所支持的模式，归约模式由cublasLtReductionScheme_t类型指定 |
-| CUBLASLT_ALGO_CAP_CTA_SWIZZLING_SUPPORT       | uint32_t          | 是否支持线程块重排（CTA-swizzling），值0不支持，值1支持      |
+| CUBLASLT_ALGO_CAP_CTA_SWIZZLING_SUPPORT       | uint32_t          | 是否支持线程块布局排列（CTA-swizzling），值0不支持，值1支持  |
 | CUBLASLT_ALGO_CAP_STRIDED_BATCH_SUPPORT       | int32_t           | 是否支持批量跨步算法，值0不支持，其它值支持                  |
 | CUBLASLT_ALGO_CAP_OUT_OF_PLACE_RESULT_SUPPORT | int32_t           | 是否支持非就地（out-of-place）算法，值0不支持，其它值支持    |
 | CUBLASLT_ALGO_CAP_UPLO_SUPPORT                | int32_t           | 是否支持syrk与herk更新，值0不支持，其它值支持                |
@@ -1468,7 +1468,7 @@ typedef enum {
 | CUBLASLT_ALGO_CAP_GAUSSIAN_IMPL               | int32_t           | 是否实现复数矩阵乘法的高斯优化，值0为标准计算，值1为高斯优化，已弃用 |
 | CUBLASLT_ALGO_CAP_CUSTOM_MEMORY_ORDER         | int32_t           | 是否支持自定义内存布局，值0为仅支持行主序或列主序，值1为支持cublasLtOrder_t的不同内存布局 |
 | CUBLASLT_ALGO_CAP_POINTER_MODE_MASK           | uint32_t          | 所支持的指针模式的掩码，指针模式由cublasLtPointerModeMask_t类型指定 |
-| CUBLASLT_ALGO_CAP_EPILOGUE_MASK               | uint32_t          | 所支持后置操作的掩码，后置操作由cublasLtEpilogue_t类型指定   |
+| CUBLASLT_ALGO_CAP_EPILOGUE_MASK               | uint32_t          | 所支持结尾操作的掩码，结尾操作由cublasLtEpilogue_t类型指定   |
 | CUBLASLT_ALGO_CAP_LD_NEGATIVE                 | uint32_t          | 是否支持负数作为ld前导维数，值0不支持，其它值支持            |
 | CUBLASLT_ALGO_CAP_NUMERICAL_IMPL_FLAGS        | uint64_t          | 影响数值行为的算法实现的详细信息，由cublasLtNumericalImplFlags_t类型指定 |
 | CUBLASLT_ALGO_CAP_MIN_ALIGNMENT_A_BYTES       | uint32_t          | 矩阵A所要求的最小对齐字节数                                  |
@@ -1499,7 +1499,7 @@ typedef enum {
 | CUBLASLT_ALGO_CONFIG_TILE_ID             | uint32_t | tile分片策略的编号，由cublasLtMatmulTile_t类型指定           |
 | CUBLASLT_ALGO_CONFIG_SPLITK_NUM          | uint32_t | 进行split-K划分的数目，若划分数大于1，则SPLIT_NUM个部分矩阵乘法同时执行，其结果根据CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME所指定的模式执行归约 |
 | CUBLASLT_ALGO_CONFIG_REDUCTION_SCHEME    | uint32_t | 当split-K划分的数目大于1时，所使用的归约模式，由cublasLtReductionScheme_t类型指定 |
-| CUBLASLT_ALGO_CONFIG_CTA_SWIZZLING       | uint32_t | 启用或关闭线程块重排（CTA-swizzling），会改变CUDA线程坐标所映射到的矩阵块 |
+| CUBLASLT_ALGO_CONFIG_CTA_SWIZZLING       | uint32_t | 启用或关闭线程块布局排列（CTA-swizzling），会改变CUDA线程坐标所映射到的矩阵块 |
 | CUBLASLT_ALGO_CONFIG_CUSTOM_OPTION       | uint32_t | 自定义选项值，每个算法能支持一些自定义选项，这些选项不至于作为通用属性描述 |
 | CUBLASLT_ALGO_CONFIG_STAGES_ID           | uint32_t | stage阶段策略的编号，由cublasLtMatmulStages_t类型指定        |
 | CUBLASLT_ALGO_CONFIG_INNER_SHAPE_ID      | uint16_t | 内部形状编号，由cublasLtMatmulInnerShape_t类型指定           |
@@ -1613,8 +1613,8 @@ typedef enum {
 | CUBLASLT_MATMUL_DESC_TRANSB                     | int32_t  | 在矩阵乘法之前对矩阵B所执行的变换操作，由cublasOperation_t类型指定 |
 | CUBLASLT_MATMUL_DESC_TRANSC                     | int32_t  | 在矩阵乘法之前对矩阵C所执行的变换操作，由cublasOperation_t类型指定，目前只支持CUBLAS_OP_N操作 |
 | CUBLASLT_MATMUL_DESC_FILL_MODE                  | int32_t  | 矩阵元素的填充部分，即矩阵的哪一部分参与计算，可以是矩阵的下三角部分或上三角部分，或整个矩阵的元素，由cublasFillMode_t类型指定 |
-| CUBLASLT_MATMUL_DESC_EPILOGUE                   | uint32_t | 表示矩阵乘法的后置操作，由cublasLtEpilogue_t类型指定         |
-| CUBLASLT_MATMUL_DESC_BIAS_POINTER               | void\*   | Bias偏差向量或Bias梯度的设备内存地址指针，用于cublasLtEpilogue_t设置为某些与Bias偏差向量相关后置操作时的情况 |
+| CUBLASLT_MATMUL_DESC_EPILOGUE                   | uint32_t | 表示矩阵乘法的结尾操作，由cublasLtEpilogue_t类型指定         |
+| CUBLASLT_MATMUL_DESC_BIAS_POINTER               | void\*   | Bias偏差向量或Bias梯度的设备内存地址指针，用于cublasLtEpilogue_t设置为某些与Bias偏差向量相关结尾操作时的情况 |
 | CUBLASLT_MATMUL_DESC_BIAS_BATCH_STRIDE          | int64_t  | 使用批量跨步Bias向量的情况，两个相邻向量的存储位置之间的跨步差距 |
 | CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_POINTER       | void\*   | 额外输入或输出的设备内存地址指针，用于cublasLtEpilogue_t设置为某些会产生额外输出或会使用额外输入时的情况，需要同时设置CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_LD属性 |
 | CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_LD            | int64_t  | 额外输入或输出的前导维数，为地址对齐，在ReLU情况时应是128的整数倍，在GeLU情况时应是8的整数倍 |
