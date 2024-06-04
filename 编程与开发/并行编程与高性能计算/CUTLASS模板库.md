@@ -90,10 +90,10 @@ CUTLASS 3.0引入一个新的核心库CuTe，是一个C++模板的集合，用�
 
 使用Index表示某个逻辑维度轴上的索引，使用Extent表示某个逻辑维度轴上的逻辑维数，使用Rank表示维度轴的数目，使用Size表示全部逻辑元素的数目；使用LongIndex表示在内存空间中存储位置的线性偏移，使用Capacity表示多维对象在内存中实际需要存储的元素数目，包括填充元素。
 
-## CUTLASS
+# CUTLASS Template
 
 ```shell
-cutlass  # CUTLASS Template Library
+cutlass      # CUTLASS Template Library
 ├── *            # fundamental types
 ├── layout       # layout for matrices, tensors, and other mathematical objects in memory
 ├── arch         # direct exposure of architecture features (including instruction-level GEMMs)
@@ -109,7 +109,7 @@ cutlass  # CUTLASS Template Library
 └── transform    # code specialized for layout, type, and domain transformations
 ```
 
-### Fundamental Types
+## Fundamental Types
 
 CUTLASS会额外定义一些数值类型与容器类型，而多数CUTLASS基本类型与C++标准库类型一致，并可用于主机代码和设备代码，且与设备的计算能力无关。需要注意的是，一些类型或函数在较低的架构上并不支持，例如较旧的CUDA不支持hrsqrt函数，可以在编译时使用-arch=sm_89指定目标架构。
 
@@ -274,7 +274,7 @@ struct multiply_add {
 
 其中，CUTLASS扩展了multiply_add\<T\>的定义，支持复数complex\<T\>类型的乘加操作，并尽可能调用本地硬件指令。
 
-### Layouts and Tensors
+## Layouts and Tensors
 
 > 注意，本节讨论的布局仅用于CUTLASS 2.x版本，在CUTLASS 3.x版本中，使用cute::Layout<Shape,Stride>的概念描述线程和数据张量的布局。
 
@@ -367,9 +367,38 @@ void tensor_view_demo() {
 
 注意，使用一个问题规模，以及每个操作数的TensorRef对象，可以避免在确定计算操作时的一些过度冗余指定。
 
-## CuTe
+# CuTe Template
+
+```shell
+cute       # CuTe Template Library, CuTe Layout, layout algebra, MMA/Copy atoms, tiled MMA/Copy
+├── *          # Core library types such as Shape, Stride, Layout, Tensor, and associated operations
+├── numeric    # CuTe's internal numerics implementation
+├── atom       # Meta-information either link to or built from arch/ operators
+├── arch       # Bare bones PTX wrapper structs for copy and math instructions
+├── container  # Core container types used across CuTe, namely, cute::tuple
+└── algorithm  # Definitions of core operations such as copy, gemm, and operations on cute::tuples
+```
 
 # CUTLASS GEMM API
 
-# CuTe GEMM API
+根据层级划分，CUTLASS抽象出每个层级的矩阵乘法累加（matrix multiply-accumulate，MMA）操作，包括设备、线程块、线程束、线程、指令层级。下述伪代码展示的是使用线程束同步矩阵乘法指令（如mma.sync）的通用矩阵乘法kernel模型，整个操作称为Gemm操作，并假设结尾操作只执行矩阵更新。
 
+```c++
+// cutlass::gemm::device::Gemm
+for (int bn = 0; bn < gemmN; bn += blockN)  // for each Block
+for (int bm = 0; bm < gemmM; bm += blockM)  // for each Block
+for (int bk = 0; bk < gemmK; bk += blockK)  // GEMM mainloop, no unrolling; one iteration is one "stage"
+    // cutlass::gemm::threadblock::Mma
+    for (int wn = 0; wn < blockN; wn += warpN)  // for each Warp
+    for (int wm = 0; wm < blockM; wm += warpM)  // for each Warp
+    for (int wk = 0; wk < blockK; wk += warpK)  // fully unroll across blockK; one iteration is one "k Group"
+        // cutlass::gemm::warp::Mma
+        for (int mk = 0; mk < warpK; mk += mmaK)  // outer product loop, fully unroll across warpK
+        for (int mn = 0; mn < warpN; mn += mmaN)  // for each Thread
+        for (int mm = 0; mm < warpM; mm += mmaM)  // for each Thread
+            mma_instruction(d, a, b, c);  // cutlass::arch::mma, warp-wide matrix multiply instruction
+```
+
+最外两层循环对应着线程块层级的硬件并行性，并没有显式地写在代码中，而是使用CUDA并行编程模型中的线程网格语义并发启动。注释cutlass::gemm::threadblock::Mma指的是线程块范围的矩阵乘法累加操作，由一个线程块负责计算一部分矩阵乘积；注释cutlass::gemm::warp::Mma指的是线程束范围的矩阵乘法累加，由一个线程束负责计算一系列外积累加。最内层操作指硬件直接支持的操作，该示例中是线程束同步的TensorCore的矩阵乘法指令；此外也可以在线程层级执行单个线程的乘法累加指令。
+
+该嵌套循环在CUTLASS中由下图所示的数据类型、布局、数学指令等进行描述，如下所示。省略公共命名空间cutlass::前缀。
