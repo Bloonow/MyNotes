@@ -27,7 +27,7 @@ for (int bk = 0; bk < gemmK; bk += blockK)  // GEMM mainloop, no unrolling; one 
 
 一个线程块负责计算输出矩阵的一部分，迭代加载输入矩阵的分片并对矩阵乘积进行累加。在线程块层级，从全局内存中加载数据。分块策略是性能的关键，并需要平衡多个目标。更大的线程块意味着更少的全局内存读取，从而保证DRAM带宽不是性能瓶颈；然而更大的线程块可能与问题规模不匹配。如果M或N维度较小，线程块中的一些线程可能因为已经超出问题边界而在做无效计算。如果M和N维度较小而K维度较大，这种模式可能会启动很少的计算线程，无法充分利用GPU设备的流多处理器；通过在K维度上进行线程块或线程束的划分，然后再执行归约，可以对这种问题规模的计算进行优化。在CUTLASS中，可以使用ThreadblockShape::{kM,kN,kK}指定线程块分片的尺寸，以匹配不同的硬件架构和问题规模。
 
-一个线程束从共享内存中加载数据到寄存器并执行计算。在实现上，线程束的计算可以通过mma.sync指令或wmma指令传递到TensorCore完成计算，或通过线程划分传递给CUDA核心完成计算。为取得最高性能，对共享内存的访问应该避免bank冲突。为重用数据，应该尽可能划分更大的线程束。
+一个线程束从共享内存中加载数据到寄存器并执行计算。在实现上，线程束的计算可以通过mma.sync指令或wmma指令传递到Tensor Core完成计算，或通过线程划分传递给CUDA核心完成计算。为取得最高性能，对共享内存的访问应该避免bank冲突。为重用数据，应该尽可能划分更大的线程束。
 
 一个线程负责处理特定数目的元素。因为线程无法访问其它线程的寄存器，故应该选择一种线程布局，使多条计算指令能够重用寄存器中数据；也即一个线程处理一个二维的分片结构，于是线程能够将一组独立的计算指令传递给CUDA核心计算，并计算累加的外积。SGEMM、DGEMM、HGEMM、IGEMM等通过单指令多线程SIMT指令完成计算。
 
@@ -38,7 +38,7 @@ for (int bk = 0; bk < gemmK; bk += blockK)  // GEMM mainloop, no unrolling; one 
 层级划分结构使得每个CUDA线程需要占用大量的寄存器，且每个线程所持有的累加值至少要占用寄存器预算的一半以上；因此GPU设备的占用率较低，线程块、线程束、线程数目通常低于其它任务的工作负载；这会导致GPU难以隐藏内存延迟和切换线程上下文时所带来停顿间隔（stall）。为减轻内存延迟，CUTLASS使用软件流水线，也即使用双缓冲技术，以重叠线程的访存和计算，如下所示。
 
 - 线程块层级，持有两个共享内存空间，一个用于为当前次的矩阵计算提供数据，另一个用于从设备全局内存中加载下一次主循环迭代所需的数据。
-- 线程束层级，持有两个存储于寄存器的矩阵片段（fragment），一个用于传递给CUDA核心或TensorCore执行当前次的矩阵计算，另一个用于从共享内存中加载下一次Warp循环迭代所需的数据。
+- 线程束层级，持有两个存储于寄存器的矩阵片段（fragment），一个用于传递给CUDA核心或Tensor Core执行当前次的矩阵计算，另一个用于从共享内存中加载下一次Warp循环迭代所需的数据。
 
 下图展示CUTLASS所使用的GEMM主循环流水线。
 
@@ -58,7 +58,7 @@ SliceK（reduction across Warp）通过在blockK维度上划分线程束，能�
 
 ## Warp Specialization
 
-从Hopper架构开始，CUTLASS 3.0引入线程束专业化的概念，即一个线程块中的线程束被分为两组，分别是生产者线程束与消费者线程束。生产者使用新架构的张量内存加速器（Tensor Memory Accelerator，TMA）将数据从设备全局内存中加载到共享内存缓冲区中，并更新该阶段所关联的栅障以通知相关消费者数据已填充；消费者等待生产者的填充信号，然后启动TensorCore的MMA操作，然后释放共享内存缓冲区，并使用新引入的Async Pipeline Class类通知生产者共享内存缓冲区已为空，以执行下一组TMA工作负载。
+从Hopper架构开始，CUTLASS 3.0引入线程束专业化的概念，即一个线程块中的线程束被分为两组，分别是生产者线程束与消费者线程束。生产者使用新架构的张量内存加速器（Tensor Memory Accelerator，TMA）将数据从设备全局内存中加载到共享内存缓冲区中，并更新该阶段所关联的栅障以通知相关消费者数据已填充；消费者等待生产者的填充信号，然后启动Tensor Core的MMA操作，然后释放共享内存缓冲区，并使用新引入的Async Pipeline Class类通知生产者共享内存缓冲区已为空，以执行下一组TMA工作负载。
 
 # Overview
 
@@ -109,6 +109,8 @@ cutlass      # CUTLASS Template Library
 └── transform    # code specialized for layout, type, and domain transformations
 ```
 
+> 在项目结构中，命名空间的组织方式与文件目录的组织方式一致，例如，cutlass::gemm::device命名空间对应着cutlass/gemm/device目录。
+
 ## Fundamental Types
 
 CUTLASS会额外定义一些数值类型与容器类型，而多数CUTLASS基本类型与C++标准库类型一致，并可用于主机代码和设备代码，且与设备的计算能力无关。需要注意的是，一些类型或函数在较低的架构上并不支持，例如较旧的CUDA不支持hrsqrt函数，可以在编译时使用-arch=sm_89指定目标架构。
@@ -124,6 +126,15 @@ CUTLASS会额外定义一些数值类型与容器类型，而多数CUTLASS基本
 | uint4_t      | _u4        | 无符号4位整型                              |
 | bin1_t       | _b1        | 一位二进制位                               |
 | complex\<T\> |            | 复数类型，其实部或虚部的类型由实数类型指定 |
+
+在cutlass/numeric_size.h头文件中，提供运算符sizeof_bits\<T\>的定义，如下所示。
+
+```c++
+template <typename T>
+struct sizeof_bits {
+	static constexpr int value = int(sizeof(T) * 8);
+};
+```
 
 在cutlass/array.h头文件中，提供Array\<T,N\>容器和AlignedArray\<T,N,Align\>容器的定义，如下所示。
 
@@ -276,8 +287,6 @@ struct multiply_add {
 
 ## Layouts and Tensors
 
-> 注意，本节讨论的布局仅用于CUTLASS 2.x版本，在CUTLASS 3.x版本中，使用cute::Layout<Shape,Stride>的概念描述线程和数据张量的布局。
-
 张量是一个多维对象，由内存中多维的数值元素数组表示。例如，二维矩阵通常用于经典数值计算，多维张量通常用于深度学习任务等。本节描述CUTLASS库的设计，如何使用Layout概念将逻辑索引空间映射到内存布局，如何使用TensorRef和TensorView概念间接访问内存中的张量元素。同时，CUTLASS提供一些与C++标准库一致的概念；size指张量的元素总数；capacity指实际存储的元素总数；rank指张量逻辑维度的数目；extent指张量每个维度上的维数。
 
 布局Layout将逻辑索引空间映射到内存空间中存储位置的实际偏移，并存储用于计算映射的状态，定义其它CUTLASS组件需要使用的部分实例化。
@@ -399,6 +408,6 @@ for (int bk = 0; bk < gemmK; bk += blockK)  // GEMM mainloop, no unrolling; one 
             mma_instruction(d, a, b, c);  // cutlass::arch::mma, warp-wide matrix multiply instruction
 ```
 
-最外两层循环对应着线程块层级的硬件并行性，并没有显式地写在代码中，而是使用CUDA并行编程模型中的线程网格语义并发启动。注释cutlass::gemm::threadblock::Mma指的是线程块范围的矩阵乘法累加操作，由一个线程块负责计算一部分矩阵乘积；注释cutlass::gemm::warp::Mma指的是线程束范围的矩阵乘法累加，由一个线程束负责计算一系列外积累加。最内层操作指硬件直接支持的操作，该示例中是线程束同步的TensorCore的矩阵乘法指令；此外也可以在线程层级执行单个线程的乘法累加指令。
+最外两层循环对应着线程块层级的硬件并行性，并没有显式地写在代码中，而是使用CUDA并行编程模型中的线程网格语义并发启动。注释cutlass::gemm::threadblock::Mma指的是线程块范围的矩阵乘法累加操作，由一个线程块负责计算一部分矩阵乘积；注释cutlass::gemm::warp::Mma指的是线程束范围的矩阵乘法累加，由一个线程束负责计算一系列外积累加。最内层操作指硬件直接支持的操作，该示例中是线程束同步的Tensor Core的矩阵乘法指令；此外也可以在线程层级执行单个线程的乘法累加指令。
 
 该嵌套循环在CUTLASS中由下图所示的数据类型、布局、数学指令等进行描述，如下所示。省略公共命名空间cutlass::前缀。
