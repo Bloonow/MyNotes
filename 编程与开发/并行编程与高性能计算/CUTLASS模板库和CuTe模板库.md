@@ -1,48 +1,48 @@
 # Efficient GEMM in CUDA
 
-计算矩阵乘法的三层嵌套循环可以进行分块（blocked）与分片（tiled）以使用并行编程模式来匹配硬件的并发性、内存局部性。CUTLASS将通用矩阵乘法GEMM映射到GPU设备上，并使用CUDA并行编程模型，伪代码如下所示。
+朴素地，矩阵乘法可以使用多层嵌套循环实现，在并行编程环境下，可以使用不同的并行资源对多层嵌套的矩阵乘法计算进行Tiling平铺分片，以利用并行硬件的并发性、数据的存储局部性等。CUTLASS将通用矩阵乘法GEMM映射到GPU设备上，并使用CUDA并行编程模型中的并行资源，包括Device设备、Kernel核函数、Threadblock线程块、Warp线程束、Thread线程、Instruction指令等多个层级，对矩阵乘法进行并行分片，伪代码如下所示。
 
 ```c++
-for (int bn = 0; bn < gemmN; bn += blockN)  // for each blockIdx.y
-for (int bm = 0; bm < gemmM; bm += blockM)  // for each blockIdx.x
-for (int bk = 0; bk < gemmK; bk += blockK)  // GEMM mainloop, no unrolling; one iteration is one "stage"
-    for (int wn = 0; wn < blockN; wn += warpN)  // for each warpIdx.y
-    for (int wm = 0; wm < blockM; wm += warpM)  // for each warpIdx.x
-    for (int wk = 0; wk < blockK; wk += warpK)  // fully unroll across blockK; one iteration is one "k Group"
-        for (int mk = 0; mk < warpK; mk += mmaK)  // outer product loop, fully unroll across warpK
-        for (int mn = 0; mn < warpN; mn += mmaN)  // for each threadIdx.y
-        for (int mm = 0; mm < warpM; mm += mmaM)  // for each threadIdx.x
-            mma_instruction(d, a, b, c);  // one single mma instruction
+for (int cta_n = 0; cta_n < GemmN; cta_n += CtaTileN)  // for each threadblock_y
+for (int cta_m = 0; cta_m < GemmM; cta_m += CtaTileM)  // for each threadblock_x
+for (int cta_k = 0; cta_k < GemmK; cta_k += CtaTileK)  // GEMM mainloop, no unrolling; one iteration is one "stage"
+    for (int warp_n = 0; warp_n < CtaTileN; warp_n += WarpTileN)  // for each warp_y
+    for (int warp_m = 0; warp_m < CtaTileM; warp_m += WarpTileM)  // for each warp_x
+    for (int warp_k = 0; warp_k < CtaTileK; warp_k += WarpTileK)  // fully unroll across CtaTileK; one iteration is one "k Group"
+        for (int mma_k = 0; mma_k < WarpTileK; mma_k += MmaK)  // outer product loop, fully unroll across WarpTileK
+        for (int mma_n = 0; mma_n < WarpTileN; mma_n += MmaN)  // for each mma instruction
+        for (int mma_m = 0; mma_m < WarpTileM; mma_m += MmaM)  // for each mma instruction
+			mma_instruction(d, a, b, c);  // one single mma instruction by Tensor Core or CUDA Core
 ```
 
-该嵌套循环在线程块、线程束、线程三个层级划分，并利用共享内存和寄存器两种存储，下图为层级划分的示意图。
+MMA（Matrix Multiply Accumulate）是指矩阵乘法与累加操作，是矩阵乘法的实现代码中的基本操作，因为实现代码必须对K维度进行迭代循环，每次迭代都需要执行矩阵乘法操作与累加操作，也即MMA矩阵乘法与累加操作。
 
-<img src="CUTLASS模板库.assets/gemm-hierarchy.png" style="zoom:15%;" />
+CUTLASS对矩阵乘法的划分如下图所示，从左至右，每个层级对应着CUDA编程模型中不同的并行资源。
 
-为重用在最后一级缓存中的数据，CUTLASS在cutlass/gemm/threadblock_swizzle.h头文件中定义了一些函数可以影响线程块到矩阵划分的逻辑映射。这种映射模式会在矩阵划分的二维区域上紧凑地启动线程块，以提高线程块能够几乎同时访问到设备全局内存中同一个Tile分片的可能性。称为线程块重排。
-
-> 通常Cache缓存分为L1、L2、L3缓存，则最后一级缓存（Last Level Cache，LLC）是指速度最慢、容量最大的缓存，LLC缓存之后即是内存。
+![](CUTLASS模板库和CuTe模板库.assets/gemm-hierarchy.png)
 
 ## Tiling and Epilogue
 
-一个线程块负责计算输出矩阵的一部分，迭代加载输入矩阵的分片并对矩阵乘积进行累加。在线程块层级，从全局内存中加载数据。分块策略是性能的关键，并需要平衡多个目标。更大的线程块意味着更少的全局内存读取，从而保证DRAM带宽不是性能瓶颈；然而更大的线程块可能与问题规模不匹配。如果M或N维度较小，线程块中的一些线程可能因为已经超出问题边界而在做无效计算。如果M和N维度较小而K维度较大，这种模式可能会启动很少的计算线程，无法充分利用GPU设备的流多处理器；通过在K维度上进行线程块或线程束的划分，然后再执行归约，可以对这种问题规模的计算进行优化。在CUTLASS中，可以使用ThreadblockShape::{kM,kN,kK}指定线程块分片的尺寸，以匹配不同的硬件架构和问题规模。
+线程块分片（Threadblock Tile），一个线程块负责计算结果矩阵的一部分，会迭代地从全局内存中加载输入矩阵分片到共享内存，并执行矩阵乘法与累加操作。在线程块层级，线程块尺寸与矩阵分片策略是算法性能的关键。一个更大的线程块往往持有更大的矩阵分片，意味着更少的全局内存读取，从而能够保证DRAM带宽不是性能瓶颈；然而线程块分片与问题规模并不能总是相匹配。如果M维度或N维度较小，则线程块中的一些线程可能因为已经超出问题边界而在做无效计算。如果M维度和N维度较小而K维度较大，这种朴素的线程块分片模式只会启动很少的工作线程，而每个工作线程又会负责较长的K维度迭代计算负载，这无法充分利用GPU设备的流多处理器。在K维度上进行线程块或线程束的划分，然后对每个线程块计算得到的部分矩阵乘法结果执行求和归约，可以对这种问题规模的计算进行优化。在CUTLASS中，可以使用ThreadblockShape::{kM,kN,kK}指定线程块分片的尺寸，以匹配不同的硬件架构和问题规模。
 
-一个线程束从共享内存中加载数据到寄存器并执行计算。在实现上，线程束的计算可以通过mma.sync指令或wmma指令传递到Tensor Core完成计算，或通过线程划分传递给CUDA核心完成计算。为取得最高性能，对共享内存的访问应该避免bank冲突。为重用数据，应该尽可能划分更大的线程束。
+线程束分片（Warp Tile），一个线程束负责计算线程块分片的一部分，会迭代地从共享内存中加载输入矩阵分片到寄存器，并执行矩阵乘法与累加操作。在实现上，线程束的矩阵乘法与累加操作，可以通过mma.sync指令或wmma指令由Tensor Core完成计算，或通过线程分片由CUDA Core完成计算。为取得最高性能，对共享内存的访问应该避免bank冲突。为重用数据，应该尽可能划分更大尺寸的线程束分片。
 
-一个线程负责处理特定数目的元素。因为线程无法访问其它线程的寄存器，故应该选择一种线程布局，使多条计算指令能够重用寄存器中数据；也即一个线程处理一个二维的分片结构，于是线程能够将一组独立的计算指令传递给CUDA核心计算，并计算累加的外积。SGEMM、DGEMM、HGEMM、IGEMM等通过单指令多线程SIMT指令完成计算。
+线程分片（Thread Tile），一个线程负责计算线程束分片的一部分，会迭代地获取寄存器中的数据，并执行矩阵乘法与累加操作。因为一个线程无法访问其它线程的寄存器，故应该合理安排线程布局，使得一个线程的多条计算指令能够重用寄存器中的数据。即一个线程计算一个二维矩阵分片，从而使线程能够将一组独立的计算指令发射给CUDA Core计算，以执行矩阵乘法与累加操作。SGEMM、DGEMM、HGEMM、IGEMM等通过单指令多线程SIMT指令完成计算。
 
-上述划分完成矩阵乘法计算之后，计算结果保存在每个线程的寄存器当中。一个线程所负责的输出矩阵的部分元素的划分能取得最高的矩阵乘法计算效率，但在存储时并不能实现高效的合并访存模式。结尾（epilogue）是一个单独阶段，线程使用共享内存交换数据，以取得对设备全局内存的高效的合并访问模式；同时，这也是对计算结果进行缩放，以及应用其它逐元素操作的阶段。CUTLASS定义一些典型的结尾操作，例如线性缩放与收缩等，也支持自定义逐元素操作函数。
+在完成上述划分的矩阵乘法与累加操作之后，计算所得的结果矩阵的一部分存在于一个线程的寄存器中，这种划分策略能够取得最高的矩阵乘法计算效率，但在将结果矩阵写回到全局内存中时不能实现高效的合并访存模式。
+
+结尾分片（Epilogue Tile）操作是一个单独阶段，一个线程负责处理结果矩阵分片的一部分，用以对计算所得的结果矩阵执行后置操作。通常情况下，一个线程节计算所得的结果矩阵分片以特定布局写回到共享内存中，这种结果矩阵分片在共享内存中的布局方式有利于线程以高效合并访存的模式写回结果。同时，一个线程可以对所负责结果矩阵分片的一部分执行其它可选的逐元素操作。CUTLASS定义一些典型的结尾操作，例如线程缩放与收缩等。
 
 ## Pipeline
 
 层级划分结构使得每个CUDA线程需要占用大量的寄存器，且每个线程所持有的累加值至少要占用寄存器预算的一半以上；因此GPU设备的占用率较低，线程块、线程束、线程数目通常低于其它任务的工作负载；这会导致GPU难以隐藏内存延迟和切换线程上下文时所带来停顿间隔（stall）。为减轻内存延迟，CUTLASS使用软件流水线，也即使用双缓冲技术，以重叠线程的访存和计算，如下所示。
 
 - 线程块层级，持有两个共享内存空间，一个用于为当前次的矩阵计算提供数据，另一个用于从设备全局内存中加载下一次主循环迭代所需的数据。
-- 线程束层级，持有两个存储于寄存器的矩阵片段（fragment），一个用于传递给CUDA核心或Tensor Core执行当前次的矩阵计算，另一个用于从共享内存中加载下一次Warp循环迭代所需的数据。
+- 线程束层级，持有两个存储于寄存器的矩阵片段fragment，一个用于传递给CUDA Core或Tensor Core执行当前次的矩阵计算，另一个用于从共享内存中加载下一次Warp循环迭代所需的数据。
 
 下图展示CUTLASS所使用的GEMM主循环流水线。
 
-<img src="CUTLASS模板库.assets/software-pipeline.png" style="zoom: 25%;" />
+<img src="CUTLASS模板库和CuTe模板库.assets/software-pipeline.png" style="zoom:25%;" />
 
 ## SplitK and SliceK
 
@@ -60,17 +60,13 @@ SliceK（reduction across Warp）通过在blockK维度上划分线程束，能�
 
 从Hopper架构开始，CUTLASS 3.0引入线程束专业化的概念，即一个线程块中的线程束被分为两组，分别是生产者线程束与消费者线程束。生产者使用新架构的张量内存加速器（Tensor Memory Accelerator，TMA）将数据从设备全局内存中加载到共享内存缓冲区中，并更新该阶段所关联的栅障以通知相关消费者数据已填充；消费者等待生产者的填充信号，然后启动Tensor Core的MMA操作，然后释放共享内存缓冲区，并使用新引入的Async Pipeline Class类通知生产者共享内存缓冲区已为空，以执行下一组TMA工作负载。
 
-# Overview
-
-> 文档可参阅https://github.com/NVIDIA/cutlass/tree/main/media/docs网址，本文章摘抄自CUTLASS 3.5.0版本。需要注意的是，CUTLASS 3.0需要CUDA 11.4及更新的版本，且GPU设备为SM70及更新的架构。
+# CUTLASS and CuTe
 
 CUTLASS是CUDA Templates for Linear Algebra Subroutines and Solvers的缩写，是基于CUDA运行时的线性代数例程与求解器的C++模板库，用于实现高性能的矩阵乘法GEMM及其相关计算。除通用矩阵乘法之外，CUTLASS通过隐式GEMM算法实现高性能的卷积操作。
 
-CUTLASS 2.x其采用与cuBLAS和cuDNN相似的层级划分（hierarchical decomposition）与数据移动策略，并将这些功能组件实现为C++模板类。通过自定义Tile大小、数据类型、算法策略，可以对并行层级划分中的不同层级的基本操作（primitive）进行定制和微调。为支持各种应用，CUTLASS提供对特定数据移动、乘法累加（multiply-accumulate）的混合精度支持，包括FP16、BF16、Tensor Float 32，FP32、FP64，以及整型和二进制数据类型。
+CUTLASS库的源码可在https://github.com/NVIDIA/cutlass网址获得，其包括CUTLASS模板库与CuTe模板库。其中CUTLASS模板库是指CUTLASS 2.X实现版本，通过各层级的模板库抽象提供GEMM实现；而CuTe模板库是自CUTLASS 3.0版本引入的新模板库，通过Layout对象和Tensor对象提供GEMM实现。需要注意的是，CUTLASS 3.0版本需要CUDA 11.4及以上版本，且GPU设备的计算能力为SM70及以上版本。
 
-CUTLASS 3.0引入一个新的核心库CuTe，是一个C++模板的集合，用于对线程和数据的层级多维布局进行定义和操作。CuTe提供Layout和Tensor对象，将类型、形状、内存空间、数据布局等概念结合在一起，为用户执行复杂的索引操作。CuTe的核心是层级多维布局（hierarchically multidimensional layout），可以表示线程组织的布局与数据张量的布局。在CUTLASS 3.0及之后的版本中，广泛使用CuTe以简化设计并提高代码可读性。
-
-该存储仓库包括若干组件。在顶层include目录中提供CUTLASS模板库和CuTe模板库的头文件，应用程序编程需要将顶层include目录添加到编译器的头文件搜索路径；在顶层tools目录中提供CUTLASS Instance模板实例、CUTLASS Profiler分析器、CUTLASS Utilities额外工具；在顶层examples目录中提供使用示例；在顶层media目录中提供文档；在顶层test目录中提供测试组件。
+CUTLASS库包括若干组件。在顶层include目录中提供CUTLASS模板库和CuTe模板库的头文件，应用程序编程需要将顶层include目录添加到编译器的头文件搜索路径；在顶层tools目录中提供CUTLASS Instance模板实例、CUTLASS Profiler分析器、CUTLASS Utilities额外工具；在顶层examples目录中提供使用示例；在顶层media目录中提供文档；在顶层test目录中提供测试组件。
 
 ```shell
 .
@@ -93,23 +89,30 @@ CUTLASS 3.0引入一个新的核心库CuTe，是一个C++模板的集合，用�
 # CUTLASS Template
 
 ```shell
-cutlass      # CUTLASS Template Library
-├── *            # fundamental types
-├── layout       # layout for matrices, tensors, and other mathematical objects in memory
-├── arch         # direct exposure of architecture features (including instruction-level GEMMs)
-├── gemm         # code specialized for general matrix product computations
-│   ├── *            # basic types for GEMM
-│   ├── device       # launches kernel(s) over a full device
-│   ├── kernel       # CUDA kernel entry points
-│   ├── threadblock  # CTA-level operators
-│   ├── warp         # warp-level operators
-│   └── thread       # thread-level operators
-├── epilogue     # epilogue rearranges result to canonical layouts, and supports conversion and reduction operations
-├── reduction    # bandwidth-limited reduction kernels that do not fit the "gemm" models
-└── transform    # code specialized for layout, type, and domain transformations
+cutlass  # CUTLASS Template Library
+├── *          # Fundamental types
+├── layout     # Layout type for matrix, tensor and other mathematical Object in memory
+├── platform   # Platform features
+├── arch       # Architecture features (including instruction implementation)
+├── gemm       # general matrix product computations
+│   ├── device
+│   ├── kernel
+│   ├── threadblock
+│   ├── warp
+│   └── thread
+├── reduction  # Reduction kernels
+├── epilogue   # Epilogue rearranges result to canonical layouts, and supports conversion and reduction operations
+├── transform  # Code specialized for layout, type, and domain transformations
+└── conv       # Implict GEMM for Convolution
 ```
 
 > 在项目结构中，命名空间的组织方式与文件目录的组织方式一致，例如，cutlass::gemm::device命名空间对应着cutlass/gemm/device目录。
+
+
+
+!!!!
+
+
 
 ## Fundamental Types
 
@@ -375,39 +378,3 @@ void tensor_view_demo() {
 ```
 
 注意，使用一个问题规模，以及每个操作数的TensorRef对象，可以避免在确定计算操作时的一些过度冗余指定。
-
-# CuTe Template
-
-```shell
-cute       # CuTe Template Library, CuTe Layout, layout algebra, MMA/Copy atoms, tiled MMA/Copy
-├── *          # Core library types such as Shape, Stride, Layout, Tensor, and associated operations
-├── numeric    # CuTe's internal numerics implementation
-├── atom       # Meta-information either link to or built from arch/ operators
-├── arch       # Bare bones PTX wrapper structs for copy and math instructions
-├── container  # Core container types used across CuTe, namely, cute::tuple
-└── algorithm  # Definitions of core operations such as copy, gemm, and operations on cute::tuples
-```
-
-# CUTLASS GEMM API
-
-根据层级划分，CUTLASS抽象出每个层级的矩阵乘法累加（matrix multiply-accumulate，MMA）操作，包括设备、线程块、线程束、线程、指令层级。下述伪代码展示的是使用线程束同步矩阵乘法指令（如mma.sync）的通用矩阵乘法kernel模型，整个操作称为Gemm操作，并假设结尾操作只执行矩阵更新。
-
-```c++
-// cutlass::gemm::device::Gemm
-for (int bn = 0; bn < gemmN; bn += blockN)  // for each Block
-for (int bm = 0; bm < gemmM; bm += blockM)  // for each Block
-for (int bk = 0; bk < gemmK; bk += blockK)  // GEMM mainloop, no unrolling; one iteration is one "stage"
-    // cutlass::gemm::threadblock::Mma
-    for (int wn = 0; wn < blockN; wn += warpN)  // for each Warp
-    for (int wm = 0; wm < blockM; wm += warpM)  // for each Warp
-    for (int wk = 0; wk < blockK; wk += warpK)  // fully unroll across blockK; one iteration is one "k Group"
-        // cutlass::gemm::warp::Mma
-        for (int mk = 0; mk < warpK; mk += mmaK)  // outer product loop, fully unroll across warpK
-        for (int mn = 0; mn < warpN; mn += mmaN)  // for each Thread
-        for (int mm = 0; mm < warpM; mm += mmaM)  // for each Thread
-            mma_instruction(d, a, b, c);  // cutlass::arch::mma, warp-wide matrix multiply instruction
-```
-
-最外两层循环对应着线程块层级的硬件并行性，并没有显式地写在代码中，而是使用CUDA并行编程模型中的线程网格语义并发启动。注释cutlass::gemm::threadblock::Mma指的是线程块范围的矩阵乘法累加操作，由一个线程块负责计算一部分矩阵乘积；注释cutlass::gemm::warp::Mma指的是线程束范围的矩阵乘法累加，由一个线程束负责计算一系列外积累加。最内层操作指硬件直接支持的操作，该示例中是线程束同步的Tensor Core的矩阵乘法指令；此外也可以在线程层级执行单个线程的乘法累加指令。
-
-该嵌套循环在CUTLASS中由下图所示的数据类型、布局、数学指令等进行描述，如下所示。省略公共命名空间cutlass::前缀。

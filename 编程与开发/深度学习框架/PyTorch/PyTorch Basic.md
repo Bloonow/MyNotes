@@ -1883,7 +1883,7 @@ class TransformerDecoderLayer(Module)
 
 若无特别说明，激活函数是逐元素（element-wise）的，对样本的每个元素（标量）应用激活函数。如此，激活函数不改变输入的形状，即输入是什么形状，激活函数的输出也是什么形状。
 
-![](PyTorch Basic.assets/Sigmoid,ReLU,ELU.png)
+<img src="PyTorch Basic.assets/Sigmoid,ReLU,ELU.png" style="zoom:50%;" />
 
 ```python
 class Sigmoid(Module):
