@@ -92,65 +92,78 @@ CUTLASS库包括若干组件。在顶层include目录中提供CUTLASS模板库�
 cutlass  # CUTLASS Template Library
 ├── *          # Fundamental types
 ├── layout     # Layout type for matrix, tensor and other mathematical Object in memory
+├── detail     # Helper for macros and others
 ├── platform   # Platform features
 ├── arch       # Architecture features (including instruction implementation)
-├── gemm       # general matrix product computations
-│   ├── device
-│   ├── kernel
-│   ├── threadblock
-│   ├── warp
-│   └── thread
-├── reduction  # Reduction kernels
+├── gemm       # GEneral Matrix Multiply computations
+│   ├── device       # Launch kernels
+│   ├── kernel       # Kernels
+│   ├── threadblock  # Cta Tile
+│   ├── warp         # Warp Tile
+│   └── thread       # Thread Tile
 ├── epilogue   # Epilogue rearranges result to canonical layouts, and supports conversion and reduction operations
 ├── transform  # Code specialized for layout, type, and domain transformations
+├── reduction  # Reduction kernels
 └── conv       # Implict GEMM for Convolution
 ```
 
 > 在项目结构中，命名空间的组织方式与文件目录的组织方式一致，例如，cutlass::gemm::device命名空间对应着cutlass/gemm/device目录。
 
+## Fundamental Type
 
+CUTLASS沿用C++标准库的基本类型，可用于主机端代码与设备端代码，并且与设备的计算能力无关。此外，CUTLASS还额外定义了一些数值类型与容器。需要注意的是，一些类型或函数在较低的架构上并不支持，例如hrsqrt函数，可在编译时使用-arch=sm_70指定目标架构。
 
-!!!!
+在cutlass/numeric_types.h头文件，提供一些特殊数值类型的定义，如下所示。
 
-
-
-## Fundamental Types
-
-CUTLASS会额外定义一些数值类型与容器类型，而多数CUTLASS基本类型与C++标准库类型一致，并可用于主机代码和设备代码，且与设备的计算能力无关。需要注意的是，一些类型或函数在较低的架构上并不支持，例如较旧的CUDA不支持hrsqrt函数，可以在编译时使用-arch=sm_89指定目标架构。
-
-在cutlass/numeric_types.h头文件和cutlass/complex.h头文件中，提供一些数值类型的定义，如下所示。
-
-| 数值类型     | 字面量后缀 | 描述                                       |
-| ------------ | ---------- | ------------------------------------------ |
-| half_t       | _hf        | IEEE半精度浮点数；尾数10位，指数5位        |
-| bfloat16_t   | _bf16      | BFloat16类型；尾数7位，指数8位             |
-| tfloat32_t   | _tf32      | Tensor Float 32类型；尾数10位，指数8位     |
-| int4_4       | _s4        | 有符号4位整型                              |
-| uint4_t      | _u4        | 无符号4位整型                              |
-| bin1_t       | _b1        | 一位二进制位                               |
-| complex\<T\> |            | 复数类型，其实部或虚部的类型由实数类型指定 |
-
-在cutlass/numeric_size.h头文件中，提供运算符sizeof_bits\<T\>的定义，如下所示。
+| 数值类型   | 字面量后缀 | 描述                                   |
+| ---------- | ---------- | -------------------------------------- |
+| half_t     | _hf        | IEEE半精度浮点数；尾数10位，指数5位    |
+| bfloat16_t | _bf16      | BFloat16类型；尾数7位，指数8位         |
+| tfloat32_t | _tf32      | Tensor Float 32类型；尾数10位，指数8位 |
+| int4_4     | _s4        | 有符号4位整型                          |
+| uint4_t    | _u4        | 无符号4位整型                          |
+| bin1_t     | _b1        | 一位二进制位                           |
 
 ```c++
-template <typename T>
-struct sizeof_bits {
-	static constexpr int value = int(sizeof(T) * 8);
-};
+template <int Bits, bool Signed = true>
+struct integer_subbyte {
+    using Storage = uint8_t;  // Storage type
+    static constexpr Storage bits_mask_ = Storage(Storage(-1) >> (8 - Bits));       // bitmask for truncation
+    static constexpr Storage sign_mask_ = Storage((Signed ? 1 : 0) << (Bits - 1));  // bitmask for the sign bit
+    Storage storage;
+}
+using  int4b_t = integer_subbyte<4, true>;   // 4-bit Integer type
+using uint4b_t = integer_subbyte<4, false>;  // 4-bit Unsigned integer type
+using bin1_t = bool;                         // 1-bit binary type
+```
+
+在cutlass/numeric_size.h头文件中，提供辅助模板sizeof_bits\<T\>的定义，用于获取一个类型所占用的二进制位的数目。
+
+```c++
+// defines the size of an element in bits
+template<typename T>
+struct sizeof_bits { static constexpr int value = int(sizeof(T) * 8); };
+template <int Bits, bool Signed>
+struct sizeof_bits<integer_subbyte<Bits,Signed>> { static constexpr int value = Bits; };
+template <>
+struct sizeof_bits<bin1_t> { static constexpr int value = 1; };
+template <>
+struct sizeof_bits<void> { static constexpr int value = 0; };
 ```
 
 在cutlass/array.h头文件中，提供Array\<T,N\>容器和AlignedArray\<T,N,Align\>容器的定义，如下所示。
 
 ```c++
-template<typename T, int N, bool RegisterSized = sizeof_bits<T>::value >= 32> struct Array;
+template<typename T, int N, bool RegisterSized = sizeof_bits<T>::value >= 32>
+struct Array;
 template<typename T, int N>
 struct Array<T, N, true> {
     static constexpr size_t kElements = N;
-    using Storage = T;
-    Storage storage[kElements];
-  	typedef T value_type;
+    typedef T value_type;
     typedef value_type& reference;
     typedef value_type* pointer;
+    using Storage = T;
+    Storage storage[kElements];
     pointer data() { return reinterpret_cast<pointer>(storage); }
     reference operator[](size_type pos) { return reinterpret_cast<reference>(storage[pos]); }
 };
@@ -160,7 +173,7 @@ class alignas(Alignment) AlignedArray: public Array<T,N> {};
 
 Array\<T,N\>是一个固定大小的数组，与C++标准库std::array相似，但可存储小于1B的类型，且小类型的对象之间紧凑存储。在使用sizeof(Array\<T,N\>)运算符时，其返回结果仍然是以字节为单位，且最小是1个字节。应尽量避免对Array单个元素的操作，而应使用其成员方法，这些方法会使用效率更高的向量化指令。
 
-AlignedArray\<T,N\>是一个固定大小的数组，可指定其内存空间按多少字节对齐。
+AlignedArray\<T,N\>是一个固定大小的数组，继承自Array\<T,N\>模板类，但可以指定其内存空间按多少字节对齐。
 
 在cutlass/aligned_buffer.h头文件中，提供AlignedBuffer\<T,N,Align\>容器的定义，如下所示。
 
@@ -168,10 +181,10 @@ AlignedArray\<T,N\>是一个固定大小的数组，可指定其内存空间按�
 template<typename T, int N, int Align = 16>
 struct AlignedBuffer {
     static int const kBytes = (sizeof_bits<T>::value * N + 7) / 8;
-    using Storage = uint8_t;
-    alignas(Align) Storage storage[kBytes];
     typedef T value_type;
     typedef value_type* pointer;
+    using Storage = uint8_t;
+    alignas(Align) Storage storage[kBytes];
     pointer data() { return reinterpret_cast<pointer>(storage); }
 };
 ```
@@ -179,7 +192,7 @@ struct AlignedBuffer {
 AlignedBuffer\<T,N,Align\>是一个固定大小的缓冲区，不会调用所持有类型的构造方法。可使用AlignedBuffer<>::data()方法获得内存空间的地址指针。常用于获取一段以给定字节对齐的连续内存空间，如设备全局内存或共享内存，以用于向量化操作，一个示例如下所示。
 
 ```c++
-__global__ void array_demo_kernel() {
+__global__ void aligned_buffer_demo_kernel() {
     const int kN = 1024;
     __shared__ AlignedBuffer<half_t, kN> smem_buffer;
     AlignedArray<half_t, 8> *ptr = reinterpret_cast<AlignedArray<half_t, 8>*>(smem_buffer.data());
@@ -187,7 +200,7 @@ __global__ void array_demo_kernel() {
 }
 ```
 
-在cutlass/numeric_conversion.h头文件中，提供NumericConverter\<T,S\>数值类型转换器的定义，如下所示。
+在cutlass/numeric_conversion.h头文件中，提供NumericConverter\<T,S\>转换器与NumericArrayConverter\<T,S,N\>转换器的定义，如下所示。
 
 ```c++
 enum class FloatRoundStyle {
@@ -202,9 +215,9 @@ enum class FloatRoundStyle {
 };
 template<typename T, typename S, FloatRoundStyle Round = FloatRoundStyle::round_to_nearest>
 struct NumericConverter {
+    static FloatRoundStyle const round_style = Round;
     using result_type = T;
     using source_type = S;
-    static FloatRoundStyle const round_style = Round;
     static result_type convert(source_type const &s) { return static_cast<result_type>(s); }
     result_type operator()(source_type const &s) const { return convert(s); }
 };
@@ -213,7 +226,7 @@ struct NumericConverter {
 NumericConverter\<T,S\>会尽可能地在目标架构上使用硬件加速，并支持多种舍入模式。此外，NumericArrayConverter\<T,S,N\>支持转换Array数组类型，一个示例如下所示。
 
 ```c++
-void convert_demo() {
+void converter_demo() {
     int const kN = 16;
     Array<int8_t, kN> destination;
     Array<int, kN> source;
@@ -275,7 +288,7 @@ struct PredicateVector {
 
 PredicateVector是一个由谓词构成的固定长度的向量，也即掩码向量，可以在循环展开代的码段中使用寄存器加速访问。
 
-在cutlass/functional.h头文件中，提供一些模板函数的定义，该头文件是模仿C++标准库的functional头文件，如下所示。
+在cutlass/functional.h头文件中，提供一些模板函数的定义，该头文件是模仿C++标准库的functional头文件，一个操作的示例如下所示。
 
 ```c++
 template<typename A, typename B = A, typename C = A>
@@ -286,9 +299,9 @@ struct multiply_add {
 };
 ```
 
-其中，CUTLASS扩展了multiply_add\<T\>的定义，支持复数complex\<T\>类型的乘加操作，并尽可能调用本地硬件指令。
+其中，multiply_add\<T\>表示乘法与加法操作，由CUTLASS进行扩展，以支持复数complex\<T\>类型的乘法与加法操作，并尽可能调用本地硬件指令。
 
-## Layouts and Tensors
+## Layout and Tensor
 
 张量是一个多维对象，由内存中多维的数值元素数组表示。例如，二维矩阵通常用于经典数值计算，多维张量通常用于深度学习任务等。本节描述CUTLASS库的设计，如何使用Layout概念将逻辑索引空间映射到内存布局，如何使用TensorRef和TensorView概念间接访问内存中的张量元素。同时，CUTLASS提供一些与C++标准库一致的概念；size指张量的元素总数；capacity指实际存储的元素总数；rank指张量逻辑维度的数目；extent指张量每个维度上的维数。
 
@@ -305,13 +318,11 @@ struct LayoutConcept {
     using TensorCoord = Coord<kRank, Index>;       // Logical coordinate
     using Stride = Coord<kStrideRank, LongIndex>;  // Stride object
     Stride stride_;                                // Stride data member  
-    ColumnMajor(LongIndex ldm = 0): stride_(ldm) {}          // Constructor with leading dimension
-    ColumnMajor(Stride stride): stride_(stride) {}           // Constructor
-    static LayoutConcept packed(TensorCoord const &extent);  // Return a layout to a tightly packed tensor
+    LayoutConcept(LongIndex ldm = 0): stride_(ldm) {}        // Constructor with leading dimension
     LongIndex operator()(TensorCoord const &coord) const;    // Return the offset of a coordinate in linear memory
+    LongIndex capacity(TensorCoord const &extent) const;     // The number of contiguous elements needed to store a tensor
     TensorCoord inverse(LongIndex offset) const;             // mapping linear offset to logical coordinate
     Stride stride() const();                                 // Returns the stride of the layout
-    LongIndex capacity(TensorCoord const &extent) const;     // The number of contiguous elements needed to store a tensor
 };
 ```
 
@@ -337,15 +348,11 @@ template<typename Element, typename Layout>
 class TensorRef {
     using Reference = Element&;
     Element* ptr_;   // Pointer
-    Layout layout_;  // Layout object maps logical coordinates to linear offsets
+    Layout layout_;  // LayoutConcept maps logical coordinates to linear offsets
     TensorRef(Element *ptr, Layout const &layout): ptr_(ptr), layout_(layout) {}  // Constructs a TensorRef
-    // Returns the pointer to referenced data
     Element* data() const { return ptr_; }
-    // Returns a reference to the element at a given linear index
     Reference data(LongIndex idx) const { return ptr_[idx]; }
-    // Computes the offset of an index from the origin of the tensor
     LongIndex offset(TensorCoord const &coord) const { return layout_(coord); }
-    // Returns a reference to the element at a given Coord
     Reference operator[](TensorCoord const &coord) const { return data(offset(coord)); }
 };
 ```
@@ -357,7 +364,6 @@ template<typename Element, typename Layout>
 class TensorView : public TensorRef<Element, Layout> {
     using TensorCoord = typename Layout::TensorCoord;
     TensorCoord extent_;  // View extent
-    // Constructs a TensorView object
     TensorView(Element *ptr, Layout const &layout, TensorCoord const &extent): Base(ptr, layout), extent_(extent) {}
     TensorCoord const& extent() const { return extent_; }  // Returns the extent of the view
 };
@@ -377,4 +383,47 @@ void tensor_view_demo() {
 }
 ```
 
-注意，使用一个问题规模，以及每个操作数的TensorRef对象，可以避免在确定计算操作时的一些过度冗余指定。
+## Macro and Platform
+
+在cutlass/detail/helper_macros.hpp头文件中，提供一些辅助宏定义，如下所示。
+
+```c++
+#define CUTLASS_HOST_DEVICE __forceinline__ __device__ __host__
+#define CUTLASS_DEVICE      __forceinline__ __device__
+#define CUTLASS_HOST        __host__
+#define CUTLASS_GLOBAL      __global__ static
+```
+
+在cutlass/platform/platform.h头文件中，提供一些与平台相关的定义，如下所示。
+
+```c++
+template<typename _Tp, _Tp __v>
+struct integral_constant {
+    static constexpr _Tp value = __v;
+    typedef integral_constant<_Tp, __v> type;
+    typedef _Tp value_type;
+    constexpr operator value_type() const noexcept { return value; }
+    constexpr value_type operator()() const noexcept { return value; }
+};
+using true_type  = integral_constant<bool, true>;   // compile-time boolean with true value
+using false_type = integral_constant<bool, false>;  // compile-time boolean with false value
+template<typename _Tp, typename _Up>
+struct is_same : public false_type {};
+template<typename _Tp>               
+struct is_same<_Tp, _Tp> : public true_type {};
+
+template<bool, typename _Tp = void>
+struct enable_if {};
+template<typename _Tp>
+struct enable_if<true, _Tp> { typedef _Tp type; };                        // Partial specialization for true
+template<bool _Cond, typename _Iftrue, typename _Iffalse>
+struct conditional { typedef _Iftrue type; };
+template<typename _Iftrue, typename _Iffalse>
+struct conditional<false, _Iftrue, _Iffalse> { typedef _Iffalse type; };  // Partial specialization for false.
+```
+
+## Architecture and Instruction
+
+在cutlass/arch目录中，提供基础操作的汇编指令级实现，以及这些基础操作在指定GPU架构上的实现与特性，如下表所示。
+
+输入法卡顿怎么会使呢？
