@@ -422,8 +422,198 @@ template<typename _Iftrue, typename _Iffalse>
 struct conditional<false, _Iftrue, _Iffalse> { typedef _Iffalse type; };  // Partial specialization for false.
 ```
 
+在cutlass/cutlass.h头文件中，提供Status枚举类的定义，用于标识CUTLASS库的执行状态，并提供一些常量定义。
+
 ## Architecture and Instruction
 
-在cutlass/arch目录中，提供基础操作的汇编指令级实现，以及这些基础操作在指定GPU架构上的实现与特性，如下表所示。
+在cutlass/arch目录中，提供基础操作的PTX汇编指令级实现，以及这些基础操作在指定GPU架构上的实现与特性，如下表所示。
 
-输入法卡顿怎么会使呢？
+| 头文件                         | 描述                                                   |
+| ------------------------------ | ------------------------------------------------------ |
+| cutlass/arch/arch.h            | LaneId()与SmId()辅助函数，以及设备架构与计算能力的标识 |
+| cutlass/arch/cache_operation.h | 标识cache缓存行为的枚举类                              |
+| cutlass/arch/memory.h          | 与全局内存和共享内存相关的操作                         |
+| cutlass/arch/simd.h            | SIMD指令操作                                           |
+| cutlass/arch/mma.h             | MMA乘法与累加操作，以及操作类型的标识                  |
+| cutlass/arch/wmma.h            | WMMA线程束层级的矩阵乘法与累加操作                     |
+
+在cutlass/arch/arch.h头文件中，提供LaneId()与SmId()辅助函数，以及设备架构与计算能力的标识。
+
+```c++
+// Computes laneId within a warp
+CUTLASS_DEVICE int LaneId() { int ret; asm("mov.u32 %0, %%laneid;" : "=r"(ret) : );  return ret; }
+// Computes SM number the thread is running on
+CUTLASS_DEVICE int SmId() { int ret; asm("mov.u32 %0, %%smid;" : "=r"(ret) : ); return ret; }
+```
+
+在cutlass/arch/cache_operation.h头文件中，提供标识Cache缓存行为的枚举类。
+
+```c++
+// Controls PTX cache operations
+struct CacheOperation {
+    enum Kind {
+        Always,       // Cache at all levels - accessed again
+        Global,       // Cache at global level
+        Streaming,    // Streaming - likely to be accessed once
+        LastUse,      // Indicates the line will not be used again
+        Volatile,     // Don't cache, and fetch again
+        WriteBack,    // Write back at all coherent levels
+        WriteThrough  // Write through to system memory
+    };
+};
+```
+
+在cutlass/arch/memory.h头文件中，提供与全局内存和共享内存相关的操作。
+
+```c++
+template<
+    typename AccessType,  // Fragment type to store loaded data, pointer
+    int LoadBytes,        // The bytes of loading
+    CacheOperation::Kind cache_op = CacheOperation::Always  // Cache operation
+>
+struct global_load;
+template <typename AccessType>
+struct global_load<AccessType, 32, CacheOperation::Always> {
+    CUTLASS_DEVICE global_load(AccessType &D, void const *ptr, bool pred_guard) {
+        uint4 *data = reinterpret_cast<uint4*>(&D);
+        // The redundant mov PTX instruction is used to enforce the compiler to
+        // keep the initializing code before ld.global
+        asm volatile(
+            "{\n"
+            "  .reg .pred p;\n"
+            "  setp.ne.b32 p, %9, 0;\n"
+            "  mov.b32 %0, %10;\n"
+            "  mov.b32 %1, %11;\n"
+            "  mov.b32 %2, %12;\n"
+            "  mov.b32 %3, %13;\n"
+            "  mov.b32 %4, %14;\n"
+            "  mov.b32 %5, %15;\n"
+            "  mov.b32 %6, %16;\n"
+            "  mov.b32 %7, %17;\n"
+            #if CUTLASS_ENABLE_L2_PREFETCH
+            "  @p ld.global.L2::128B.v4.u32 {%0, %1, %2, %3}, [%8];\n"
+            "  @p ld.global.L2::128B.v4.u32 {%4, %5, %6, %7}, [%18];\n"
+            #else
+            "  @p ld.global.v4.u32 {%0, %1, %2, %3}, [%8];\n"
+            "  @p ld.global.v4.u32 {%4, %5, %6, %7}, [%18];\n"
+            #endif
+            "}\n"
+            : "=r"(data[0].x), "=r"(data[0].y), "=r"(data[0].z), "=r"(data[0].w),
+              "=r"(data[1].x), "=r"(data[1].y), "=r"(data[1].z), "=r"(data[1].w)
+            : "l"(ptr), "r"((int)pred_guard),
+              "r"(data[0].x), "r"(data[0].y), "r"(data[0].z), "r"(data[0].w),
+              "r"(data[1].x), "r"(data[1].y), "r"(data[1].z), "r"(data[1].w),
+              "l"(((uint8_t*)ptr) + 16)
+        );
+    }
+};
+
+template<
+    typename AccessType,  // Fragment type to store data, pointer
+    int StoreBytes        // The bytes of storing
+>
+struct global_store;
+template<typename AccessType>
+struct global_store<AccessType, 32> {
+    CUTLASS_DEVICE global_store(AccessType const &D, void *ptr, bool pred_guard) {
+        uint4 const *data = reinterpret_cast<uint4 const*>(&D);
+        asm volatile(
+            "{\n"
+            "  .reg .pred p;\n"
+            "  setp.ne.b32 p, %5, 0;\n"
+            "  @p st.global.v4.u32 [%0], {%1, %2, %3, %4};\n"
+            "  @p st.global.v4.u32 [%6], {%7, %8, %9, %10};\n"
+            "}\n"
+            :
+            : "l"(ptr), 
+              "r"(data[0].x), "r"(data[0].y), "r"(data[0].z), "r"(data[0].w),
+              "r"((int)pred_guard), "l"(((uint8_t*)ptr) + 16),
+              "r"(data[1].x), "r"(data[1].y), "r"(data[1].z), "r"(data[1].w)
+        );
+    }
+};
+
+template<int Bytes>
+CUTLASS_DEVICE void shared_load(void *dst, uint32_t ptr);
+template<>
+CUTLASS_DEVICE void shared_load<16>(void *dst, uint32_t ptr) {
+    uint4 *dst_u128 = reinterpret_cast<uint4*>(dst);
+    asm volatile(
+        "ld.shared.v4.u32 {%0, %1, %2, %3}, [%4];\n"
+        : "=r"(dst_u128->x), "=r"(dst_u128->y), "=r"(dst_u128->z), "=r"(dst_u128->w)
+        : "r"(ptr)
+    );
+}
+
+template <int Bytes>
+CUTLASS_DEVICE void shared_store(uint32_t ptr, void const *src);
+template <>
+CUTLASS_DEVICE void shared_store<16>(uint32_t ptr, void const *src) {
+    uint4 const *dst_u128 = reinterpret_cast<uint4 const*>(src);
+    asm volatile(
+        "st.shared.v4.u32 [%0], {%1, %2, %3, %4};\n"
+        :
+        : "r"(ptr), "r"(dst_u128->x), "r"(dst_u128->y), "r"(dst_u128->z), "r"(dst_u128->w)
+    );
+}
+```
+
+可以看到，用在PTX汇编指令中的共享内存地址是一个无符号整型，可使用如下辅助函数将一个共享内存地址指针转换为uint32_t无符号整型。
+
+```c++
+// helper to cast SMEM pointer to unsigned integer
+CUTE_DEVICE uint32_t cast_smem_ptr_to_uint(void const* const ptr) {
+    // Use the new CVTA intrinsics if they are available, otherwise the previous internal intrinsics.
+    #if (__CUDACC_VER_MAJOR__ >= 11)
+        // This NVVM intrinsic converts an address in shared memory to a plain unsigned integer.
+        // This is necessary to pass to shared memory instructions in inline PTX.
+        return static_cast<uint32_t>(__cvta_generic_to_shared(ptr));
+    #else defined(__CUDA_ARCH__)
+        uint32_t smem_ptr;
+        asm(
+            "{ .reg .u64 smem_ptr; cvta.to.shared.u64 smem_ptr, %1; cvt.u32.u64 %0, smem_ptr; }\n"
+            : "=r"(smem_ptr)
+            : "l"(ptr)
+        );
+        return smem_ptr;
+    #endif
+}
+```
+
+其中，\_\_cvta_generic_to_shared()函数可以将共享内存地址指针转换为一个无符号整型，其定义如下所示。
+
+```c++
+extern "C" __device__ size_t __nv_cvta_generic_to_shared_impl(const void*);
+#define __SM_20_INTRINSICS_DECL__ static __inline__ __device__
+__SM_20_INTRINSICS_DECL__ size_t __cvta_generic_to_shared(const void *p) { return __nv_cvta_generic_to_shared_impl(p); }
+```
+
+在cutlass/arch/simd.h头文件中，提供SIMD指令操作。
+
+```c++
+#define CUTLASS_PRAGMA_UNROLL    #pragma unroll
+#define CUTLASS_PRAGMA_NO_UNROLL #pragma unroll 1
+
+template <typename T, int N>
+CUTLASS_HOST_DEVICE Array<T, N> operator+(Array<T, N> const &a, Array<T, N> const &b) {
+    Array<T, N> d;
+    CUTLASS_PRAGMA_UNROLL
+    for (int i = 0; i < N; ++i) { d[i] = a[i] + b[i]; }
+    return d;
+}
+
+template <typename T, int N>
+CUTLASS_HOST_DEVICE Array<T, N> mac(Array<T, N> const &a, Array<T, N> const &b, Array<T, N> const &c) {
+Array<T, N> mac(Array<T, N> const &a, Array<T, N> const &b, Array<T, N> const &c) {
+    Array<T, N> d;
+    CUTLASS_PRAGMA_UNROLL
+    for (int i = 0; i < N; ++i) { d[i] = a[i] * b[i] + c[i]; }
+    return d;
+}
+```
+
+在cutlass/arch/mma.h头文件中，提供MMA乘法与累加操作，以及操作类型的标识。
+
+```c++
+```
+

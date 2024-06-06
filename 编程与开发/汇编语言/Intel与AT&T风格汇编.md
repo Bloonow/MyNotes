@@ -26,7 +26,7 @@
 | call far section:offset | lcall \$section, \$offset | 远程子程序调用指令       |
 | ret far stack_adjust    | lret \$stack_adjust       | 远程返回指令             |
 
-存储器的寻址方式不同。在Intel汇编格式中，寻址方式为`section:[base + index*scale + disp]`；而AT&T汇编格式中，寻址方式为`section:disp(base, index, scale)`，需要注意的是，在这种复合的地址表达式中，一个数字不作为立即数，它只是用来构成表达式，故不用加`$`前缀。
+存储器的寻址方式不同。在Intel汇编格式中，寻址方式为`section:[base + index * scale + disp]`；而AT&T汇编格式中，寻址方式为`section:disp(base, index, scale)`，需要注意的是，在这种复合的地址表达式中，一个数字不作为立即数，它只是用来构成表达式，故不用加`$`前缀。
 
 下面是一些内存操作的例子。
 
