@@ -164,7 +164,7 @@ struct Array<T, N, true> {
     typedef value_type* pointer;
     using Storage = T;
     Storage storage[kElements];
-    pointer data() { return reinterpret_cast<pointer>(storage); }
+    pointer data()                      { return reinterpret_cast<pointer>(storage); }
     reference operator[](size_type pos) { return reinterpret_cast<reference>(storage[pos]); }
 };
 template<typename T, int N, int Alignment = (sizeof_bits<T>::value * N + 7) / 8>
@@ -218,7 +218,7 @@ struct NumericConverter {
     static FloatRoundStyle const round_style = Round;
     using result_type = T;
     using source_type = S;
-    static result_type convert(source_type const &s) { return static_cast<result_type>(s); }
+    static result_type convert(source_type const &s)   { return static_cast<result_type>(s); }
     result_type operator()(source_type const &s) const { return convert(s); }
 };
 ```
@@ -286,7 +286,7 @@ Coord\<Rank\>是一个通用的逻辑坐标，或表示维数形状，可用于�
 struct MatrixCoord : public Coord<2, int> {
     static int const kRow = 0;
     static int const kColumn = 1;
-    Index& row() { return this->at(kRow); }
+    Index& row()    { return this->at(kRow); }
     Index& column() { return this->at(kColumn); }
 };
 struct Tensor4DCoord : public Coord<4> {
@@ -303,9 +303,22 @@ struct Tensor4DCoord : public Coord<4> {
 
 MatrixCoord和Tensor4DCoord分别提供专用于二维矩阵和四维张量情况下的坐标，并提供相关特定的成员方法。
 
-在cutlass/gemm_coord.h头文件中，提供GemmShape和GemmCoord的定义，如下所示。
+在cutlass/gemm_coord.h头文件中，提供GemmCoord和GemmShape的定义，如下所示。
 
 ```c++
+// GemmCoord is a structure derived from Coord<3> that 
+// specifies a location within the coordinate space of a GEMM problem.
+struct GemmCoord : public Coord<3, int> {
+    typedef int Index;
+    typedef Coord<3, Index> Base;
+    static int const kM = 0;  // GEMM M dimension - rows of the output C matrix
+    static int const kN = 1;  // GEMM N dimension - columns of the output C matrix
+    static int const kK = 2;  // GEMM K dimension - inner dimension of the GEMM problem
+    CUTLASS_HOST_DEVICE Index & m() { return this->at(kM); }
+    CUTLASS_HOST_DEVICE Index & n() { return this->at(kN); }
+    CUTLASS_HOST_DEVICE Index & k() { return this->at(kK); }
+};
+
 // Shape of a matrix multiply-add operation
 template<int M = 1, int N = 1, int K = 1>
 struct GemmShape {
@@ -320,22 +333,24 @@ struct GemmShape {
     // Returns a Coord object
     CUTLASS_HOST_DEVICE static Coord<3> toCoord() { return make_Coord(kM, kN, kK); }
 };
+```
 
-// GemmCoord is a structure derived from Coord<3> that 
-// specifies a location within the coordinate space of a GEMM problem.
-struct GemmCoord : public Coord<3, int> {
-    typedef int Index;
-    typedef Coord<3, Index> Base;
-    static int const kM = 0;  // GEMM M dimension - rows of the output C matrix
-    static int const kN = 1;  // GEMM N dimension - columns of the output C matrix
-    static int const kK = 2;  // GEMM K dimension - inner dimension of the GEMM problem
-    CUTLASS_HOST_DEVICE Index & m() { return this->at(kM); }
-    CUTLASS_HOST_DEVICE Index & n() { return this->at(kN); }
-    CUTLASS_HOST_DEVICE Index & k() { return this->at(kK); }
+GemmCoord表示一个GEMM问题中的坐标，GemmShape表示一个矩阵乘法累加操作的形状。
+
+在cutlass/matrix_shape.h头文件中，提供MatrixShape的定义，如下所示。
+
+```c++
+// Describes the size of a matrix tile
+template<int Row, int Column>
+struct MatrixShape {
+    static int const kRow = Row;             // rows of a matrix
+    static int const kColumn = Column;       // columns of a matrix
+    static int const kCount = Row * Column;  // total number of elements in a matrix
+    CUTLASS_HOST_DEVICE static Coord<2> toCoord() { return make_Coord(kRow, kColumn); }
 };
 ```
 
-GemmShape表示一个矩阵乘法累加操作的形状，GemmCoord表示一个GEMM问题中的坐标。
+MatrixShape表示一个矩阵的形状，包括行数与列数。
 
 ## Layout and Tensor
 
@@ -343,22 +358,31 @@ GemmShape表示一个矩阵乘法累加操作的形状，GemmCoord表示一个GE
 
 布局Layout将逻辑索引空间映射到内存空间中存储位置的实际偏移，并存储用于计算映射的状态，定义其它CUTLASS组件需要使用的部分实例化。
 
-在cutlass/layout目录的若干头文件中，提供各种布局类型的定义。例如cutlass/layout/vector.h头文件、cutlass/layout/matrix.h头文件、cutlass/layout/tensor.h头文件等，还有cutlass/layout/permute.h头文件提供变换概念的定义。一个通用设计如下。
+在cutlass/layout目录的若干头文件中，提供各种布局类型的定义。例如cutlass/layout/vector.h头文件、cutlass/layout/matrix.h头文件、cutlass/layout/tensor.h头文件等，还有cutlass/layout/permute.h头文件提供变换概念的定义。矩阵列主序存储的布局如下所示。
 
 ```c++
-struct LayoutConcept {
-    static int const kRank;                        // Logical rank of tensor
-    static int const kStrideRank;                  // Rank of stride vector
+// Mapping function for column-major matrices.
+class ColumnMajor {
+public:  
+    static int const kRank = 2;                    // Logical rank of tensor
+    static int const kStrideRank = 1;              // Rank of stride vector
     using Index = int32_t;                         // Index type used for coordinates
     using LongIndex = int64_t;                     // Long index type used for offsets
-    using TensorCoord = Coord<kRank, Index>;       // Logical coordinate
-    using Stride = Coord<kStrideRank, LongIndex>;  // Stride object
-    Stride stride_;                                // Stride data member  
-    LayoutConcept(LongIndex ldm = 0): stride_(ldm) {}        // Constructor with leading dimension
-    LongIndex operator()(TensorCoord const &coord) const;    // Return the offset of a coordinate in linear memory
-    LongIndex capacity(TensorCoord const &extent) const;     // The number of contiguous elements needed to store a tensor
-    TensorCoord inverse(LongIndex offset) const;             // mapping linear offset to logical coordinate
-    Stride stride() const();                                 // Returns the stride of the layout
+    using TensorCoord = MatrixCoord;               // Logical coordinate
+    using Stride = Coord<kStrideRank, LongIndex>;  // Stride vector
+private:
+    Stride stride_;  // Stride data member
+public:
+    CUTLASS_HOST_DEVICE ColumnMajor(LongIndex ldm = 0): stride_(ldm) { }
+    CUTLASS_HOST_DEVICE ColumnMajor(Stride stride): stride_(stride) { }
+    // Helper returns a layout to a tightly packed tensor
+    CUTLASS_HOST_DEVICE static ColumnMajor packed(MatrixCoord const &extent) {
+        return ColumnMajor(extent.row());
+    }
+    // Returns the offset of a coordinate in linear memory
+    CUTLASS_HOST_DEVICE LongIndex operator()(MatrixCoord const &coord) const {
+        return LongIndex(coord.column()) * LongIndex(stride_[0]) + coord.row();
+    }
 };
 ```
 
@@ -382,14 +406,31 @@ void layout_demo() {
 ```c++
 template<typename Element, typename Layout>
 class TensorRef {
-    using Reference = Element&;
+public:
+    using Reference = Element&;                        // Reference type to an element
+    static int const kRank = Layout::kRank;            // Logical rank of tensor index space
+    using Index = typename Layout::Index;              // Index type
+    using LongIndex = typename Layout::LongIndex;      // Long index used for pointer offsets
+    using TensorCoord = typename Layout::TensorCoord;  // Coordinate in logical tensor space
+    using Stride = typename Layout::Stride;            // Layout's stride vector
+private:
     Element* ptr_;   // Pointer
-    Layout layout_;  // LayoutConcept maps logical coordinates to linear offsets
-    TensorRef(Element *ptr, Layout const &layout): ptr_(ptr), layout_(layout) {}  // Constructs a TensorRef
-    Element* data() const { return ptr_; }
-    Reference data(LongIndex idx) const { return ptr_[idx]; }
-    LongIndex offset(TensorCoord const &coord) const { return layout_(coord); }
-    Reference operator[](TensorCoord const &coord) const { return data(offset(coord)); }
+    Layout layout_;  // Layout object maps logical coordinates to linear offsets
+public:
+    // Constructs a TensorRef with a pointer and layout object
+    CUTLASS_HOST_DEVICE TensorRef(Element *ptr, Layout const &layout): ptr_(ptr), layout_(layout) {}
+    // Returns a reference to the element at a given linear index
+    Reference data(LongIndex idx) const {
+        return ptr_[idx];
+    }
+    // Computes the offset of an index from the origin of the tensor
+    CUTLASS_HOST_DEVICE LongIndex offset(TensorCoord const &coord) const {
+        return layout_(coord);
+    }
+    // Returns a reference to the element at a given Coord
+    CUTLASS_HOST_DEVICE Reference operator[](TensorCoord const& coord) const {
+        return data(offset(coord));
+    }
 };
 ```
 
@@ -398,10 +439,19 @@ class TensorRef {
 ```c++
 template<typename Element, typename Layout>
 class TensorView : public TensorRef<Element, Layout> {
-    using TensorCoord = typename Layout::TensorCoord;
+public:
+    using Base = cutlass::TensorRef<Element, Layout>;  // Base tensor reference
+    using TensorCoord = typename Layout::TensorCoord;  // Coordinate in logical tensor space
+private:
     TensorCoord extent_;  // View extent
-    TensorView(Element *ptr, Layout const &layout, TensorCoord const &extent): Base(ptr, layout), extent_(extent) {}
-    TensorCoord const& extent() const { return extent_; }  // Returns the extent of the view
+public:
+    // Constructs a TensorView object
+    CUTLASS_HOST_DEVICE TensorView(Element *ptr, Layout const &layout, TensorCoord const &extent):
+    	Base(ptr, layout), extent_(extent) {}
+    // Returns the extent of the view
+    CUTLASS_HOST_DEVICE TensorCoord const& extent() const {
+        return extent_;
+    }
 };
 ```
 
@@ -588,17 +638,17 @@ CUTLASS_DEVICE void shared_store<16>(uint32_t ptr, void const *src) {
 CUTE_DEVICE uint32_t cast_smem_ptr_to_uint(void const* const ptr) {
     // Use the new CVTA intrinsics if they are available, otherwise the previous internal intrinsics.
     #if CUTE_CVTA_GENERIC_TO_SHARED_ACTIVATED
-        // This NVVM intrinsic converts an address in shared memory to a plain unsigned integer.
-        // This is necessary to pass to shared memory instructions in inline PTX.
-        return static_cast<uint32_t>(__cvta_generic_to_shared(ptr));
+    // This NVVM intrinsic converts an address in shared memory to a plain unsigned integer.
+    // This is necessary to pass to shared memory instructions in inline PTX.
+    return static_cast<uint32_t>(__cvta_generic_to_shared(ptr));
     #else
-        uint32_t smem_ptr;
-        asm(
-            "{ .reg .u64 smem_ptr; cvta.to.shared.u64 smem_ptr, %1; cvt.u32.u64 %0, smem_ptr; }\n"
-            : "=r"(smem_ptr)
-            : "l"(ptr)
-        );
-        return smem_ptr;
+    uint32_t smem_ptr;
+    asm(
+        "{ .reg .u64 smem_ptr; cvta.to.shared.u64 smem_ptr, %1; cvt.u32.u64 %0, smem_ptr; }\n"
+        : "=r"(smem_ptr)
+        : "l"(ptr)
+    );
+    return smem_ptr;
     #endif
 }
 ```
@@ -645,7 +695,7 @@ struct OpClassWmmaTensorOp {};  // Tag classifying operators as WMMA Tensor Core
 
 // Matrix multiply-add operation
 template<
-    typename Shape,  // Size of MMA; GemmShape; Executed by kThreads
+    typename Shape,  // Size of MMA; gemm::GemmShape; Executed by kThreads
     int kThreads,    // Number of threads participating, and tiling on Shape
     // Data Type and Layout for A, B, C
     typename ElementA, typename LayoutA,
@@ -660,8 +710,8 @@ template<
     typename ElementA, typename LayoutA, typename ElementB, typename LayoutB,
     typename ElementC, typename LayoutC, typename Operator
 >
-struct Mma<gemm::GemmShape<1, 1 ,1>, 1, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, Operator> {
-    using Shape = gemm::GemmShape<1, 1, 1>;
+struct Mma<gemm::GemmShape<1,1,1>, 1, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, Operator> {
+    using Shape = gemm::GemmShape<1,1,1>;
     CUTLASS_HOST_DEVICE void operator()(
         Array<ElementC, 1> &d, Array<ElementA, 1> const &a, Array<ElementB, 1> const &b, Array<ElementC, 1> const &c
     ) {
@@ -701,13 +751,13 @@ struct Mma<
 };
 ```
 
-在cutlass/arch/wmma.h头文件中，提供WMMA线程束层级的矩阵乘法累加操作。
+在cutlass/arch/wmma.h头文件中，提供WMMA线程束层级的矩阵乘法累加操作，即一个线程束的WMMA计算。
 
 ```c++
 // WMMA template structure defines nvcuda::wmma::fragments and static assertion chaeks for a specific
 // template paramterized data type (Element[A|B|C]), layout (Layout[A|B|C]), and native wmma size (Shape)
 template <  
-    typename Shape,  // Size of MMA; GemmShape
+    typename Shape,  // Size of MMA; gemm::GemmShape
     // Data Type and Layout for A, B, C
     typename ElementA, typename LayoutA,
     typename ElementB, typename LayoutB,
@@ -741,11 +791,12 @@ struct Wmma<Shape, cutlass::half_t, LayoutA, cutlass::half_t, LayoutB, ElementC,
 如前所述，CUTLASS对通用矩阵乘法GEMM进行并行分片，映射到CUDA并行编程模型中的多个层级资源上。在cutlass/gemm目录中，提供各层级的实现。
 
 ```shell
-├── gemm       # GEneral Matrix Multiply computations
-│   ├── device       # Launch kernels
-│   ├── kernel       # Kernels
-│   ├── threadblock  # Cta Tile
-│   ├── warp         # Warp Tile
-│   └── thread       # Thread Tile
+cutlass
+└── gemm       # GEneral Matrix Multiply computations
+    ├── device       # Launch kernels
+    ├── kernel       # Kernels
+    ├── threadblock  # Cta Tile
+    ├── warp         # Warp Tile
+    └── thread       # Thread Tile
 ```
 
