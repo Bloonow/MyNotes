@@ -15,7 +15,7 @@ for (int cta_k = 0; cta_k < GemmK; cta_k += CtaTileK)  // GEMM mainloop, no unro
 			mma_instruction(d, a, b, c);  // one single mma instruction by Tensor Core or CUDA Core
 ```
 
-MMA（Matrix Multiply Accumulate）是指矩阵乘法与累加操作，是矩阵乘法的实现代码中的基本操作，因为实现代码必须对K维度进行迭代循环，每次迭代都需要执行矩阵乘法操作与累加操作，也即MMA矩阵乘法与累加操作。
+MMA（Matrix Multiply Accumulate）是指矩阵乘法累加操作，是矩阵乘法的实现代码中的基本操作，因为实现代码必须对K维度进行迭代循环，每次迭代都需要执行矩阵乘法操作与累加操作，也即MMA矩阵乘法累加操作。
 
 CUTLASS对矩阵乘法的划分如下图所示，从左至右，每个层级对应着CUDA编程模型中不同的并行资源。
 
@@ -23,13 +23,13 @@ CUTLASS对矩阵乘法的划分如下图所示，从左至右，每个层级对�
 
 ## Tiling and Epilogue
 
-线程块分片（Threadblock Tile），一个线程块负责计算结果矩阵的一部分，会迭代地从全局内存中加载输入矩阵分片到共享内存，并执行矩阵乘法与累加操作。在线程块层级，线程块尺寸与矩阵分片策略是算法性能的关键。一个更大的线程块往往持有更大的矩阵分片，意味着更少的全局内存读取，从而能够保证DRAM带宽不是性能瓶颈；然而线程块分片与问题规模并不能总是相匹配。如果M维度或N维度较小，则线程块中的一些线程可能因为已经超出问题边界而在做无效计算。如果M维度和N维度较小而K维度较大，这种朴素的线程块分片模式只会启动很少的工作线程，而每个工作线程又会负责较长的K维度迭代计算负载，这无法充分利用GPU设备的流多处理器。在K维度上进行线程块或线程束的划分，然后对每个线程块计算得到的部分矩阵乘法结果执行求和归约，可以对这种问题规模的计算进行优化。在CUTLASS中，可以使用ThreadblockShape::{kM,kN,kK}指定线程块分片的尺寸，以匹配不同的硬件架构和问题规模。
+线程块分片（Threadblock Tile），一个线程块负责计算结果矩阵的一部分，会迭代地从全局内存中加载输入矩阵分片到共享内存，并执行矩阵乘法累加操作。在线程块层级，线程块尺寸与矩阵分片策略是算法性能的关键。一个更大的线程块往往持有更大的矩阵分片，意味着更少的全局内存读取，从而能够保证DRAM带宽不是性能瓶颈；然而线程块分片与问题规模并不能总是相匹配。如果M维度或N维度较小，则线程块中的一些线程可能因为已经超出问题边界而在做无效计算。如果M维度和N维度较小而K维度较大，这种朴素的线程块分片模式只会启动很少的工作线程，而每个工作线程又会负责较长的K维度迭代计算负载，这无法充分利用GPU设备的流多处理器。在K维度上进行线程块或线程束的划分，然后对每个线程块计算得到的部分矩阵乘法结果执行求和归约，可以对这种问题规模的计算进行优化。在CUTLASS中，可以使用ThreadblockShape::{kM,kN,kK}指定线程块分片的尺寸，以匹配不同的硬件架构和问题规模。
 
-线程束分片（Warp Tile），一个线程束负责计算线程块分片的一部分，会迭代地从共享内存中加载输入矩阵分片到寄存器，并执行矩阵乘法与累加操作。在实现上，线程束的矩阵乘法与累加操作，可以通过mma.sync指令或wmma指令由Tensor Core完成计算，或通过线程分片由CUDA Core完成计算。为取得最高性能，对共享内存的访问应该避免bank冲突。为重用数据，应该尽可能划分更大尺寸的线程束分片。
+线程束分片（Warp Tile），一个线程束负责计算线程块分片的一部分，会迭代地从共享内存中加载输入矩阵分片到寄存器，并执行矩阵乘法累加操作。在实现上，线程束的矩阵乘法累加操作，可以通过mma.sync指令或wmma指令由Tensor Core完成计算，或通过线程分片由CUDA Core完成计算。为取得最高性能，对共享内存的访问应该避免bank冲突。为重用数据，应该尽可能划分更大尺寸的线程束分片。
 
-线程分片（Thread Tile），一个线程负责计算线程束分片的一部分，会迭代地获取寄存器中的数据，并执行矩阵乘法与累加操作。因为一个线程无法访问其它线程的寄存器，故应该合理安排线程布局，使得一个线程的多条计算指令能够重用寄存器中的数据。即一个线程计算一个二维矩阵分片，从而使线程能够将一组独立的计算指令发射给CUDA Core计算，以执行矩阵乘法与累加操作。SGEMM、DGEMM、HGEMM、IGEMM等通过单指令多线程SIMT指令完成计算。
+线程分片（Thread Tile），一个线程负责计算线程束分片的一部分，会迭代地获取寄存器中的数据，并执行矩阵乘法累加操作。因为一个线程无法访问其它线程的寄存器，故应该合理安排线程布局，使得一个线程的多条计算指令能够重用寄存器中的数据。即一个线程计算一个二维矩阵分片，从而使线程能够将一组独立的计算指令发射给CUDA Core计算，以执行矩阵乘法累加操作。SGEMM、DGEMM、HGEMM、IGEMM等通过单指令多线程SIMT指令完成计算。
 
-在完成上述划分的矩阵乘法与累加操作之后，计算所得的结果矩阵的一部分存在于一个线程的寄存器中，这种划分策略能够取得最高的矩阵乘法计算效率，但在将结果矩阵写回到全局内存中时不能实现高效的合并访存模式。
+在完成上述划分的矩阵乘法累加操作之后，计算所得的结果矩阵的一部分存在于一个线程的寄存器中，这种划分策略能够取得最高的矩阵乘法计算效率，但在将结果矩阵写回到全局内存中时不能实现高效的合并访存模式。
 
 结尾分片（Epilogue Tile）操作是一个单独阶段，一个线程负责处理结果矩阵分片的一部分，用以对计算所得的结果矩阵执行后置操作。通常情况下，一个线程节计算所得的结果矩阵分片以特定布局写回到共享内存中，这种结果矩阵分片在共享内存中的布局方式有利于线程以高效合并访存的模式写回结果。同时，一个线程可以对所负责结果矩阵分片的一部分执行其它可选的逐元素操作。CUTLASS定义一些典型的结尾操作，例如线程缩放与收缩等。
 
@@ -86,7 +86,7 @@ CUTLASS库包括若干组件。在顶层include目录中提供CUTLASS模板库�
 
 使用Index表示某个逻辑维度轴上的索引，使用Extent表示某个逻辑维度轴上的逻辑维数，使用Rank表示维度轴的数目，使用Size表示全部逻辑元素的数目；使用LongIndex表示在内存空间中存储位置的线性偏移，使用Capacity表示多维对象在内存中实际需要存储的元素数目，包括填充元素。
 
-# CUTLASS Template
+# CUTLASS Template Reference
 
 ```shell
 cutlass  # CUTLASS Template Library
@@ -235,6 +235,38 @@ void converter_demo() {
 }
 ```
 
+在cutlass/predicate_vector.h头文件中，提供PredicateVector的定义，如下所示。
+
+```c++
+template <int kPredicates, int kPredicatesPerByte = 4, int kPredicateStart = 0>
+struct PredicateVector {
+    // Storage type of individual elements
+    typedef uint32_t Storage;
+    // Number of bytes needed
+    static constexpr int kBytes = (kPredicates + kPredicatesPerByte - 1) / kPredicatesPerByte;
+    // Number of storage elements needed
+    static constexpr int kWordCount = (kBytes + int(sizeof(Storage)) - 1) / int(sizeof(Storage));
+    Storage storageData[kWordCount];
+}
+```
+
+PredicateVector是一个由谓词构成的固定长度的向量，也即掩码向量，可以在循环展开代的码段中使用寄存器加速访问。
+
+在cutlass/functional.h头文件中，提供一些模板函数的定义，该头文件是模仿C++标准库的functional头文件，一个操作的示例如下所示。
+
+```c++
+template<typename A, typename B = A, typename C = A>
+struct multiply_add {
+    C operator()(A const &a, B const &b, C const &c) const {
+		return C(a) * C(b) + c;
+    }
+};
+```
+
+其中，multiply_add\<T\>表示乘法与加法操作，由CUTLASS进行扩展，以支持复数complex\<T\>类型的乘法与加法操作，并尽可能调用本地硬件指令。
+
+## Shape and Coord
+
 在cutlass/coord.h头文件中，提供Coord\<Rank\>容器的定义，如下所示。
 
 ```c++
@@ -271,35 +303,39 @@ struct Tensor4DCoord : public Coord<4> {
 
 MatrixCoord和Tensor4DCoord分别提供专用于二维矩阵和四维张量情况下的坐标，并提供相关特定的成员方法。
 
-在cutlass/predicate_vector.h头文件中，提供PredicateVector的定义，如下所示。
+在cutlass/gemm_coord.h头文件中，提供GemmShape和GemmCoord的定义，如下所示。
 
 ```c++
-template <int kPredicates, int kPredicatesPerByte = 4, int kPredicateStart = 0>
-struct PredicateVector {
-    // Storage type of individual elements
-    typedef uint32_t Storage;
-    // Number of bytes needed
-    static constexpr int kBytes = (kPredicates + kPredicatesPerByte - 1) / kPredicatesPerByte;
-    // Number of storage elements needed
-    static constexpr int kWordCount = (kBytes + int(sizeof(Storage)) - 1) / int(sizeof(Storage));
-    Storage storageData[kWordCount];
-}
-```
+// Shape of a matrix multiply-add operation
+template<int M = 1, int N = 1, int K = 1>
+struct GemmShape {
+    static int const kM = M;  // Rows of matrix product
+    static int const kN = N;  // Columns of matrix product
+    static int const kK = K;  // Inner dimension of matrix product
+    static int const kMN = M * N;
+    static int const kMK = M * K;
+    static int const kKN = N * K;
+    static int const kMNK = M * N * K;
+    static int const kCount = kMNK;
+    // Returns a Coord object
+    CUTLASS_HOST_DEVICE static Coord<3> toCoord() { return make_Coord(kM, kN, kK); }
+};
 
-PredicateVector是一个由谓词构成的固定长度的向量，也即掩码向量，可以在循环展开代的码段中使用寄存器加速访问。
-
-在cutlass/functional.h头文件中，提供一些模板函数的定义，该头文件是模仿C++标准库的functional头文件，一个操作的示例如下所示。
-
-```c++
-template<typename A, typename B = A, typename C = A>
-struct multiply_add {
-    C operator()(A const &a, B const &b, C const &c) const {
-		return C(a) * C(b) + c;
-    }
+// GemmCoord is a structure derived from Coord<3> that 
+// specifies a location within the coordinate space of a GEMM problem.
+struct GemmCoord : public Coord<3, int> {
+    typedef int Index;
+    typedef Coord<3, Index> Base;
+    static int const kM = 0;  // GEMM M dimension - rows of the output C matrix
+    static int const kN = 1;  // GEMM N dimension - columns of the output C matrix
+    static int const kK = 2;  // GEMM K dimension - inner dimension of the GEMM problem
+    CUTLASS_HOST_DEVICE Index & m() { return this->at(kM); }
+    CUTLASS_HOST_DEVICE Index & n() { return this->at(kN); }
+    CUTLASS_HOST_DEVICE Index & k() { return this->at(kK); }
 };
 ```
 
-其中，multiply_add\<T\>表示乘法与加法操作，由CUTLASS进行扩展，以支持复数complex\<T\>类型的乘法与加法操作，并尽可能调用本地硬件指令。
+GemmShape表示一个矩阵乘法累加操作的形状，GemmCoord表示一个GEMM问题中的坐标。
 
 ## Layout and Tensor
 
@@ -419,7 +455,7 @@ struct enable_if<true, _Tp> { typedef _Tp type; };                        // Par
 template<bool _Cond, typename _Iftrue, typename _Iffalse>
 struct conditional { typedef _Iftrue type; };
 template<typename _Iftrue, typename _Iffalse>
-struct conditional<false, _Iftrue, _Iffalse> { typedef _Iffalse type; };  // Partial specialization for false.
+struct conditional<false, _Iftrue, _Iffalse> { typedef _Iffalse type; };  // Partial specialization for false
 ```
 
 在cutlass/cutlass.h头文件中，提供Status枚举类的定义，用于标识CUTLASS库的执行状态，并提供一些常量定义。
@@ -434,8 +470,8 @@ struct conditional<false, _Iftrue, _Iffalse> { typedef _Iffalse type; };  // Par
 | cutlass/arch/cache_operation.h | 标识cache缓存行为的枚举类                              |
 | cutlass/arch/memory.h          | 与全局内存和共享内存相关的操作                         |
 | cutlass/arch/simd.h            | SIMD指令操作                                           |
-| cutlass/arch/mma.h             | MMA乘法与累加操作，以及操作类型的标识                  |
-| cutlass/arch/wmma.h            | WMMA线程束层级的矩阵乘法与累加操作                     |
+| cutlass/arch/mma.h             | MMA矩阵乘法累加操作，以及操作类型的标识                |
+| cutlass/arch/wmma.h            | WMMA线程束层级的矩阵乘法累加操作                       |
 
 在cutlass/arch/arch.h头文件中，提供LaneId()与SmId()辅助函数，以及设备架构与计算能力的标识。
 
@@ -467,68 +503,55 @@ struct CacheOperation {
 
 ```c++
 template<
-    typename AccessType,  // Fragment type to store loaded data, pointer
+    typename AccessType,  // Fragment type to store loaded data; pointer
     int LoadBytes,        // The bytes of loading
     CacheOperation::Kind cache_op = CacheOperation::Always  // Cache operation
 >
 struct global_load;
 template <typename AccessType>
-struct global_load<AccessType, 32, CacheOperation::Always> {
+struct global_load<AccessType, 16, CacheOperation::Always> {
     CUTLASS_DEVICE global_load(AccessType &D, void const *ptr, bool pred_guard) {
-        uint4 *data = reinterpret_cast<uint4*>(&D);
-        // The redundant mov PTX instruction is used to enforce the compiler to
-        // keep the initializing code before ld.global
+        uint4 &data = reinterpret_cast<uint4 &>(D);
+        // The redundant mov PTX instruction is used to enforce the compiler
+        // to keep the initializing code before ld.global
         asm volatile(
             "{\n"
             "  .reg .pred p;\n"
-            "  setp.ne.b32 p, %9, 0;\n"
-            "  mov.b32 %0, %10;\n"
-            "  mov.b32 %1, %11;\n"
-            "  mov.b32 %2, %12;\n"
-            "  mov.b32 %3, %13;\n"
-            "  mov.b32 %4, %14;\n"
-            "  mov.b32 %5, %15;\n"
-            "  mov.b32 %6, %16;\n"
-            "  mov.b32 %7, %17;\n"
+            "  setp.ne.b32 p, %5, 0;\n"
+            "  mov.b32 %0, %6;\n"
+            "  mov.b32 %1, %7;\n"
+            "  mov.b32 %2, %8;\n"
+            "  mov.b32 %3, %9;\n"
             #if CUTLASS_ENABLE_L2_PREFETCH
-            "  @p ld.global.L2::128B.v4.u32 {%0, %1, %2, %3}, [%8];\n"
-            "  @p ld.global.L2::128B.v4.u32 {%4, %5, %6, %7}, [%18];\n"
+            "  @p ld.global.L2::128B.v4.u32 {%0, %1, %2, %3}, [%4];\n"
             #else
-            "  @p ld.global.v4.u32 {%0, %1, %2, %3}, [%8];\n"
-            "  @p ld.global.v4.u32 {%4, %5, %6, %7}, [%18];\n"
+            "  @p ld.global.v4.u32 {%0, %1, %2, %3}, [%4];\n"
             #endif
             "}\n"
-            : "=r"(data[0].x), "=r"(data[0].y), "=r"(data[0].z), "=r"(data[0].w),
-              "=r"(data[1].x), "=r"(data[1].y), "=r"(data[1].z), "=r"(data[1].w)
+            : "=r"(data.x), "=r"(data.y), "=r"(data.z), "=r"(data.w)
             : "l"(ptr), "r"((int)pred_guard),
-              "r"(data[0].x), "r"(data[0].y), "r"(data[0].z), "r"(data[0].w),
-              "r"(data[1].x), "r"(data[1].y), "r"(data[1].z), "r"(data[1].w),
-              "l"(((uint8_t*)ptr) + 16)
+              "r"(data.x), "r"(data.y), "r"(data.z), "r"(data.w)
         );
     }
 };
 
 template<
-    typename AccessType,  // Fragment type to store data, pointer
+    typename AccessType,  // Fragment type to store data; pointer
     int StoreBytes        // The bytes of storing
 >
 struct global_store;
-template<typename AccessType>
-struct global_store<AccessType, 32> {
+template <typename AccessType>
+struct global_store<AccessType, 16> {
     CUTLASS_DEVICE global_store(AccessType const &D, void *ptr, bool pred_guard) {
-        uint4 const *data = reinterpret_cast<uint4 const*>(&D);
+        uint4 const &data = reinterpret_cast<uint4 const &>(D);
         asm volatile(
             "{\n"
             "  .reg .pred p;\n"
             "  setp.ne.b32 p, %5, 0;\n"
             "  @p st.global.v4.u32 [%0], {%1, %2, %3, %4};\n"
-            "  @p st.global.v4.u32 [%6], {%7, %8, %9, %10};\n"
             "}\n"
             :
-            : "l"(ptr), 
-              "r"(data[0].x), "r"(data[0].y), "r"(data[0].z), "r"(data[0].w),
-              "r"((int)pred_guard), "l"(((uint8_t*)ptr) + 16),
-              "r"(data[1].x), "r"(data[1].y), "r"(data[1].z), "r"(data[1].w)
+            : "l"(ptr), "r"(data.x), "r"(data.y), "r"(data.z), "r"(data.w), "r"((int)pred_guard)
         );
     }
 };
@@ -564,11 +587,11 @@ CUTLASS_DEVICE void shared_store<16>(uint32_t ptr, void const *src) {
 // helper to cast SMEM pointer to unsigned integer
 CUTE_DEVICE uint32_t cast_smem_ptr_to_uint(void const* const ptr) {
     // Use the new CVTA intrinsics if they are available, otherwise the previous internal intrinsics.
-    #if (__CUDACC_VER_MAJOR__ >= 11)
+    #if CUTE_CVTA_GENERIC_TO_SHARED_ACTIVATED
         // This NVVM intrinsic converts an address in shared memory to a plain unsigned integer.
         // This is necessary to pass to shared memory instructions in inline PTX.
         return static_cast<uint32_t>(__cvta_generic_to_shared(ptr));
-    #else defined(__CUDA_ARCH__)
+    #else
         uint32_t smem_ptr;
         asm(
             "{ .reg .u64 smem_ptr; cvta.to.shared.u64 smem_ptr, %1; cvt.u32.u64 %0, smem_ptr; }\n"
@@ -612,8 +635,117 @@ Array<T, N> mac(Array<T, N> const &a, Array<T, N> const &b, Array<T, N> const &c
 }
 ```
 
-在cutlass/arch/mma.h头文件中，提供MMA乘法与累加操作，以及操作类型的标识。
+在cutlass/arch/mma.h头文件中，提供MMA矩阵乘法累加操作，以及操作类型的标识。
 
 ```c++
+struct OpMultiplyAdd {};        // Tag indicating the operation implied by MMA.
+struct OpClassSimt {};          // Tag classifying math operators as thread-level operations.
+struct OpClassTensorOp {};      // Tag classifying operators as Tensor Core operations.
+struct OpClassWmmaTensorOp {};  // Tag classifying operators as WMMA Tensor Core operations
+
+// Matrix multiply-add operation
+template<
+    typename Shape,  // Size of MMA; GemmShape; Executed by kThreads
+    int kThreads,    // Number of threads participating, and tiling on Shape
+    // Data Type and Layout for A, B, C
+    typename ElementA, typename LayoutA,
+    typename ElementB, typename LayoutB,
+    typename ElementC, typename LayoutC,
+    typename Operator  // Inner product operator (multiply-add)
+>
+struct Mma;
+
+// Matrix multiply-add operation - specialized for 1x1x1 matrix multiply operation
+template<
+    typename ElementA, typename LayoutA, typename ElementB, typename LayoutB,
+    typename ElementC, typename LayoutC, typename Operator
+>
+struct Mma<gemm::GemmShape<1, 1 ,1>, 1, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, Operator> {
+    using Shape = gemm::GemmShape<1, 1, 1>;
+    CUTLASS_HOST_DEVICE void operator()(
+        Array<ElementC, 1> &d, Array<ElementA, 1> const &a, Array<ElementB, 1> const &b, Array<ElementC, 1> const &c
+    ) {
+        multiply_add<ElementA, ElementB, ElementC> op;
+        d[0] = op(a[0], b[0], c[0]);
+    }
+};
+
+// Matrix multiply-add operation: F16 = F16 * F16 + F16
+template <>
+struct Mma<
+    gemm::GemmShape<16, 8, 16>, 32,
+    half_t, layout::RowMajor, half_t, layout::ColumnMajor,
+    half_t, layout::RowMajor, OpMultiplyAdd
+> {
+    // Shape is held by 32 threads, and Fragment is held by one thread, Refer to Documentation for Tile Format
+    using Shape = gemm::GemmShape<16, 8, 16>;
+    using ElementA = half_t;  using LayoutA = layout::RowMajor;     using FragmentA = Array<half_t, 8>;
+    using ElementB = half_t;  using LayoutB = layout::ColumnMajor;  using FragmentB = Array<half_t, 4>;
+    using ElementC = half_t;  using LayoutC = layout::RowMajor;     using FragmentC = Array<half_t, 4>;
+    using Operator = OpMultiplyAdd;
+    using ArchTag = arch::Sm80;
+    // Computes multiply-add
+    CUTLASS_HOST_DEVICE void operator()(FragmentC &d, FragmentA const &a, FragmentB const &b, FragmentC const &c) const {
+        uint32_t const *A = reinterpret_cast<uint32_t const*>(&a);
+        uint32_t const *B = reinterpret_cast<uint32_t const*>(&b);
+        uint32_t const *C = reinterpret_cast<uint32_t const*>(&c);
+        uint32_t *D = reinterpret_cast<uint32_t*>(&d);
+        asm volatile(
+            "mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%0,%1}, {%2,%3,%4,%5}, {%6,%7}, {%8,%9};\n"
+            : "=r"(D[0]), "=r"(D[1])
+            : "r"(A[0]), "r"(A[1]), "r"(A[2]), "r"(A[3]),
+              "r"(B[0]), "r"(B[1]),
+              "r"(C[0]), "r"(C[1])
+        );
+    }
+};
+```
+
+在cutlass/arch/wmma.h头文件中，提供WMMA线程束层级的矩阵乘法累加操作。
+
+```c++
+// WMMA template structure defines nvcuda::wmma::fragments and static assertion chaeks for a specific
+// template paramterized data type (Element[A|B|C]), layout (Layout[A|B|C]), and native wmma size (Shape)
+template <  
+    typename Shape,  // Size of MMA; GemmShape
+    // Data Type and Layout for A, B, C
+    typename ElementA, typename LayoutA,
+    typename ElementB, typename LayoutB,
+    typename ElementC, typename LayoutC,
+    typename Operator = cutlass::arch::OpMultiplyAdd  // Inner product operator
+>
+struct Wmma;
+
+template<typename Shape, typename LayoutA, typename LayoutB, typename ElementC, typename LayoutC>
+struct Wmma<Shape, cutlass::half_t, LayoutA, cutlass::half_t, LayoutB, ElementC, LayoutC, cutlass::arch::OpMultiplyAdd> {
+    using ElementA = cutlass::half_t;
+    using ElementB = cutlass::half_t;
+    using Operator = cutlass::arch::OpMultiplyAdd;
+    using ArchTag = arch::Sm70;
+    // Wmma Fragment
+    using FragmentA = nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, Shape::kM, Shape::kN, Shape::kK,
+        typename CutlassToWmmaDataType<ElementA>::Type, typename CutlassToWmmaLayout<LayoutA>::Layout>;
+    using FragmentB = nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, Shape::kM, Shape::kN, Shape::kK,
+        typename CutlassToWmmaDataType<ElementB>::Type, typename CutlassToWmmaLayout<LayoutB>::Layout>;
+    using FragmentC = nvcuda::wmma::fragment<nvcuda::wmma::accumulator, Shape::kM, Shape::kN, Shape::kK,
+        typename CutlassToWmmaDataType<ElementC>::Type>;
+    // Performs a nvcuda::wmma matrix multiply-accumulate operation
+    CUTLASS_DEVICE void operator()(FragmentC &D, FragmentA const &A, FragmentB const &B, FragmentC const &C) const {
+        nvcuda::wmma::mma_sync(D, A, B, C);
+    }
+};
+```
+
+# CUTLASS GEMM API
+
+如前所述，CUTLASS对通用矩阵乘法GEMM进行并行分片，映射到CUDA并行编程模型中的多个层级资源上。在cutlass/gemm目录中，提供各层级的实现。
+
+```shell
+├── gemm       # GEneral Matrix Multiply computations
+│   ├── device       # Launch kernels
+│   ├── kernel       # Kernels
+│   ├── threadblock  # Cta Tile
+│   ├── warp         # Warp Tile
+│   └── thread       # Thread Tile
 ```
 
