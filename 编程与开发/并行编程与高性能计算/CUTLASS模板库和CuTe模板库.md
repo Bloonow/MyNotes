@@ -107,7 +107,7 @@ cutlass  # CUTLASS Template Library
 └── conv       # Implict GEMM for Convolution
 ```
 
-> 在项目结构中，命名空间的组织方式与文件目录的组织方式一致，例如，cutlass::gemm::device命名空间对应着cutlass/gemm/device目录。
+> 在项目结构中，通常文件目录与命名空间的组成方式是一致的，例如，命名空间cutlass::gemm::device对应到cutlass::gemm::device目录。
 
 ## Fundamental Type
 
@@ -156,6 +156,9 @@ struct sizeof_bits<void> { static constexpr int value = 0; };
 ```c++
 template<typename T, int N, bool RegisterSized = sizeof_bits<T>::value >= 32>
 struct Array;
+```
+
+```c++
 template<typename T, int N>
 struct Array<T, N, true> {
     static constexpr size_t kElements = N;
@@ -167,13 +170,16 @@ struct Array<T, N, true> {
     pointer data()                      { return reinterpret_cast<pointer>(storage); }
     reference operator[](size_type pos) { return reinterpret_cast<reference>(storage[pos]); }
 };
+```
+
+```c++
 template<typename T, int N, int Alignment = (sizeof_bits<T>::value * N + 7) / 8>
 class alignas(Alignment) AlignedArray: public Array<T,N> {};
 ```
 
-Array\<T,N\>是一个固定大小的数组，与C++标准库std::array相似，但可存储小于1B的类型，且小类型的对象之间紧凑存储。在使用sizeof(Array\<T,N\>)运算符时，其返回结果仍然是以字节为单位，且最小是1个字节。应尽量避免对Array单个元素的操作，而应使用其成员方法，这些方法会使用效率更高的向量化指令。
+Array\<T,N\>是一个固定长度的数组，与C++标准库std::array相似，但可存储小于1B的类型，且小类型的对象之间紧凑存储。在使用sizeof(Array\<T,N\>)运算符时，其返回结果仍然是以字节为单位，且最小是1个字节。应尽量避免对Array单个元素的操作，而应使用其成员方法，这些方法会使用效率更高的向量化指令。
 
-AlignedArray\<T,N\>是一个固定大小的数组，继承自Array\<T,N\>模板类，但可以指定其内存空间按多少字节对齐。
+AlignedArray\<T,N\>是一个固定长度的数组，继承自Array\<T,N\>模板类，但可以指定其内存空间按多少字节对齐。
 
 在cutlass/aligned_buffer.h头文件中，提供AlignedBuffer\<T,N,Align\>容器的定义，如下所示。
 
@@ -189,7 +195,7 @@ struct AlignedBuffer {
 };
 ```
 
-AlignedBuffer\<T,N,Align\>是一个固定大小的缓冲区，不会调用所持有类型的构造方法。可使用AlignedBuffer<>::data()方法获得内存空间的地址指针。常用于获取一段以给定字节对齐的连续内存空间，如设备全局内存或共享内存，以用于向量化操作，一个示例如下所示。
+AlignedBuffer\<T,N,Align\>是一个固定长度的缓冲区，不会调用所持有类型的构造方法。可使用AlignedBuffer<>::data()方法获得内存空间的地址指针。常用于获取一段以给定字节对齐的连续内存空间，如设备全局内存或共享内存，以用于向量化操作，一个示例如下所示。
 
 ```c++
 __global__ void aligned_buffer_demo_kernel() {
@@ -213,6 +219,9 @@ enum class FloatRoundStyle {
     round_half_ulp_truncate,      // add 0.5ulp to integer representation then round toward zero
     round_half_ulp_trunc_dntz     // like round_half_ulp_truncate, except denorms are rounded *toward* zero
 };
+```
+
+```c++
 template<typename T, typename S, FloatRoundStyle Round = FloatRoundStyle::round_to_nearest>
 struct NumericConverter {
     static FloatRoundStyle const round_style = Round;
@@ -278,7 +287,7 @@ struct Coord {
 };
 ```
 
-Coord\<Rank\>是一个通用的逻辑坐标，或表示维数形状，可用于张量中的索引下标，并支持两个坐标之间的加减乘除操作。
+Coord\<Rank\>是一个通用的逻辑坐标，或表示维数形状，可用于张量中的索引下标，并支持两个坐标之间的加减乘除操作，逐元素操作。
 
 在cutlass/matrix_coord.h头文件和cutlass/tensor_coord.h头文件中，提供MatrixCoord坐标和Tensor4DCoord坐标的定义，如下所示。
 
@@ -289,6 +298,9 @@ struct MatrixCoord : public Coord<2, int> {
     Index& row()    { return this->at(kRow); }
     Index& column() { return this->at(kColumn); }
 };
+```
+
+```c++
 struct Tensor4DCoord : public Coord<4> {
     static int const kN = 0;
     static int const kH = 1;
@@ -318,7 +330,9 @@ struct GemmCoord : public Coord<3, int> {
     CUTLASS_HOST_DEVICE Index & n() { return this->at(kN); }
     CUTLASS_HOST_DEVICE Index & k() { return this->at(kK); }
 };
+```
 
+```c++
 // Shape of a matrix multiply-add operation
 template<int M = 1, int N = 1, int K = 1>
 struct GemmShape {
@@ -335,7 +349,7 @@ struct GemmShape {
 };
 ```
 
-GemmCoord表示一个GEMM问题中的坐标，GemmShape表示一个矩阵乘法累加操作的形状。
+GemmCoord表示一个GEMM问题中的坐标，GemmShape表示一个矩阵乘法累加MMA操作的形状。
 
 在cutlass/matrix_shape.h头文件中，提供MatrixShape的定义，如下所示。
 
@@ -386,7 +400,11 @@ public:
 };
 ```
 
-在cuBLAS库中，存在前导维数的概念，在默认采用列主序存储的矩阵布局时，这意味着矩阵元素{rid,cid}具有值为rid+cid\*ld的偏移，等价于CUTLASS提供的ColumnMajor布局类型；同时CUTLASS也提供RowMajor等布局类型，如下所示。
+在cuBLAS库中，存在前导维数的概念，在默认采用列主序存储的矩阵布局时，这意味着矩阵元素{rid,cid}具有值为rid+cid\*ld的偏移，等价于CUTLASS提供的ColumnMajor布局类型；同时CUTLASS也提供RowMajor、RowMajorInterleaved、ColumnMajorInterleaved等布局类型，如下示意图。
+
+<img src="CUTLASS模板库和CuTe模板库.assets/Matrix Layout.png" style="zoom: 50%;" />
+
+一个使用布局将逻辑坐标映射到存储偏移的示例，如下所示。
 
 ```c++
 void layout_demo() {
@@ -430,6 +448,23 @@ public:
     // Returns a reference to the element at a given Coord
     CUTLASS_HOST_DEVICE Reference operator[](TensorCoord const& coord) const {
         return data(offset(coord));
+    }
+    // Updates the pointer and layout object
+    CUTLASS_HOST_DEVICE void reset(Element* ptr, Layout const &layout) {
+        ptr_ = ptr;
+        layout_ = layout;
+    }
+    // Adds an offset to each pointer
+    CUTLASS_HOST_DEVICE
+    TensorRef& add_pointer_offset(LongIndex offset_) {
+        ptr_ += offset_;
+        return *this;
+    }
+    // Adds an offset to each pointer
+    CUTLASS_HOST_DEVICE
+    TensorRef& add_coord_offset(TensorCoord const &coord) {
+        add_pointer_offset(offset(coord));
+        return *this;
     }
 };
 ```
@@ -493,11 +528,13 @@ struct integral_constant {
 };
 using true_type  = integral_constant<bool, true>;   // compile-time boolean with true value
 using false_type = integral_constant<bool, false>;  // compile-time boolean with false value
+```
+
+```c++
 template<typename _Tp, typename _Up>
 struct is_same : public false_type {};
 template<typename _Tp>               
 struct is_same<_Tp, _Tp> : public true_type {};
-
 template<bool, typename _Tp = void>
 struct enable_if {};
 template<typename _Tp>
@@ -510,7 +547,7 @@ struct conditional<false, _Iftrue, _Iffalse> { typedef _Iffalse type; };  // Par
 
 在cutlass/cutlass.h头文件中，提供Status枚举类的定义，用于标识CUTLASS库的执行状态，并提供一些常量定义。
 
-## Architecture and Instruction
+## Architecture
 
 在cutlass/arch目录中，提供基础操作的PTX汇编指令级实现，以及这些基础操作在指定GPU架构上的实现与特性，如下表所示。
 
@@ -558,6 +595,9 @@ template<
     CacheOperation::Kind cache_op = CacheOperation::Always  // Cache operation
 >
 struct global_load;
+```
+
+```c++
 template <typename AccessType>
 struct global_load<AccessType, 16, CacheOperation::Always> {
     CUTLASS_DEVICE global_load(AccessType &D, void const *ptr, bool pred_guard) {
@@ -584,12 +624,17 @@ struct global_load<AccessType, 16, CacheOperation::Always> {
         );
     }
 };
+```
 
+```c++
 template<
     typename AccessType,  // Fragment type to store data; pointer
     int StoreBytes        // The bytes of storing
 >
 struct global_store;
+```
+
+```c++
 template <typename AccessType>
 struct global_store<AccessType, 16> {
     CUTLASS_DEVICE global_store(AccessType const &D, void *ptr, bool pred_guard) {
@@ -605,9 +650,14 @@ struct global_store<AccessType, 16> {
         );
     }
 };
+```
 
+```c++
 template<int Bytes>
 CUTLASS_DEVICE void shared_load(void *dst, uint32_t ptr);
+```
+
+```c++
 template<>
 CUTLASS_DEVICE void shared_load<16>(void *dst, uint32_t ptr) {
     uint4 *dst_u128 = reinterpret_cast<uint4*>(dst);
@@ -617,9 +667,14 @@ CUTLASS_DEVICE void shared_load<16>(void *dst, uint32_t ptr) {
         : "r"(ptr)
     );
 }
+```
 
+```c++
 template <int Bytes>
 CUTLASS_DEVICE void shared_store(uint32_t ptr, void const *src);
+```
+
+```c++
 template <>
 CUTLASS_DEVICE void shared_store<16>(uint32_t ptr, void const *src) {
     uint4 const *dst_u128 = reinterpret_cast<uint4 const*>(src);
@@ -666,7 +721,9 @@ __SM_20_INTRINSICS_DECL__ size_t __cvta_generic_to_shared(const void *p) { retur
 ```c++
 #define CUTLASS_PRAGMA_UNROLL    #pragma unroll
 #define CUTLASS_PRAGMA_NO_UNROLL #pragma unroll 1
+```
 
+```c++
 template <typename T, int N>
 CUTLASS_HOST_DEVICE Array<T, N> operator+(Array<T, N> const &a, Array<T, N> const &b) {
     Array<T, N> d;
@@ -674,7 +731,9 @@ CUTLASS_HOST_DEVICE Array<T, N> operator+(Array<T, N> const &a, Array<T, N> cons
     for (int i = 0; i < N; ++i) { d[i] = a[i] + b[i]; }
     return d;
 }
+```
 
+```c++
 template <typename T, int N>
 CUTLASS_HOST_DEVICE Array<T, N> mac(Array<T, N> const &a, Array<T, N> const &b, Array<T, N> const &c) {
 Array<T, N> mac(Array<T, N> const &a, Array<T, N> const &b, Array<T, N> const &c) {
@@ -685,14 +744,71 @@ Array<T, N> mac(Array<T, N> const &a, Array<T, N> const &b, Array<T, N> const &c
 }
 ```
 
-在cutlass/arch/mma.h头文件中，提供MMA矩阵乘法累加操作，以及操作类型的标识。
+# CUTLASS GEMM API
+
+![](CUTLASS模板库和CuTe模板库.assets/gemm-hierarchy.png)
+
+如前所述，CUTLASS对通用矩阵乘法GEMM进行并行分片，映射到CUDA并行编程模型中的多个层级资源上，其代码实现组织为如下层级结构。
+
+
+
+！！层次图（重画），在下述部分全部带着cutlass::arch等命名空间前缀，Template模板参数注释也都带上前缀与确切类型。
+
+
+
+```shell
+cutlass
+├── arch       # Architecture features (including instruction implementation)
+└── gemm       # GEneral Matrix Multiply computations
+    ├── device       # Launch kernels
+    ├── kernel       # Kernels
+    ├── threadblock  # Cta Tile
+    ├── warp         # Warp Tile
+    └── thread       # Thread Tile
+```
+
+Instruction-Level
+
+Thread-Level
+
+Warp-Level
+
+Threadblock-Level
+
+Kernel-Level
+
+Device-Level
+
+## Instruction-Level
+
+在cutlass::arch命名空间中，
+
+
+
+！！！干了什么，实现哪一部分（基于什么架构），用到下层的什么东西，为上层提供什么东西，
+
+
+
+提供指令层级的矩阵乘法累加MMA操作，其使用乘加指令或PTX汇编指令，面向CUDA Core或Tensor Core实现。
+
+
+
+
+
+
+
+
+
+在cutlass/arch/mma.h头文件中，提供MMA操作类型的标识，以及具体的MMA矩阵乘法累加操作的实现。
 
 ```c++
 struct OpMultiplyAdd {};        // Tag indicating the operation implied by MMA.
 struct OpClassSimt {};          // Tag classifying math operators as thread-level operations.
 struct OpClassTensorOp {};      // Tag classifying operators as Tensor Core operations.
 struct OpClassWmmaTensorOp {};  // Tag classifying operators as WMMA Tensor Core operations
+```
 
+```c++
 // Matrix multiply-add operation
 template<
     typename Shape,  // Size of MMA; gemm::GemmShape; Executed by kThreads
@@ -704,7 +820,9 @@ template<
     typename Operator  // Inner product operator (multiply-add)
 >
 struct Mma;
+```
 
+```c++
 // Matrix multiply-add operation - specialized for 1x1x1 matrix multiply operation
 template<
     typename ElementA, typename LayoutA, typename ElementB, typename LayoutB,
@@ -719,7 +837,9 @@ struct Mma<gemm::GemmShape<1,1,1>, 1, ElementA, LayoutA, ElementB, LayoutB, Elem
         d[0] = op(a[0], b[0], c[0]);
     }
 };
+```
 
+```c++
 // Matrix multiply-add operation: F16 = F16 * F16 + F16
 template <>
 struct Mma<
@@ -765,7 +885,9 @@ template <
     typename Operator = cutlass::arch::OpMultiplyAdd  // Inner product operator
 >
 struct Wmma;
+```
 
+```c++
 template<typename Shape, typename LayoutA, typename LayoutB, typename ElementC, typename LayoutC>
 struct Wmma<Shape, cutlass::half_t, LayoutA, cutlass::half_t, LayoutB, ElementC, LayoutC, cutlass::arch::OpMultiplyAdd> {
     using ElementA = cutlass::half_t;
@@ -784,19 +906,5 @@ struct Wmma<Shape, cutlass::half_t, LayoutA, cutlass::half_t, LayoutB, ElementC,
         nvcuda::wmma::mma_sync(D, A, B, C);
     }
 };
-```
-
-# CUTLASS GEMM API
-
-如前所述，CUTLASS对通用矩阵乘法GEMM进行并行分片，映射到CUDA并行编程模型中的多个层级资源上。在cutlass/gemm目录中，提供各层级的实现。
-
-```shell
-cutlass
-└── gemm       # GEneral Matrix Multiply computations
-    ├── device       # Launch kernels
-    ├── kernel       # Kernels
-    ├── threadblock  # Cta Tile
-    ├── warp         # Warp Tile
-    └── thread       # Thread Tile
 ```
 
