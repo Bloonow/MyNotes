@@ -64,6 +64,8 @@ SliceK（reduction across Warp）通过在blockK维度上划分线程束，能�
 
 CUTLASS是CUDA Templates for Linear Algebra Subroutines and Solvers的缩写，是基于CUDA运行时的线性代数例程与求解器的C++模板库，用于实现高性能的矩阵乘法GEMM及其相关计算。除通用矩阵乘法之外，CUTLASS通过隐式GEMM算法实现高性能的卷积操作。
 
+> 使用模板库的优势在于，一些在计算过程中不变的配置，例如分片形状与迭代策略，可以使用模板参数在编译期间确定，从而只使用函数参数传递数据。
+
 CUTLASS库的源码可在https://github.com/NVIDIA/cutlass网址获得，其包括CUTLASS模板库与CuTe模板库。其中CUTLASS模板库是指CUTLASS 2.X实现版本，通过各层级的模板库抽象提供GEMM实现；而CuTe模板库是自CUTLASS 3.0版本引入的新模板库，通过Layout对象和Tensor对象提供GEMM实现。需要注意的是，CUTLASS 3.0版本需要CUDA 11.4及以上版本，且GPU设备的计算能力为SM70及以上版本。
 
 CUTLASS库包括若干组件。在顶层include目录中提供CUTLASS模板库和CuTe模板库的头文件，应用程序编程需要将顶层include目录添加到编译器的头文件搜索路径；在顶层tools目录中提供CUTLASS Instance模板实例、CUTLASS Profiler分析器、CUTLASS Utilities额外工具；在顶层examples目录中提供使用示例；在顶层media目录中提供文档；在顶层test目录中提供测试组件。
@@ -108,6 +110,8 @@ cutlass  # CUTLASS Template Library
 ```
 
 > 在项目结构中，通常文件目录与命名空间的组成方式是一致的，例如，命名空间cutlass::gemm::device对应到cutlass::gemm::device目录。
+>
+> 因为CUTLASS模板库的所有代码都位于cutlass根命名空间中，故在介绍时默认省略cutlass::命名空间。
 
 ## Fundamental Type
 
@@ -167,8 +171,8 @@ struct Array<T, N, true> {
     typedef value_type* pointer;
     using Storage = T;
     Storage storage[kElements];
-    pointer data()                      { return reinterpret_cast<pointer>(storage); }
-    reference operator[](size_type pos) { return reinterpret_cast<reference>(storage[pos]); }
+    CUTLASS_HOST_DEVICE pointer data()                      { return reinterpret_cast<pointer>(storage); }
+    CUTLASS_HOST_DEVICE reference operator[](size_type pos) { return reinterpret_cast<reference>(storage[pos]); }
 };
 ```
 
@@ -191,7 +195,7 @@ struct AlignedBuffer {
     typedef value_type* pointer;
     using Storage = uint8_t;
     alignas(Align) Storage storage[kBytes];
-    pointer data() { return reinterpret_cast<pointer>(storage); }
+    CUTLASS_HOST_DEVICE pointer data() { return reinterpret_cast<pointer>(storage); }
 };
 ```
 
@@ -227,8 +231,8 @@ struct NumericConverter {
     static FloatRoundStyle const round_style = Round;
     using result_type = T;
     using source_type = S;
-    static result_type convert(source_type const &s)   { return static_cast<result_type>(s); }
-    result_type operator()(source_type const &s) const { return convert(s); }
+    CUTLASS_HOST_DEVICE static result_type convert(source_type const &s)   { return static_cast<result_type>(s); }
+    CUTLASS_HOST_DEVICE result_type operator()(source_type const &s) const { return convert(s); }
 };
 ```
 
@@ -266,7 +270,7 @@ PredicateVector是一个由谓词构成的固定长度的向量，也即掩码�
 ```c++
 template<typename A, typename B = A, typename C = A>
 struct multiply_add {
-    C operator()(A const &a, B const &b, C const &c) const {
+    CUTLASS_HOST_DEVICE C operator()(A const &a, B const &b, C const &c) const {
 		return C(a) * C(b) + c;
     }
 };
@@ -283,7 +287,7 @@ template<int Rank, typename Index = int, typename LongIndex = int64_t>
 struct Coord {
     static int const kRank = Rank;
     Index idx[kRank];
-    Index& operator[](int dim) { return idx[dim]; }
+    CUTLASS_HOST_DEVICE Index& operator[](int dim) { return idx[dim]; }
 };
 ```
 
@@ -295,8 +299,8 @@ Coord\<Rank\>是一个通用的逻辑坐标，或表示维数形状，可用于�
 struct MatrixCoord : public Coord<2, int> {
     static int const kRow = 0;
     static int const kColumn = 1;
-    Index& row()    { return this->at(kRow); }
-    Index& column() { return this->at(kColumn); }
+    CUTLASS_HOST_DEVICE Index& row()    { return this->at(kRow); }
+    CUTLASS_HOST_DEVICE Index& column() { return this->at(kColumn); }
 };
 ```
 
@@ -306,10 +310,10 @@ struct Tensor4DCoord : public Coord<4> {
     static int const kH = 1;
     static int const kW = 2;
     static int const kC = 3;
-    Index& n() { return this->at(kN); }
-    Index& h() { return this->at(kH); }
-    Index& w() { return this->at(kW); }
-    Index& c() { return this->at(kC); }
+    CUTLASS_HOST_DEVICE Index& n() { return this->at(kN); }
+    CUTLASS_HOST_DEVICE Index& h() { return this->at(kH); }
+    CUTLASS_HOST_DEVICE Index& w() { return this->at(kW); }
+    CUTLASS_HOST_DEVICE Index& c() { return this->at(kC); }
 }
 ```
 
@@ -372,7 +376,7 @@ MatrixShape表示一个矩阵的形状，包括行数与列数。
 
 布局Layout将逻辑索引空间映射到内存空间中存储位置的实际偏移，并存储用于计算映射的状态，定义其它CUTLASS组件需要使用的部分实例化。
 
-在cutlass/layout目录的若干头文件中，提供各种布局类型的定义。例如cutlass/layout/vector.h头文件、cutlass/layout/matrix.h头文件、cutlass/layout/tensor.h头文件等，还有cutlass/layout/permute.h头文件提供变换概念的定义。矩阵列主序存储的布局如下所示。
+在cutlass/layout目录的若干头文件中，提供各种布局类型的定义。例如cutlass/layout/vector.h头文件、cutlass/layout/matrix.h头文件、cutlass/layout/tensor.h头文件、cutlass/layout/pitch_linear.h头文件等，还有cutlass/layout/permute.h头文件提供变换概念的定义。矩阵列主序存储的布局如下所示。
 
 ```c++
 // Mapping function for column-major matrices.
@@ -438,7 +442,7 @@ public:
     // Constructs a TensorRef with a pointer and layout object
     CUTLASS_HOST_DEVICE TensorRef(Element *ptr, Layout const &layout): ptr_(ptr), layout_(layout) {}
     // Returns a reference to the element at a given linear index
-    Reference data(LongIndex idx) const {
+    CUTLASS_HOST_DEVICE Reference data(LongIndex idx) const {
         return ptr_[idx];
     }
     // Computes the offset of an index from the origin of the tensor
@@ -455,14 +459,12 @@ public:
         layout_ = layout;
     }
     // Adds an offset to each pointer
-    CUTLASS_HOST_DEVICE
-    TensorRef& add_pointer_offset(LongIndex offset_) {
+    CUTLASS_HOST_DEVICE TensorRef& add_pointer_offset(LongIndex offset_) {
         ptr_ += offset_;
         return *this;
     }
     // Adds an offset to each pointer
-    CUTLASS_HOST_DEVICE
-    TensorRef& add_coord_offset(TensorCoord const &coord) {
+    CUTLASS_HOST_DEVICE TensorRef& add_coord_offset(TensorCoord const &coord) {
         add_pointer_offset(offset(coord));
         return *this;
     }
@@ -748,7 +750,11 @@ Array<T, N> mac(Array<T, N> const &a, Array<T, N> const &b, Array<T, N> const &c
 
 ![](CUTLASS模板库和CuTe模板库.assets/gemm-hierarchy.png)
 
-如前所述，CUTLASS对通用矩阵乘法GEMM进行并行分片，映射到CUDA并行编程模型中的多个层级资源上，其代码实现组织为如下层级结构。
+如前所述，CUTLASS对通用矩阵乘法GEMM进行并行分片，映射到CUDA并行编程模型中的多个层级资源上，其代码实现组织为如下图所示的层级结构。注意，图中所展示的一些名称，均是充当API接口的概念，详细可分为两点，即(1)使用下一层级API接口实现某功能，(2)作为API接口提供给上一层级。而其它一些“仅仅是作为某个层级工具类实现，但未参与API接口构建”的概念则未在图中展示。
+
+
+
+
 
 
 
