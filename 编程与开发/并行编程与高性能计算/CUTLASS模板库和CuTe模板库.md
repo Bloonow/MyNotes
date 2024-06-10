@@ -103,8 +103,8 @@ cutlass  # CUTLASS Template Library
 │   ├── threadblock  # Cta Tile
 │   ├── warp         # Warp Tile
 │   └── thread       # Thread Tile
-├── epilogue   # Epilogue rearranges result to canonical layouts, and supports conversion and reduction operations
 ├── transform  # Code specialized for layout, type, and domain transformations
+├── epilogue   # Epilogue rearranges result to canonical layouts, and supports conversion and reduction operations
 ├── reduction  # Reduction kernels
 └── conv       # Implict GEMM for Convolution
 ```
@@ -752,38 +752,21 @@ Array<T, N> mac(Array<T, N> const &a, Array<T, N> const &b, Array<T, N> const &c
 
 如前所述，CUTLASS对通用矩阵乘法GEMM进行并行分片，映射到CUDA并行编程模型中的多个层级资源上，其代码实现组织为如下图所示的层级结构。注意，图中所展示的一些名称，均是充当API接口的概念，详细可分为两点，即(1)使用下一层级API接口实现某功能，(2)作为API接口提供给上一层级。而其它一些“仅仅是作为某个层级工具类实现，但未参与API接口构建”的概念则未在图中展示。
 
-
-
-
-
-
-
-！！层次图（重画），在下述部分全部带着cutlass::arch等命名空间前缀，Template模板参数注释也都带上前缀与确切类型。
-
-
+![](CUTLASS模板库和CuTe模板库.assets/cutlass-components.png)
 
 ```shell
 cutlass
 ├── arch       # Architecture features (including instruction implementation)
-└── gemm       # GEneral Matrix Multiply computations
-    ├── device       # Launch kernels
-    ├── kernel       # Kernels
-    ├── threadblock  # Cta Tile
-    ├── warp         # Warp Tile
-    └── thread       # Thread Tile
+├── gemm       # GEneral Matrix Multiply computations
+│   ├── device       # Launch kernels
+│   ├── kernel       # Kernels
+│   ├── threadblock  # Cta Tile
+│   ├── warp         # Warp Tile
+│   └── thread       # Thread Tile
+├── transform  # Code specialized for layout, type, and domain transformations
+├── epilogue   # Epilogue rearranges result to canonical layouts, and supports conversion and reduction operations
+└── reduction  # Reduction kernels
 ```
-
-Instruction-Level
-
-Thread-Level
-
-Warp-Level
-
-Threadblock-Level
-
-Kernel-Level
-
-Device-Level
 
 ## Instruction-Level
 
