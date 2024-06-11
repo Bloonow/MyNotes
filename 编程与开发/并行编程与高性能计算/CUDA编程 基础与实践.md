@@ -76,25 +76,27 @@ CUDA版本也可由形如X.Y的两个数字表示，但它并不等同于GPU的�
 可以通过nvidia-smi（nvidia's system management interface）程序检查与设置设备，它包含在CUDA开发工具套件内。该程序最基本的用法就是在终端中使用不带任何参数的nvidia-smi命令，会得到如下文本形式的输出。
 
 ```
-+---------------------------------------------------------------------------------------+
-| NVIDIA-SMI 531.61                 Driver Version: 531.61       CUDA Version: 12.1     |
-|-----------------------------------------+----------------------+----------------------+
-| GPU  Name                      TCC/WDDM | Bus-Id        Disp.A | Volatile Uncorr. ECC |
-| Fan  Temp  Perf            Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
-|                                         |                      |               MIG M. |
-|=========================================+======================+======================|
-|   0  NVIDIA GeForce GTX 1060       WDDM | 00000000:01:00.0 Off |                  N/A |
-| N/A   62C    P2               66W /  N/A|   1874MiB /  6144MiB |     96%      Default |
-|                                         |                      |                  N/A |
-+-----------------------------------------+----------------------+----------------------+
-
-+---------------------------------------------------------------------------------------+
-| Processes:                                                                            |
-|  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
-|        ID   ID                                                             Usage      |
-|=======================================================================================|
-|    0   N/A  N/A     11716      C   python                                    N/A      |
-+---------------------------------------------------------------------------------------+
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 550.67                 Driver Version: 550.67         CUDA Version: 12.4     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 4090        Off |   00000000:01:00.0 Off |                  Off |
+|  0%   41C    P5             33W /  450W |      31MiB /  24564MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI        PID   Type   Process name                              GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A      1027      G   /usr/lib/xorg/Xorg                              9MiB |
+|    0   N/A  N/A      1199      G   /usr/bin/gnome-shell                           10MiB |
+|    0   N/A  N/A     11716      C   python                                        N/A    |
++-----------------------------------------------------------------------------------------+
 ```
 
 从中可以看出一些有用的信息。例如，上方表格第一行显示了NVIDIA Driver驱动的版本，以及所支持的最大CUDA版本。第二行为表格每列信息的标题；第三行为对应具体信息，具体每项表示意义如下。
@@ -103,19 +105,18 @@ CUDA版本也可由形如X.Y的两个数字表示，但它并不等同于GPU的�
 
 - Name，设备名称，GPU类型名称。
 
-- TCC/WDDM，设备驱动运行模式，TTC表示Tesla Compute Cluster，用于集群计算，仅在Tesla、Quadro和Titan系列GPU中可选；WDDM表示Windows Display Driver Model，为显示模型，用于渲染显示图形化窗口。可通过如下命令修改运行模式。
-
-  - ```shell
-    sudo nvidia-smi -g GPU_ID -dm 0  # WDDM
-    sudo nvidia-smi -g GPU_ID -dm 1  # TCC
-
-- Persistence-M，对于架构更新的GPU设备，TCC/WDDM位置会变为Persistence-M，表示是否支持持久性内存，这是一种用于保存显卡驱动状态的特殊内存类型，以便在不需要重新加载的情况下加速显卡操作。可通过如下命令启用持久内存。
+- Persistence-M，对于架构较新的GPU设备，TCC/WDDM位置会变为Persistence-M，表示是否支持持久性内存，这是一种用于保存显卡驱动状态的特殊内存类型，以便在不需要重新加载的情况下加速显卡操作。可通过如下命令启用持久内存。
 
   - ```shell
     sudo nvidia-smi -g GPU_ID -pm 0  # 关闭
     sudo nvidia-smi -g GPU_ID -pm 1  # 启用
     ```
 
+- TCC/WDDM，对于架构较旧的GPU设备，Persistence-M位置会变为TCC/WDDM，表示设备驱动运行模式，TTC表示Tesla Compute Cluster，用于集群计算，仅在Tesla、Quadro和Titan系列GPU中可选；WDDM表示Windows Display Driver Model，为显示模型，用于渲染显示图形化窗口。可通过如下命令修改运行模式。
+
+  - ```shell
+    sudo nvidia-smi -g GPU_ID -dm 0  # WDDM
+    sudo nvidia-smi -g GPU_ID -dm 1  # TCC
 
 - Fan，设备风扇转速。
 

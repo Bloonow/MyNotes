@@ -370,8 +370,7 @@ nvidia-smi
 
 ```shell
 Command 'nvidia-smi' not found, but can be installed with:
-sudo apt install nvidia-340
-sudo apt install nvidia-utils-390
+sudo apt install nvidia-driver-550
 ```
 
 可以使用提示命令直接安装，也可以到NVIDIA官方提供的https://www.nvidia.com/Download/index.aspx地址下载对应版本的驱动程序包，也可下载其他版本的驱动程序。对于Ubuntu系统，还可使用ubuntu-drivers devices命令提示推荐版本。
@@ -474,7 +473,7 @@ mkdir $HOME/.B/cuda113/Libs
 因为之前安装NVIDIA驱动时，没有安装OpenGL文件，故这里也选择不安装OpenGL库。如下所示。
 
 ```shell
-chmod +x cuda_11.3.1_465.19.01_linux.run
+sudo chmod u+x cuda_11.3.1_465.19.01_linux.run
 sudo sh cuda_11.3.1_465.19.01_linux.run --no-opengl-libs
 ```
 
@@ -621,15 +620,15 @@ wget https://developer.nvidia.com/downloads/compute/cudnn/secure/8.9.3/local_ins
 ```shell
 tar -xvf cudnn-linux-x86_64-8.9.3.28_cuda11-archive.tar.xz
 cd cudnn-linux-x86_64-8.9.3.28_cuda11-archive
-cp include/* $HOME/.B/cuda113/include
-cp lib/* $HOME/.B/cuda113/lib64
+sudo cp include/* $HOME/.B/cuda113/include
+sudo cp lib/* $HOME/.B/cuda113/lib64
 ```
 
 修改cuDNN文件的权限，如下所示。
 
 ```shell
-chmod a+r $HOME/.B/cuda113/include/cudnn*.h
-chmod a+r $HOME/.B/cuda113/lib64/libcudnn*
+sudo chmod a+r $HOME/.B/cuda113/include/cudnn*.h
+sudo chmod a+r $HOME/.B/cuda113/lib64/libcudnn*
 ```
 
 > 注意，在Windows平台下，需要将cuDNN目录下的bin/cudnn\*.dll，include/cudnn\*.h，和lib/cudnn\*.lib文件都复制到CUDA相应目录下。

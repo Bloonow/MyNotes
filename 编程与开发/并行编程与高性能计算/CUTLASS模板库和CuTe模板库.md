@@ -746,7 +746,7 @@ Array<T, N> mac(Array<T, N> const &a, Array<T, N> const &b, Array<T, N> const &c
 }
 ```
 
-在cutlass/arch/mma.h头文件中，提供对各类操作的标识符，以及单条指令层级或PTX汇编层级的MMA操作实现，如下arch::Mma实现所示。
+在cutlass/arch/mma.h头文件中，提供对各类操作的标识符（用于提示编译器选择合适的部分实例化的模板类），以及单条指令层级或PTX汇编层级的MMA操作实现，如下arch::Mma实现所示。
 
 ```c++
 struct OpMultiplyAdd {};        // Tag indicating the operation implied by MMA.
@@ -884,12 +884,10 @@ struct Wmma<
     // Wmma Fragment
     using FragmentA = nvcuda::wmma::fragment<
         nvcuda::wmma::matrix_a, Shape::kM, Shape::kN, Shape::kK,
-        typename CutlassToWmmaDataType<ElementA>::Type,
-        typename CutlassToWmmaLayout<LayoutA>::Layout>;
+        typename CutlassToWmmaDataType<ElementA>::Type, typename CutlassToWmmaLayout<LayoutA>::Layout>;
     using FragmentB = nvcuda::wmma::fragment<
         nvcuda::wmma::matrix_b, Shape::kM, Shape::kN, Shape::kK,
-        typename CutlassToWmmaDataType<ElementB>::Type,
-        typename CutlassToWmmaLayout<LayoutB>::Layout>;
+        typename CutlassToWmmaDataType<ElementB>::Type, typename CutlassToWmmaLayout<LayoutB>::Layout>;
     using FragmentC = nvcuda::wmma::fragment<
         nvcuda::wmma::accumulator, Shape::kM, Shape::kN, Shape::kK,
         typename CutlassToWmmaDataType<ElementC>::Type>;
@@ -907,17 +905,22 @@ struct Wmma<
 };
 ```
 
-## CUTLASS GEMM API
+## GEMM API
 
-如何使用？
+在cutlass/gemm/device目录中，提供设备层级的GEMM接口，用于在GPU设备上启动矩阵乘法的kernel核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。由模板类提供实现，即cutlass::gemm::device::Gemm模板类、cutlass::gemm::device::GemmArray模板类、cutlass::gemm::device::GemmBatched模板类、cutlass::gemm::device::GemmSplitKParallel模板类。一个标准GEMM计算的示例如下。
 
+```c++
+using Gemm = cutlass::gemm::device::Gemm<
+    float, cutlass::layout::ColumnMajor,
+    float, cutlass::layout::ColumnMajor,
+    float, cutlass::layout::ColumnMajor,
+    float, cutlass::arch::OpClassSimt, cutlass::arch::Sm70
+>;
+Gemm gemm_op;
+cutlass::Status stat = gemm_op({{M, N, K}, {d_A, M}, {d_B, K}, {d_C, M}, {d_C, M}, {alpha, beta}});
+```
 
-
-
-
-
-
-# CUTLASS GEMM IMPLEMENTATION
+## GEMM IMPLEMENTATION
 
 ![](CUTLASS模板库和CuTe模板库.assets/gemm-hierarchy.png)
 
@@ -938,6 +941,4 @@ cutlass
 ├── epilogue   # Epilogue rearranges result to canonical layouts, and supports conversion and reduction operations
 └── reduction  # Reduction kernels
 ```
-
-实现细节。
 
