@@ -549,7 +549,7 @@ struct conditional<false, _Iftrue, _Iffalse> { typedef _Iffalse type; };  // Par
 
 在cutlass/cutlass.h头文件中，提供Status枚举类的定义，用于标识CUTLASS库的执行状态，并提供一些常量定义。
 
-## Architecture
+## Architecture and Instruction
 
 在cutlass/arch目录中，提供基础操作的PTX汇编指令级实现，以及这些基础操作在指定GPU架构上的实现与特性，如下表所示。
 
@@ -746,7 +746,178 @@ Array<T, N> mac(Array<T, N> const &a, Array<T, N> const &b, Array<T, N> const &c
 }
 ```
 
-# CUTLASS GEMM API
+在cutlass/arch/mma.h头文件中，提供对各类操作的标识符，以及单条指令层级或PTX汇编层级的MMA操作实现，如下arch::Mma实现所示。
+
+```c++
+struct OpMultiplyAdd {};        // Tag indicating the operation implied by MMA.
+struct OpClassSimt {};          // Tag classifying math operators as thread-level operations.
+struct OpClassTensorOp {};      // Tag classifying operators as Tensor Core operations.
+struct OpClassWmmaTensorOp {};  // Tag classifying operators as WMMA Tensor Core operations.
+```
+
+```c++
+/// Matrix multiply-add operation
+template <
+    /// Size of the matrix product (concept: GemmShape)
+    typename Shape,
+    /// Number of threads participating
+    int kThreads,
+    /// Data type of A elements
+    typename ElementA,
+    /// Layout of A matrix (concept: MatrixLayout)
+    typename LayoutA,
+    /// Data type of B elements
+    typename ElementB,
+    /// Layout of B matrix (concept: MatrixLayout)
+    typename LayoutB,
+    /// Element type of C matrix
+    typename ElementC,
+    /// Layout of C matrix (concept: MatrixLayout)
+    typename LayoutC,
+    /// Inner product operator
+    typename Operator
+>
+struct Mma;
+```
+
+```c++
+/// Matrix multiply-add operation - specialized for 1x1x1x1 matrix multiply operation
+template <
+    typename ElementA, typename LayoutA,
+    typename ElementB, typename LayoutB,
+    typename ElementC, typename LayoutC,
+    typename Operator
+>
+struct Mma<gemm::GemmShape<1, 1, 1>, 1, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, Operator> {
+    using Shape = gemm::GemmShape<1, 1, 1>;
+
+    CUTLASS_HOST_DEVICE
+    void operator()(
+        Array<ElementC, 1> &d,
+        Array<ElementA, 1> const &a,
+        Array<ElementB, 1> const &b,
+        Array<ElementC, 1> const &c
+    ) {
+        multiply_add<ElementA, ElementB, ElementC> op;
+        d[0] = op(a[0], b[0], c[0]);
+    }
+};
+```
+
+```c++
+/// Matrix multiply-add operation: F16 = F16 * F16 + F16
+template <>
+struct Mma<
+    gemm::GemmShape<8, 8, 4>, 8,
+    half_t, layout::ColumnMajor,
+    half_t, layout::RowMajor,
+    half_t, layout::RowMajor,
+    OpMultiplyAdd
+> {
+    using Shape = gemm::GemmShape<8, 8, 4>;
+    using ElementA = half_t;
+    using LayoutA = layout::ColumnMajor;
+    using FragmentA = Array<half_t, 4>;
+    using ElementB = half_t;
+    using LayoutB = layout::RowMajor;
+    using FragmentB = Array<half_t, 4>;
+    using ElementC = half_t;
+    using LayoutC = layout::RowMajor;
+    using FragmentC = Array<half_t, 8>;
+    using Operator = OpMultiplyAdd;
+    using ArchTag = arch::Sm70;
+
+    CUTLASS_HOST_DEVICE
+    void operator()(
+        FragmentC &d,
+        FragmentA const &a,
+        FragmentB const &b,
+        FragmentC const &c
+    ) {
+        unsigned const *A = reinterpret_cast<unsigned const *>(&a);
+        unsigned const *B = reinterpret_cast<unsigned const *>(&b);
+        unsigned const *C = reinterpret_cast<unsigned const *>(&c);
+        unsigned *D = reinterpret_cast<unsigned *>(&d);
+        asm volatile(
+            "mma.sync.aligned.m8n8k4.col.row.f16.f16.f16.f16 {%0,%1,%2,%3}, {%4,%5}, {%6,%7}, {%8,%9,%10,%11};\n"
+            : "=r"(D[0]), "=r"(D[1]), "=r"(D[2]), "=r"(D[3])
+            : "r"(A[0]), "r"(A[1]), "r"(B[0]), "r"(B[1]),
+              "r"(C[0]), "r"(C[1]), "r"(C[2]), "r"(C[3])
+        );
+    }
+};
+```
+
+在cutlass/arch/wmma.h头文件中，提供由nvcuda::wmma实现的MMA操作，如下arch::Wmma实现所示。
+
+```c++
+// WMMA template structure defines nvcuda::wmma::fragments and static assertion chaeks for a specific
+// template paramterized data type (Element[A|B|C]), layout (Layout[A|B|C]), and native wmma size (Shape)
+template <
+    typename Shape,                                   ///< Size of the matrix product (concept: GemmShape)
+    typename ElementA,                                ///< Data type of A elements 
+    typename LayoutA,                                 ///< Layout of A matrix (concept: MatrixLayout)  
+    typename ElementB,                                ///< Data type of B elements
+    typename LayoutB,                                 ///< Layout of B matrix (concept: MatrixLayout)  
+    typename ElementC,                                ///< Element type of C matrix  
+    typename LayoutC,                                 ///< Layout of C matrix (concept: MatrixLayout)
+    typename Operator = cutlass::arch::OpMultiplyAdd  ///< Inner product operator (multiply-add, xor.popc)
+>
+struct Wmma;
+```
+
+```c++
+// WMMA template structure defines nvcuda::wmma::fragments and static assert for
+// wmma native instruction sizes supported for half
+template <typename Shape, typename LayoutA, typename LayoutB, typename ElementC, typename LayoutC>
+struct Wmma<
+    Shape,
+    cutlass::half_t, LayoutA,
+    cutlass::half_t, LayoutB,
+    ElementC, LayoutC,
+    cutlass::arch::OpMultiplyAdd
+> {
+    using ElementA = cutlass::half_t;
+    using ElementB = cutlass::half_t;
+    using Operator = cutlass::arch::OpMultiplyAdd;
+    using ArchTag = arch::Sm70;
+    // Wmma Fragment
+    using FragmentA = nvcuda::wmma::fragment<
+        nvcuda::wmma::matrix_a, Shape::kM, Shape::kN, Shape::kK,
+        typename CutlassToWmmaDataType<ElementA>::Type,
+        typename CutlassToWmmaLayout<LayoutA>::Layout>;
+    using FragmentB = nvcuda::wmma::fragment<
+        nvcuda::wmma::matrix_b, Shape::kM, Shape::kN, Shape::kK,
+        typename CutlassToWmmaDataType<ElementB>::Type,
+        typename CutlassToWmmaLayout<LayoutB>::Layout>;
+    using FragmentC = nvcuda::wmma::fragment<
+        nvcuda::wmma::accumulator, Shape::kM, Shape::kN, Shape::kK,
+        typename CutlassToWmmaDataType<ElementC>::Type>;
+
+    /// Performs a nvcuda::wmma matrix multiply-accumulate operation
+    CUTLASS_DEVICE
+    void operator()(
+        FragmentC &D,
+        FragmentA const &A,
+        FragmentB const &B,
+        FragmentC const &C
+    ) const {
+        nvcuda::wmma::mma_sync(D, A, B, C);
+    }
+};
+```
+
+## CUTLASS GEMM API
+
+如何使用？
+
+
+
+
+
+
+
+# CUTLASS GEMM IMPLEMENTATION
 
 ![](CUTLASS模板库和CuTe模板库.assets/gemm-hierarchy.png)
 
@@ -768,5 +939,5 @@ cutlass
 └── reduction  # Reduction kernels
 ```
 
-如何使用？
+实现细节。
 
