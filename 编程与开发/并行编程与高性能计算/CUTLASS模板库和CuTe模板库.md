@@ -88,6 +88,225 @@ CUTLASS库包括若干组件。在顶层include目录中提供CUTLASS模板库�
 
 使用Index表示某个逻辑维度轴上的索引，使用Extent表示某个逻辑维度轴上的逻辑维数，使用Rank表示维度轴的数目，使用Size表示全部逻辑元素的数目；使用LongIndex表示在内存空间中存储位置的线性偏移，使用Capacity表示多维对象在内存中实际需要存储的元素数目，包括填充元素。
 
+## CUTLASS Utilities
+
+在项目顶层的tools/util/include/cutlass目录中，提供CUTLASS的工具模板类，应用程序需要将顶层tools/util/include目录添加到编译器的头文件搜索路径。
+
+在cutlass/util/device_memory.h头文件中，提供GPU设备全局内存管理函数的C++包装接口DeviceAllocation\<T\>模板类，其使用smart_ptr智能指针对内存空间地址指针进行管理，在模板类的实例对象超出作用域时，会自动释放已分配的设备内存，避免内存泄漏问题。
+
+```c++
+__global__ void device_alloc_demo_kernel(float *device_ptr) {}
+
+void device_alloc_demo() {
+    int num_of_float = 1024;
+    // Device memory is automatically freed when device_alloc goes out of scope
+    cutlass::DeviceAllocation<float> device_alloc(num_of_float);
+    device_alloc_demo_kernel<<<128, 128>>>(device_alloc.get());
+}
+```
+
+在cutlass/util/host_tensor.h头文件中，提供HostTensor\<T,Layout\>模板类，用于表示一个张量对象，并在主机端或设备端分配存储空间。
+
+```c++
+template <
+    typename Element,  // Data type of element stored within tensor (concept: NumericType)
+    typename Layout    // Defines a mapping from logical coordinate to linear memory (concept: Layout)
+>
+class HostTensor {
+public:
+    // Note: Below is used to handle packing of subbyte elements
+    // kBitsStoredVec          : The bits of store vec that could be divisiable by the element
+    // kElementsPerStoredVec   : The number of elements could be stored in per store vec
+    // kNumStoragePerStoredVec : How much storage(i.e. sizeof(element storage)) the store vec needs to consume.
+    //                           Usually the element storage of subbyte is uint8_t.
+    // Example
+    //  int2:  kBitsStoredVec = 8; kElementsPerStoredVec = 4; kNumStoragePerStoredVec = 1 uint8_t;
+    //  int4:  kBitsStoredVec = 8; kElementsPerStoredVec = 2; kNumStoragePerStoredVec = 1 uint8_t;
+    static constexpr int kBitsStoredVec = (sizeof_bits<Element>::value < 8)
+        ? cutlass::lcm(sizeof_bits<Element>::value, 8) : sizeof_bits<Element>::value;
+    static constexpr int kElementsPerStoredVec = kBitsStoredVec / sizeof_bits<Element>::value;
+    static constexpr int kNumStoragePerStoredVec = kBitsStoredVec / (sizeof(Element) * 8);
+private:
+    TensorCoord extent_;  // Extent of tensor in logical dimensions
+    Layout layout_;       // Layout object
+    // Host-side memory allocation. Avoid the std::vector<bool> specialization
+    std::vector<std::conditional_t<std::is_same_v<Element,bool>, uint8_t, Element>> host_;
+    // Device-side memory. using allocation = cutlass::DeviceAllocation<T>
+    device_memory::allocation<Element> device_;
+public:
+    // Constructs a tensor given an extent and layout
+    HostTensor(TensorCoord const &extent, Layout const &layout, bool device_backed = true) {
+        this->reset(extent, layout, device_backed);
+    }
+    // Updates the extent and layout of the HostTensor. Allocates memory according to the new extent and layout.
+    void reset(TensorCoord const &extent, Layout const &layout, bool device_backed_ = true) {                        
+        extent_ = extent;
+        layout_ = layout;
+        this->reserve(size_t(layout_.capacity(extent_)), device_backed_);
+    }
+    // Resizes internal memory allocations without affecting layout or extent
+    void reserve(size_t count, bool device_backed_ = true) {
+        // @param count             size of tensor in elements
+        // @param device_backed_    if true, device memory is also allocated
+        device_.reset();
+        host_.clear();
+        count = (count + kElementsPerStoredVec - 1) / kElementsPerStoredVec * kNumStoragePerStoredVec;
+        host_.resize(count);
+        // Allocate memory
+        Element* device_memory = nullptr;
+        if (device_backed_) { device_memory = device_memory::allocate<Element>(count); }
+        device_.reset(device_memory, device_backed_ ? count : 0);
+    }
+```
+
+一个示例如下所示，使用单精度列主序存储一个二维矩阵张量，并获得该矩阵的主机内存地址指针与设备内存地址指针，及其TensorRef和TensorView对象。
+
+```c++
+void tensor_demo() {
+    int rows = 128;
+    int columns = 96;
+    cutlass::HostTensor<float, cutlass::layout::ColumnMajor> tensor({rows, columns});
+    float *host_ptr = tensor.host_data();
+    cutlass::TensorRef<float, cutlass::layout::ColumnMajor> host_ref = tensor.host_ref();
+    cutlass::TensorView<float, cutlass::layout::ColumnMajor> host_view = tensor.host_view();
+    float *device_ptr = tensor.device_data();
+    cutlass::TensorRef<float, cutlass::layout::ColumnMajor> device_ref = tensor.device_ref();
+    cutlass::TensorView<float, cutlass::layout::ColumnMajor> device_view = tensor.device_view();
+}
+```
+
+在使用HostTensor\<T,Layout\>模板类时，应用程序需要保证主机内存中数据与设备内存中数据的同步，该模板类提供若干同步方法，如下所示。
+
+```c++
+template <typename Element, typename Layout>
+class HostTensor {
+private:
+    std::vector<std::conditional_t<std::is_same_v<Element,bool>, uint8_t, Element>> host_;
+    device_memory::allocation<Element> device_;
+public:
+    // Returns true if device memory is allocated
+    bool device_backed() const { return (device_.get() == nullptr) ? false : true; }
+    // Copies data from device to host
+    void sync_host() {
+        if (device_backed()) { device_memory::copy_to_host(host_data(), device_data(), size()); }
+    }
+    // Copies data from host to device
+    void sync_device() {
+        if (device_backed()) { device_memory::copy_to_device(device_data(), host_data(), size()); }
+    }
+};
+```
+
+在cutlass/util/tensor_view_io.h头文件中，对位于主机端上的TensorView对象重载了流输出运算符operator\<\<()，以方便打印元素数据，如下所示。
+
+```c++
+void print_demo() {
+    int rows = 2;
+    int columns = 3;
+    cutlass::HostTensor<int, cutlass::layout::ColumnMajorInterleaved<2>> tensor({rows, columns});
+    cutlass::TensorView<int, cutlass::layout::ColumnMajorInterleaved<2>> host_view = tensor.host_view();
+    int val = 1;
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < columns; j++) {
+            host_view[{i, j}] = val++;
+        }
+    }
+    std::cout << tensor.host_view() << std::endl;
+    int *host_ptr = tensor.host_data();
+    for (int i = 0; i < tensor.capacity(); printf("%d ", host_ptr[i++]));
+    printf("\n");
+}
+```
+
+```shell
+1, 2, 3,
+4, 5, 6
+1 2 4 5 3 0 6 0 
+```
+
+在cutlass/util/reference/host/tensor_fill.h头文件和cutlass/util/reference/device/tensor_fill.h头文件中，提供用于初始化TensorView对象的各种辅助方法，可对主机内存对象或设备内存对象进行指定模式的初始化，包括填充指定值、正则随机初始化、高斯随机初始化等。
+
+```c++
+void fill_demo() {
+    int rows = 128;
+    int columns = 96;
+    cutlass::HostTensor<float, cutlass::layout::ColumnMajor> tensor({rows, columns});
+
+    // 填充给定值
+    float x = 3.14159f;
+    cutlass::reference::host::TensorFill(tensor.host_view(), x);
+    cutlass::reference::device::TensorFill(tensor.device_view(), x);
+
+    uint64_t seed = 0x2024;
+    int non_zero_bits = 2;
+
+    // 正则随机初始化
+    double maximum = 4;
+    double minimum = -4;
+    cutlass::reference::host::TensorFillRandomUniform(tensor.host_view(), seed, maximum, minimum, non_zero_bits);
+    cutlass::reference::device::TensorFillRandomUniform(tensor.device_view(), seed, maximum, minimum, non_zero_bits);
+
+    // 高斯初始化
+    double mean = 0.5;
+    double stddev = 2.0;
+    cutlass::reference::host::TensorFillRandomGaussian(tensor.host_view(), seed, mean, stddev, non_zero_bits);
+    cutlass::reference::device::TensorFillRandomGaussian(tensor.device_view(), seed, mean, stddev, non_zero_bits);
+}
+```
+
+其中，随机初始化方法都可以接受一个non_zero_bits参数，用于指定二进制小数部分至少多少位数字不为零值。
+
+在cutlass/util/reference/host/gemm.h头文件中，提供主机端GEMM通用矩阵乘法计算的实现，一个使用示例如下所示。
+
+```c++
+void host_gemm_demo() {
+    int M = 64;
+    int N = 32;
+    int K = 16;
+    float alpha = 1.5f;
+    float beta = -1.25f;
+
+    uint64_t seed = 0x2024;
+    double mean = 0.5;
+    double stddev = 2.0;
+    cutlass::HostTensor<float, cutlass::layout::ColumnMajor> A({M, K});
+    cutlass::HostTensor<float, cutlass::layout::ColumnMajor> B({K, N});
+    cutlass::HostTensor<float, cutlass::layout::ColumnMajor> C({M, N});
+    cutlass::HostTensor<float, cutlass::layout::ColumnMajor> D({M, N});
+    cutlass::reference::device::TensorFillRandomGaussian(A.device_view(), seed, mean, stddev);
+    cutlass::reference::device::TensorFillRandomGaussian(B.device_view(), seed, mean, stddev);
+    cutlass::reference::device::TensorFillRandomGaussian(C.device_view(), seed, mean, stddev);
+    cutlass::reference::device::TensorFillRandomGaussian(D.device_view(), seed, mean, stddev);
+
+    cutlass::reference::host::Gemm<
+        float, cutlass::layout::ColumnMajor,
+        float, cutlass::layout::ColumnMajor,
+        float, cutlass::layout::ColumnMajor,
+        float, float
+    > gemm_op;
+
+    gemm_op(
+        {M, N, K},
+        alpha,
+        A.host_view(),
+        B.host_view(),
+        beta,
+        C.host_view(),
+        D.host_view()
+    );
+    D.sync_host();
+    std::cout << D.host_view() << std::endl;
+}
+```
+
+在cutlass/util/reference/host/tensor_compare.h头文件中，提供主机端的TensorEquals()方法，用于判断两个主机端的HostTensor对象是否相等。
+
+```c++
+bool same = cutlass::reference::host::TensorEquals(tensor1.host_view(), tensor2.host_view());
+```
+
+在cutlass/util/reference/host/tensor_elementwise.h头文件中，提供主机端内存中TensorView对象的逐元素操作，例如TensorAdd()函数、TensorSub()函数、TensorMul()函数、TensorDiv()函数、TensorModulus()函数，以及自定义的TensorFuncBinaryOp结构体等。
+
 # CUTLASS Template Reference
 
 ```shell
@@ -471,7 +690,7 @@ public:
 };
 ```
 
-在cutlass/tensor_view.h头文件中，提供TensorView\<T,Layout\>类的定义，用于描述线性代数计算中限维确定的张量。该类继承自TensorRef\<T,Layout\>结构体，并提供extent()方法获得某个特定维度轴上的维数，如下所示。
+在cutlass/tensor_view.h头文件中，提供TensorView\<T,Layout\>类的定义，用于描述线性代数计算中维数确定的张量。该类继承自TensorRef\<T,Layout\>结构体，并提供extent()方法获得某个特定维度轴上的维数，如下所示。
 
 ```c++
 template<typename Element, typename Layout>
@@ -905,7 +1124,9 @@ struct Wmma<
 };
 ```
 
-## GEMM API
+# CUTLASS GEMM API
+
+## GEMM Examples
 
 在cutlass/gemm/device目录中，提供设备层级的GEMM接口，用于在GPU设备上启动矩阵乘法的kernel核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。由模板类提供实现，即cutlass::gemm::device::Gemm模板类、cutlass::gemm::device::GemmArray模板类、cutlass::gemm::device::GemmBatched模板类、cutlass::gemm::device::GemmSplitKParallel模板类。一个标准GEMM计算的示例如下。
 
@@ -920,7 +1141,7 @@ Gemm gemm_op;
 cutlass::Status stat = gemm_op({{M, N, K}, {d_A, M}, {d_B, K}, {d_C, M}, {d_C, M}, {alpha, beta}});
 ```
 
-## GEMM IMPLEMENTATION
+## GEMM Implementation
 
 ![](CUTLASS模板库和CuTe模板库.assets/gemm-hierarchy.png)
 

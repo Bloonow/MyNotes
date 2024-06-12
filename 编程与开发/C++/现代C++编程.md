@@ -1320,7 +1320,7 @@ int main(int argc, char* argv[]) {
 }
 ```
 
-可使用std::make_unique创建unique_ptr数组，但无法使用std::make_unique初始化数组元素，如下所示。
+可使用std::make_unique创建数组的unique_ptr指针，但无法使用std::make_unique初始化数组元素，如下所示。
 
 ```c++
 int main(int argc, char* argv[]) {
