@@ -90,7 +90,7 @@ CUTLASS库包括若干组件。在顶层include目录中提供CUTLASS模板库�
 
 ## CUTLASS Utilities
 
-在项目顶层的tools/util/include/cutlass目录中，提供CUTLASS的工具模板类，应用程序需要将顶层tools/util/include目录添加到编译器的头文件搜索路径。
+在项目顶层的tools/util/include/cutlass目录中，提供CUTLASS的各种功能的工具模板类，实际使用时可查阅目录中所提供的头文件，此处只是列举一些常用的工具模板类。注意，应用程序需要将顶层tools/util/include目录添加到编译器的头文件搜索路径。
 
 在cutlass/util/device_memory.h头文件中，提供GPU设备全局内存管理函数的C++包装接口DeviceAllocation\<T\>模板类，其使用smart_ptr智能指针对内存空间地址指针进行管理，在模板类的实例对象超出作用域时，会自动释放已分配的设备内存，避免内存泄漏问题。
 
@@ -241,14 +241,14 @@ void fill_demo() {
     int non_zero_bits = 2;
 
     // 正则随机初始化
-    double maximum = 4;
-    double minimum = -4;
+    float maximum = 4;
+    float minimum = -4;
     cutlass::reference::host::TensorFillRandomUniform(tensor.host_view(), seed, maximum, minimum, non_zero_bits);
     cutlass::reference::device::TensorFillRandomUniform(tensor.device_view(), seed, maximum, minimum, non_zero_bits);
 
     // 高斯初始化
-    double mean = 0.5;
-    double stddev = 2.0;
+    float mean = 0.5;
+    float stddev = 2.0;
     cutlass::reference::host::TensorFillRandomGaussian(tensor.host_view(), seed, mean, stddev, non_zero_bits);
     cutlass::reference::device::TensorFillRandomGaussian(tensor.device_view(), seed, mean, stddev, non_zero_bits);
 }
@@ -260,42 +260,28 @@ void fill_demo() {
 
 ```c++
 void host_gemm_demo() {
-    int M = 64;
-    int N = 32;
-    int K = 16;
-    float alpha = 1.5f;
-    float beta = -1.25f;
+    int M = 64, N = 32, K = 16;
+    cutlass::half_t alpha = 1.5_hf, beta = -1.25_hf;
 
+    cutlass::HostTensor<cutlass::half_t, cutlass::layout::ColumnMajor> A({M, K});
+    cutlass::HostTensor<cutlass::half_t, cutlass::layout::ColumnMajor> B({K, N});
+    cutlass::HostTensor<cutlass::half_t, cutlass::layout::ColumnMajor> C({M, N});
     uint64_t seed = 0x2024;
-    double mean = 0.5;
-    double stddev = 2.0;
-    cutlass::HostTensor<float, cutlass::layout::ColumnMajor> A({M, K});
-    cutlass::HostTensor<float, cutlass::layout::ColumnMajor> B({K, N});
-    cutlass::HostTensor<float, cutlass::layout::ColumnMajor> C({M, N});
-    cutlass::HostTensor<float, cutlass::layout::ColumnMajor> D({M, N});
-    cutlass::reference::device::TensorFillRandomGaussian(A.device_view(), seed, mean, stddev);
-    cutlass::reference::device::TensorFillRandomGaussian(B.device_view(), seed, mean, stddev);
-    cutlass::reference::device::TensorFillRandomGaussian(C.device_view(), seed, mean, stddev);
-    cutlass::reference::device::TensorFillRandomGaussian(D.device_view(), seed, mean, stddev);
+    cutlass::half_t mean = 0.5_hf;
+    cutlass::half_t stddev = 2.0_hf;
+    cutlass::reference::host::TensorFillRandomGaussian(A.host_view(), seed, mean, stddev);
+    cutlass::reference::host::TensorFillRandomGaussian(B.host_view(), seed, mean, stddev);
+    cutlass::reference::host::TensorFillRandomGaussian(C.host_view(), seed, mean, stddev);
 
     cutlass::reference::host::Gemm<
-        float, cutlass::layout::ColumnMajor,
-        float, cutlass::layout::ColumnMajor,
-        float, cutlass::layout::ColumnMajor,
-        float, float
+        cutlass::half_t, cutlass::layout::ColumnMajor,
+        cutlass::half_t, cutlass::layout::ColumnMajor,
+        cutlass::half_t, cutlass::layout::ColumnMajor,
+        cutlass::half_t, cutlass::half_t
     > gemm_op;
 
-    gemm_op(
-        {M, N, K},
-        alpha,
-        A.host_view(),
-        B.host_view(),
-        beta,
-        C.host_view(),
-        D.host_view()
-    );
-    D.sync_host();
-    std::cout << D.host_view() << std::endl;
+    gemm_op({M, N, K}, alpha, A.host_view(), B.host_view(), beta, C.host_view());
+    std::cout << C.host_view() << std::endl;
 }
 ```
 
@@ -1128,17 +1114,42 @@ struct Wmma<
 
 ## GEMM Examples
 
-在cutlass/gemm/device目录中，提供设备层级的GEMM接口，用于在GPU设备上启动矩阵乘法的kernel核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。由模板类提供实现，即cutlass::gemm::device::Gemm模板类、cutlass::gemm::device::GemmArray模板类、cutlass::gemm::device::GemmBatched模板类、cutlass::gemm::device::GemmSplitKParallel模板类。一个标准GEMM计算的示例如下。
+在cutlass/gemm/device目录中，提供设备层级的GEMM接口，用于在GPU设备上启动矩阵乘法的kernel核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。由模板类提供实现，即cutlass::gemm::device::Gemm模板类、cutlass::gemm::device::GemmArray模板类、cutlass::gemm::device::GemmBatched模板类、cutlass::gemm::device::GemmSplitKParallel模板类。一些GEMM计算的示例如下。
 
 ```c++
-using Gemm = cutlass::gemm::device::Gemm<
-    float, cutlass::layout::ColumnMajor,
-    float, cutlass::layout::ColumnMajor,
-    float, cutlass::layout::ColumnMajor,
-    float, cutlass::arch::OpClassSimt, cutlass::arch::Sm70
->;
-Gemm gemm_op;
-cutlass::Status stat = gemm_op({{M, N, K}, {d_A, M}, {d_B, K}, {d_C, M}, {d_C, M}, {alpha, beta}});
+void gemm_demo() {
+    using Gemm = cutlass::gemm::device::Gemm<
+        float, cutlass::layout::ColumnMajor,
+        float, cutlass::layout::ColumnMajor,
+        float, cutlass::layout::ColumnMajor, float
+    >;
+    Gemm gemm_op;
+    cutlass::Status stat = gemm_op(
+        {{M, N, K}, {d_A, M}, {d_B, K}, {d_C, M}, {d_C, M}, {alpha, beta}}
+    );
+}
+void gemm_batched_demo() {
+    using GemmBatched = cutlass::gemm::device::GemmBatched<
+        float, cutlass::layout::ColumnMajor,
+        float, cutlass::layout::ColumnMajor,
+        float, cutlass::layout::ColumnMajor, float
+    >;
+    GemmBatched gemm_batched_op;
+    cutlass::Status status = gemm_batched_op(
+        {{M, N, K}, {d_A, M}, M * K, {d_B, K}, K * N, {d_C, M}, M * N, {d_C, M}, M * N, {alpha, beta}, Batch}
+    );
+}
+void gemm_array_demo() {
+    using GemmArray = cutlass::gemm::device::GemmArray<
+        float, cutlass::layout::ColumnMajor,
+        float, cutlass::layout::ColumnMajor,
+        float, cutlass::layout::ColumnMajor, float
+    >;
+    GemmArray gemm_array_op;
+    gemm_array_op(
+        {{M, N, K}, dd_A_array, M, dd_B_array, K, dd_C_array, M, dd_C_array, M, {alpha, beta}, Batch}
+    );
+}
 ```
 
 ## GEMM Implementation
