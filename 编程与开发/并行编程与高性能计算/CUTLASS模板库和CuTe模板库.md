@@ -60,7 +60,7 @@ SliceK（reduction across Warp）通过在blockK维度上划分线程束，能�
 
 从Hopper架构开始，CUTLASS 3.0引入线程束专业化的概念，即一个线程块中的线程束被分为两组，分别是生产者线程束与消费者线程束。生产者使用新架构的张量内存加速器（Tensor Memory Accelerator，TMA）将数据从设备全局内存中加载到共享内存缓冲区中，并更新该阶段所关联的栅障以通知相关消费者数据已填充；消费者等待生产者的填充信号，然后启动Tensor Core的MMA操作，然后释放共享内存缓冲区，并使用新引入的Async Pipeline Class类通知生产者共享内存缓冲区已为空，以执行下一组TMA工作负载。
 
-# CUTLASS and CuTe
+# CUTLASS and Utility
 
 CUTLASS是CUDA Templates for Linear Algebra Subroutines and Solvers的缩写，是基于CUDA运行时的线性代数例程与求解器的C++模板库，用于实现高性能的矩阵乘法GEMM及其相关计算。除通用矩阵乘法之外，CUTLASS通过隐式GEMM算法实现高性能的卷积操作。
 
@@ -88,8 +88,6 @@ CUTLASS库包括若干组件。在顶层include目录中提供CUTLASS模板库�
 
 使用Index表示某个逻辑维度轴上的索引，使用Extent表示某个逻辑维度轴上的逻辑维数，使用Rank表示维度轴的数目，使用Size表示全部逻辑元素的数目；使用LongIndex表示在内存空间中存储位置的线性偏移，使用Capacity表示多维对象在内存中实际需要存储的元素数目，包括填充元素。
 
-## CUTLASS Utilities
-
 在项目顶层的tools/util/include/cutlass目录中，提供CUTLASS的各种功能的工具模板类，实际使用时可查阅目录中所提供的头文件，此处只是列举一些常用的工具模板类。注意，应用程序需要将顶层tools/util/include目录添加到编译器的头文件搜索路径。
 
 在cutlass/util/device_memory.h头文件中，提供GPU设备全局内存管理函数的C++包装接口DeviceAllocation\<T\>模板类，其使用smart_ptr智能指针对内存空间地址指针进行管理，在模板类的实例对象超出作用域时，会自动释放已分配的设备内存，避免内存泄漏问题。
@@ -99,9 +97,10 @@ __global__ void device_alloc_demo_kernel(float *device_ptr) {}
 
 void device_alloc_demo() {
     int num_of_float = 1024;
-    // Device memory is automatically freed when device_alloc goes out of scope
-    cutlass::DeviceAllocation<float> device_alloc(num_of_float);
+    // using allocation = cutlass::DeviceAllocation<T>;
+    cutlass::device_memory::allocation<float> device_alloc(num_of_float);
     device_alloc_demo_kernel<<<128, 128>>>(device_alloc.get());
+    // Device memory is automatically freed when device_alloc goes out of scope
 }
 ```
 
@@ -1110,9 +1109,7 @@ struct Wmma<
 };
 ```
 
-# CUTLASS GEMM API
-
-## GEMM Examples
+# CUTLASS GEMM Examples
 
 在cutlass/gemm/device目录中，提供设备层级的GEMM接口，用于在GPU设备上启动矩阵乘法的kernel核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。由模板类提供实现，即cutlass::gemm::device::Gemm模板类、cutlass::gemm::device::GemmArray模板类、cutlass::gemm::device::GemmBatched模板类、cutlass::gemm::device::GemmSplitKParallel模板类。一些GEMM计算的示例如下。
 
@@ -1147,12 +1144,26 @@ void gemm_array_demo() {
     >;
     GemmArray gemm_array_op;
     gemm_array_op(
-        {{M, N, K}, dd_A_array, M, dd_B_array, K, dd_C_array, M, dd_C_array, M, {alpha, beta}, Batch}
+        {{M, N, K}, d_A_array, M, d_B_array, K, d_C_array, M, d_C_array, M, {alpha, beta}, Batch}
     );
+}
+void gemm_splitK_demo() {
+    using GemmSplitK = cutlass::gemm::device::GemmSplitKParallel<
+        float, cutlass::layout::ColumnMajor,
+        float, cutlass::layout::ColumnMajor,
+        float, cutlass::layout::ColumnMajor, float
+    >;
+    GemmSplitK gemm_splitK_op;
+    int split_num = 16;  // Split K dimension into 16 partitions
+    GemmSplitK::Arguments args({M, N, K}, {d_A, M}, {d_B, K}, {d_C, M}, {d_C, M}, {alpha, beta}, split_num);
+    size_t workspace_size = GemmSplitK::get_workspace_size(args);
+    cutlass::device_memory::allocation<uint8_t> workspace_buffer(workspace_size);
+    cutlass::Status status = gemm_splitK_op.initialize(args, workspace_buffer.get());
+    status = gemm_splitK_op();
 }
 ```
 
-## GEMM Implementation
+# CUTLASS GEMM Implementation
 
 ![](CUTLASS模板库和CuTe模板库.assets/gemm-hierarchy.png)
 
