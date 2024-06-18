@@ -292,7 +292,7 @@ bool same = cutlass::reference::host::TensorEquals(tensor1.host_view(), tensor2.
 
 在cutlass/util/reference/host/tensor_elementwise.h头文件中，提供主机端内存中TensorView对象的逐元素操作，例如TensorAdd()函数、TensorSub()函数、TensorMul()函数、TensorDiv()函数、TensorModulus()函数，以及自定义的TensorFuncBinaryOp结构体等。
 
-# CUTLASS Template Reference
+# CUTLASS Type Reference
 
 ```shell
 cutlass  # CUTLASS Template Library
@@ -1109,7 +1109,7 @@ struct Wmma<
 };
 ```
 
-# CUTLASS GEMM Examples
+# CUTLASS GEMM API Examples
 
 在cutlass/gemm/device目录中，提供设备层级的GEMM接口，用于在GPU设备上启动矩阵乘法的kernel核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。由模板类提供实现，即cutlass::gemm::device::Gemm模板类、cutlass::gemm::device::GemmArray模板类、cutlass::gemm::device::GemmBatched模板类、cutlass::gemm::device::GemmSplitKParallel模板类。一些GEMM计算的示例如下。
 
@@ -1163,7 +1163,7 @@ void gemm_splitK_demo() {
 }
 ```
 
-# CUTLASS GEMM Implementation
+# CUTLASS GEMM API Implementation
 
 ![](CUTLASS模板库和CuTe模板库.assets/gemm-hierarchy.png)
 
