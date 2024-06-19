@@ -1056,6 +1056,8 @@ LaTeX提供了两个浮动体环境分别用于图片和表格，包围于环境
 
 subcaption依赖于caption宏包，支持子图表标题样式的定制。并排子图表的功能也可通过subfig宏包的\subfloat命令实现，具体可参考宏包文档。需要注意的是，subcaption和subfig宏包中都有subfigure环境，注意不要冲突使用。
 
+值得注意的是，subcaption宏包会重写caption宏包中的\caption命令，而caption宏包中的\caption命令使用点号`.`作为编号与标题描述文本之间的分隔，例如"Fig. 1. This is a caption"，而subcaption宏包中的\caption命令使用冒号`:`作为编号与标题描述文本之间的分隔，例如"Fig. 1: This is a caption"，可以在导言区使用\captionsetup[figure]{labelsep=period}命令，将分隔符重新设置为点号。
+
 ## （十）特殊环境
 
 ### 1. 对齐
