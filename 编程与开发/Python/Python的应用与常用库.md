@@ -23,6 +23,30 @@ Python支持直接判断一个数是否属于某个范围的语法糖，如C语�
 
 注意，Python内置的cmath模块中的sqrt()函数，返回结果总是一个复数，即使原来的数据不为复数。
 
+Python的异常类型都派生自Exception基类，可以使用raise抛出一个异常类的实例对象，并使用except捕获该异常对象。
+
+```python
+class BaseException: ...
+class Exception(BaseException): ...
+```
+
+```python
+try:
+    raise NotImplementedError('the feature is not implemented')
+except NotImplementedError as ex:
+    print(ex)  # the feature is not implemented
+```
+
+其中，异常类NotImplementedError用于表示一个未实现异常。需要注意的是，Python的某些内部算法具有多种实现，在执行时会选择其中一种，这需要逐个进行测试，并在某个实现不支持时，返回“未实现异常”，然后继续测试剩余的实现。这里的未实现异常，并不是NotImplementedError异常类的实例对象，也不是通过raise语法抛出的，因为异常机制会导致程序停止执行。于是，Python提供一个普通类的实例对象NotImplemented来表示这种“未实现异常”，并通过普通的return语句返回，以进行剩余测试。
+
+```python
+@final
+class _NotImplementedType(Any):
+    # A little weird, but typing the __call__ as NotImplemented makes the error message for NotImplemented() much better
+    __call__: NotImplemented  # type: ignore[valid-type]  # pyright: ignore[reportInvalidTypeForm]
+NotImplemented: _NotImplementedType
+```
+
 ## Python内置函数及工具函数
 
 Python解释器内置许多函数和类型，它们在任何时间都可用，位于builtins.pyi文件中，参见https://docs.python.org/3.12/library/functions.html官方文档。
