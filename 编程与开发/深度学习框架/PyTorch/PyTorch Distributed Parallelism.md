@@ -2362,4 +2362,6 @@ class RunProcsResult:
 
 [RPC-Based Distributed Training](https://pytorch.org/docs/stable/rpc.html)（Remote Procedure Call，RPC）支持不适合用数据并行的通用训练架构，如分布式流水线并行（pipeline parallelism）、参数服务器模式（parameter server paradigm），以及组合使用DDP与其他并行训练模式。RPC会协助管理远程对象的生命周期，并在多机设备上扩展autograd引擎。
 
-分布式RPC框架通过一组允许远程通信的原语提供了多机模型训练的机制，并提供高级API来自动划分跨多台机器的模型。
+分布式RPC框架通过一组允许远程通信的原语提供了多机模型训练的机制，并提供高级API来自动划分跨多台机器的模型。RPC模块中的API是稳定的，不过仍然有许多工作正在进行，以优化提高性能和错误处理等，这将在将来版本中发布。
+
+> 自PyTorch 1.9以来，RPC模块引入对CUDA的支持，但目前仍为测试版本，并非所有的RPC模块特性能够兼容CUDA支持，因此不建议使用。不支持的特性包括，RRefs、JIT兼容、分布式autograd机制、分布式Optimizer、分布式Profile等，这些缺陷将在将来版本中解决。
