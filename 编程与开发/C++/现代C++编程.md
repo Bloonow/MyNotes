@@ -461,7 +461,7 @@ int main() {
 
 字面量（literal）类型是可在编译时确定其布局的类型，包括void类型、标量类型、引用类型，及其构成的数组；具有普通析构函数以及一个或多个非移动（not move）和非复制（not copy）的constexpr构造函数的类，且所有非静态数据成员和基类必须是字面量类型且不可变（not volatile）。
 
-# C++类型系统
+# 类型系统
 
 在C++中，类型（type）的概念非常重要，每个变量（variable）、函数参数（arguments）和返回值（return value）必须具有一个类型以进行编译。此外，在计算表达式（expression）前，编译器会隐式给出每个表达式，包括字面量值（literal value）的类型。例如，用于存储整数值的int，用于存储浮点值的double，或用于存储文本的标准库类型std::basic_string类等。
 
@@ -709,8 +709,7 @@ int main() {
    Base& ref_base = base;
    try {
        Derived& ref_derived = dynamic_cast<Derived&>(ref_base);
-   }
-   catch (const std::bad_cast& bc) {
+   } catch (const std::bad_cast& bc) {
        std::cout << bc.what() << std::endl;;  // Bad dynamic_cast!
    }
    return 0;
@@ -1099,15 +1098,15 @@ int main() {
 
 ```c++
 using std::string;
-string prefix(string s1, string s2) { return s2.append(", ").append(s1); }
-string suffix(string s1, string s2) { return s1.append(", ").append(s2); }
-string combine(string str1, string str2, string(*func_ptr)(string, string)) {
+string forward (string s1, string s2) { return s1.append(", ").append(s2); }
+string backward(string s1, string s2) { return s2.append(", ").append(s1); }
+string combine (string str1, string str2, string(*func_ptr)(string, string)) {
     return (*func_ptr)(str1, str2);
 }
 
 int main() {
     // Hello, Bloonow, Nice to meet you.
-    std::cout << combine("Nice to meet you.", combine("Hello", "Bloonow", suffix), prefix) << std::endl;
+    std::cout << combine("Nice to meet you.", combine("Hello", "Bloonow", forward), backward) << std::endl;
     return 0;
 }
 ```
@@ -1116,6 +1115,12 @@ int main() {
 void (*func_ptr)();  // 无参数，无返回值，函数指针
 int (*func_ptr)(string, int, double);  // 接受string,int,double参数，返回int值，函数指针
 ```
+
+# 类成员指针
+
+
+
+
 
 ## 数组与指针
 
@@ -1175,7 +1180,7 @@ const int *const ptr;  // 指向常量的常指针，ptr所指向的地址及所
 
 C++支持使用`new`（或`new[]`）分配内存空间，使用`delete`（或`delete[]`）释放内存空间，使用delete运算符也会导致调用类的析构函数（如果存在）。这些运算符从自由存储（free store）也称为堆内存（heap memory）中为对象分配内存空间。
 
-编译器会将new运算符转换为对特殊函数operator new的调用，将delete运算符转换为对特殊函数operator delete的调用，如下所示。
+编译器会将new运算符转换为对特殊函数operator new的调用，将delete运算符转换为对特殊函数operator delete的调用，如下所示，其中第一个size_t类型的参数表示所需的内存空间的大小，以字节为单位。
 
 ```c++
 void* operator new(size_t);
@@ -1190,7 +1195,7 @@ void operator delete(void*, size_t) noexcept;
 void operator delete[](void*, size_t) noexcept;
 ```
 
-在使用new/delete运算符分配/释放内置类型的对象、不存在自定义operator new/delete函数的类对象，以及任何类型的数组时，将调用全局operator new函数。如果自定义类存在自定义operator new/delete函数，则将调用该类的operator new/delete函数，此时全局operator new/delete函数将被隐藏。
+在使用new/delete运算符分配/释放内置类型的对象、不存在自定义operator new/delete函数的类对象，以及任何类型的数组时，将调用全局operator new/delete函数。如果自定义类存在自定义operator new/delete函数，则将调用该类的operator new/delete函数，此时全局operator new/delete函数将被隐藏。
 
 ```c++
 class Blanks {
@@ -1227,8 +1232,7 @@ int main() {
     constexpr size_t big_number = 0x7FFFFFFF;
     try {
         char* ptr1 = new char[big_number];
-    }
-    catch (std::bad_alloc& ex) {
+    } catch (std::bad_alloc& ex) {
         std::cout << ex.what() << std::endl;  // bad allocation
     }
     char* ptr2 = new(std::nothrow) char[big_number];
@@ -2107,7 +2111,7 @@ ANSI/ISO C99、C11、C17标准以及ISO C++14、C++17、C++20标准要求预处�
 
 `__STDC_NO_VLA__`，如果标准C实现不支持可选的标准变长数组语义（optional standard variable length array），则定义为1；在启用C11或C17编译器选项时，它也定义为1。
 
-# #pragma指令
+# #pragma制导指令
 
 预处理器指令`#pragma`指示特定机器（machine-specific）或特定操作系统（operating system-specific）的编译器功能。某些#pragma指令提供与编译器选项相同的功能，在源代码中遇到#pragma指令时，将重写编译器选项所指定的行为。编译器发现无法识别的#pragma时，会发出警告，并继续编译。C99标准与C++11标准提供`_Pragma`预处理器运算符，其作用与#pragma指令类似。MSVC提供`__pragma`关键字，作用与\_Pragma类似。
 

@@ -1,3 +1,5 @@
+> 本文章摘抄自NVIDIA官方，CUDA编程指南、CUDA最佳实践。
+
 # 编程模型
 
 ## 线程层次结构
@@ -12,7 +14,7 @@
 
 与线程块类似，线程块簇也可组织为一维、二维、三维形式，如下图所示。一个簇中的线程块数目可以由用户定义，并且CUDA最大支持一个簇中持有8个线程块。值得注意的是，若GPU硬件或MIG配置太小不足以支持8个流多处理器时，则簇的最大规模则会相应的减小。较小配置，与支持超过8个线程块的较大配置，是基于特定架构的，可使用cudaOccupancyMaxPotentialClusterSize()函数进行查询。
 
-<img src="CUDA编程指南与最佳实践.assets/grid-of-clusters.png" style="zoom:25%;" />
+<img src="CUDA编程官方文档.assets/grid-of-clusters.png" style="zoom:25%;" />
 
 为兼容性考虑，gridDim变量仍然表示线程块的数目规模，blockIdx变量仍然表示线程块在网格中的编号；使用Cluster Group簇组API用于获取一个簇在网格中的编号，以及一个线程块在簇中的编号。但应注意，在使用线程块簇时，线程网格中线程块的规模，应该是线程块簇中线程块规模的整数倍，以将线程网格划分为整数个线程块簇。
 

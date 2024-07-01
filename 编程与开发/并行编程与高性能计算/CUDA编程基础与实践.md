@@ -61,7 +61,7 @@ CUDA（Compute Unified Device Architecture）是显卡厂商NVIDIA推出的运�
 
 CUDA提供了两层API接口供编程人员使用，即CUDA驱动（driver）API和CUDA运行时（runtime）API。其中，CUDA驱动API是更加底层的API，它为程序员提供了更为灵活的编程接口；CUDA运行时API是在CUDA驱动API的基础上构建的一个更为高级的API，更容易使用。这两种API在性能上几乎没有差别。从程序的可读性来看，使用CUDA运行时API是更好的选择；而在其他编程语言中使用CUDA时，驱动API很多时候是必需的。
 
-<img src="CUDA编程 基础与实践.assets/图1.2 CUDA编程开发环境概览.png" style="zoom:50%;" />
+<img src="CUDA编程基础与实践.assets/图1.2 CUDA编程开发环境概览.png" style="zoom:50%;" />
 
 上图展示了CUDA开发环境的主要组件。可以看到，开发的应用程序是以主机（CPU）为出发点的，应用程序可以调用CUDA运行时API、CUDA驱动API及一些已有的CUDA库，所有这些调用都将利用设备（GPU）的硬件资源。
 
@@ -1206,7 +1206,7 @@ $$
 
 下图进一步展示了CUDA中的内存组织，其中箭头方向表示数据可以移动的方向。
 
-<img src="CUDA编程 基础与实践.assets/图6.1 CUDA中的内存组织示意图.png" style="zoom:40%;" />
+<img src="CUDA编程基础与实践.assets/图6.1 CUDA中的内存组织示意图.png" style="zoom:40%;" />
 
 上图中需要注意，局部内存只是全局内存的一部分，但因为它只能被所拥有的单个线程访问，故将之放至单个线程内部。
 
@@ -2178,7 +2178,7 @@ a.exe
 
 其中，对bank来说，其自己的每4个存储单元（一个位宽）称为一层内存，即0层内存指0\~3号存储单元构成的连续内存，1层内存指4\~7号存储单元构成的连续内存，依此类推。对于所有32个bank来说，它们所组成的一层内存有128字节，对于有64KiB的共享内存来说，一共有512层内存，如下图所示。
 
-<img src="CUDA编程 基础与实践.assets/共享内存bank布局.png" style="zoom:40%;" />
+<img src="CUDA编程基础与实践.assets/共享内存bank布局.png" style="zoom:40%;" />
 
 这样每次对bank请求一个位宽的数据，一次**内存事务（memory transaction）**即可完成。那么，只要同一线程束内的多个线程不同时访问同一个bank中不同层的数据，该线程束对共享内存的访问就只需要一次内存事务。当同一线程束内的多个线程试图同时访问同一个bank中不同层的数据时，就会发生bank冲突。在一个线程束内对同一个bank中的N层数据同时访问将导致N次内存事务，称为发生了N路bank冲突。最坏的情况是线程束内的32个线程同时访问同一个bank中32个不同层的地址，这将导致32路bank冲突。这种N很大的bank冲突是要尽量避免的。
 
@@ -3146,7 +3146,7 @@ nvcc a.cu -o a.exe -O3 -arch=sm_61
 a.exe
 ```
 
-<img src="CUDA编程 基础与实践.assets/多个CUDA流测试结果.png" style="zoom:67%;" />
+<img src="CUDA编程基础与实践.assets/多个CUDA流测试结果.png" style="zoom:67%;" />
 
 由图可以看到，当CUDA流的数目增加到10个左右时，多CUDA流加速似乎就已饱和，似乎是一个SM仅处理一个CUDA流，这也许是理论值与实际值的差别。
 

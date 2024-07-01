@@ -631,7 +631,9 @@ sudo chmod a+r $HOME/.B/cuda113/include/cudnn*.h
 sudo chmod a+r $HOME/.B/cuda113/lib64/libcudnn*
 ```
 
-> 注意，在Windows平台下，需要将cuDNN目录下的bin/cudnn\*.dll，include/cudnn\*.h，和lib/cudnn\*.lib文件都复制到CUDA相应目录下。
+而在Windows平台下，需要将cuDNN目录下的bin/cudnn\*.dll，include/cudnn\*.h，和lib/cudnn\*.lib文件都复制到CUDA相应目录下。
+
+> 值得注意的是，在安装CUDA或PyTorch等其它依赖于cuDNN的第三方库时，如果第三方库会检测并自动安装cuDNN库，则应该使用第三方库所安装的cuDNN库，无需再手动安装cuDNN库并配置环境，以避免与第三方库所依赖的cuDNN冲突。
 
 # 无图形界面安装Matlab
 
