@@ -12,7 +12,7 @@ C风格编程的一类主要BUG是内存泄漏（memory leak），通常是由�
 
 为支持RAII原则，C++标准库在头文件\<memory\>中提供了std::unique_ptr、std::shared_ptr、std::weak_ptr三种智能指针，可处理对其拥有的内存的分配和删除。请尽可能地使用智能指针管理堆内存，如果必须显式使用new和delete运算符，请遵循RAII原则。
 
-## std::string and std::string_view（C++17）
+## std::string和std::string_view（C++17）
 
 C风格字符串（string）是BUG的另一个主要来源，通过使用std::string和std::wstring，几乎可以消除与C风格字符串有关的所有错误。还可以利用std::string和std::string_view成员函数的优势进行字符串搜索、追加等操作，两者都对速度进行了高度优化。在将字符串作为只读参数传递给函数时，在C++17中，可以使用std::string_view进一步提高性能。
 
@@ -85,7 +85,16 @@ constexpr int size = 10;  // modern C++
 
 ## 统一初始化（uniform initialization）
 
-在现代C++中，可以使用任何类型的括号初始化，在初始化array、vector或其他容器时，这种初始化形式会非常方便。如下示例所示。
+C++11之前的初始化语法很乱，有四种初始化方式，而且每种之前甚至不能相互转换。
+
+```c++
+int var1(0);     // C++98
+int var2 = 0;    // C++98
+int var3{0};     // C++98成功，C++11成功
+int var4 = {0};  // C++98失败，C++11成功
+```
+
+在现代C++中，可以使用任何类型的统一初始化，也称为`{}`大括号初始化，在初始化array、vector或其他容器时会非常方便。如下示例所示。
 
 ```c++
 struct Str {
@@ -111,6 +120,10 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 ```
+
+统一初始化实际上使用的是位于\<initializer_list\>头文件中的initializer_list类，它相当于一个提供迭代器的数组，以提供访问元素数组的权限，其中数组的每个成员均具有指定的类型。
+
+当编译器遇到大括号初始化{}语句时，就会生成一个initializer_list数组，并将数组内的元素逐一传递给构造函数；而当构造函数的参数就是initializer_list类型时，则不会逐一分解，而是直接调用所对应的构造函数。
 
 ## 移动语义（move semantics）
 
