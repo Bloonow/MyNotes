@@ -1116,11 +1116,49 @@ void (*func_ptr)();  // 无参数，无返回值，函数指针
 int (*func_ptr)(string, int, double);  // 接受string,int,double参数，返回int值，函数指针
 ```
 
-# 类成员指针
+## 成员指针
 
+指向类成员或结构体成员的指针是指针声明的一个特例。指向类成员的指针与普通指针不同，因为它同时具有该成员所属类型的信息和该成员所属的类的信息。普通指针只标识内存中的一个对象或只具有其地址，而成员指针则标识类的所有实例中的成员对象。
 
+需要注意的是，指向成员的指针不能指向类的静态成员、引用类型成员或void类型。静态成员的地址不是指向成员的指针，它是指向静态成员的一个实例的常规指针，因为对于给定类的所有对象，只存在一个静态成员的实例。
 
+与普通指针一样，允许在单个声明中使用多个指针变量名称，以及任何关联的初始值；语法格式如下所示，其中Type是类成员的数据类型。
 
+```c++
+Type ClassName::*pointer_variable = &ClassName::member;
+```
+
+对于一个成员指针来说，无法直接对其解除引用，而需要通过类的实例对象进行访问，对象使用`.*`运算符访问成员指针，对象指针使用`->*`访问成员指针。
+
+```c++
+class Window {
+public:
+    int W, H;
+    char* WinCaption;
+    Window(int width, int height, const char* caption) {
+        W = width; H = height;
+        strcpy(WinCaption, caption);
+    }
+    bool SetCaption(const char* caption) {
+        strcpy(WinCaption, caption);
+        return true;
+    }
+};
+
+int main(int argc, char *argv[]) {
+    // 指向成员变量的指针
+    int Window::*pW = &Window::W, Window::*pH = &Window::H;
+    char* Window::*pCaption = &Window::WinCaption;
+    // 指向成员函数的指针
+    bool (Window::*pFunction)(const char*) = &Window::SetCaption;
+    Window win(800, 600, "HelloWindow");
+    std::cout << win.*pCaption << std::endl;  // HelloWindow
+    // 因为函数调用运算符()的优先级更高，所以成员指针解除运算符.*需要加上括号
+    (win.*pFunction)("SayWindow");
+    std::cout << win.*pCaption << std::endl;  // SayWindow
+    return 0;
+}
+```
 
 ## 数组与指针
 
@@ -1838,6 +1876,227 @@ int main() {
 
 在上述示例的函数z()中，编译器将发出warning C4172: returning address of local variable or temporary警告。在简单程序中，如果调用方在覆盖内存位置之前访问引用，则有时可能不会发生访问冲突，但这纯属运气，请注意该警告。
 
+# 模板
+
+作为强类型语言，C++要求所有变量都具有特定类型，由程序员显式声明或编译器推导。但是，许多数据结构和算法在无论在哪种类型上操作，都具有相同的结构和逻辑。使用模板可以定义类或函数的操作，并让用户指定这些操作应处理的具体类型。
+
+## 类模板与函数模板
+
+模板是C++泛型编程的基础，其核心思想是类型占位与替换。使用template关键字与\<\>尖括号声明一个模板。类模板可定义一系列相关类，这些类基于在实例化时传递到类的类型参数。函数模板类似于类模板，但定义的是一系列函数，利用函数模板，可以指定基于相同代码但作用于不同类型或类的函数集。
+
+使用typename关键字或class可以指定一个占位符，用于向编译器提供未知标识符是类型的提示，也即声明一个类型占位符，称为类型参数；在将类型参数应用到函数调用参数或变量声明语句之前，不会以任何方式对其进行限定，而函数调用参数或变量声明通常会对类型添加const限定符或引用修饰符。与其它编程语言中的泛型类型不同，C++模板支持非类型参数，也成为值参数；例如，可以提供常量整型值来指定数组的长度。类和函数模板可以具有默认参数，如果模板具有默认参数，可以在使用时不指定该参数。
+
+```c++
+template <typename Ty>
+Ty minimum(const Ty& lhs, const Ty& rhs) {
+    return lhs < rhs ? lhs : rhs;
+}
+
+template <typename Ty, size_t num>
+class MyArray {
+    Ty array[num];
+};
+
+template <typename A = int, typename B = double> class MyClass;
+```
+
+模板参数可以在模板参数列表中重复使用，如下所示。
+
+```c++
+template <typename Ty, typename Type = Ty, Type* ptr> struct MyStruct;
+```
+
+可以在类模板的内部或外部定义成员函数；如果在类模板的外部定义成员函数，则会像定义函数模板一样定义它们。同时，成员函数可以是函数模板，并指定额外的模板参数。成员函数模板不能是虚函数。
+
+模板可以在类或类模板中定义，在这种情况下，它们被称为成员模板；作为类的成员模板称为嵌套类模板。嵌套类模板被声明为外部类范围内的类模板，可以在封闭类的内部或外部定义它们。局部类不允许具有成员模板。
+
+```c++
+template <typename Ty, size_t num>
+struct MyArray {
+    Ty array[num];
+    template <typename IndexType>
+    Ty at(IndexType idx);
+    template <typename IndexType>
+    struct Iterator {
+        IndexType next(IndexType idx);
+    };
+};
+
+template <typename Ty, size_t num>
+template <typename IndexType>
+Ty MyArray<Ty, num>::at(IndexType idx) {
+    return array[idx];
+}
+
+template <typename Ty, size_t num>
+template <typename IndexType>
+IndexType MyArray<Ty, num>::Iterator<IndexType>::next(IndexType idx) {
+    return idx + 1;
+}
+```
+
+函数模板可以重载具有相同名称的非模板函数，在此方案中，编译器首先尝试使用模板参数推导来解析函数调用，以实例化具有唯一专用化的函数模板。如果模板参数推导失败，则编译器会考虑实例化函数模板重载和非模板函数重载来解析调用。如果非模板函数是函数模板的很好的匹配，则选择非模板函数，除非已显式指定模板参数；而如果非模板函数需要转换，则完全匹配的函数模板是首选的。
+
+## 模板实例化
+
+在编译时，编译器会将每个模板参数替换为用户指定的或由编译器推导的具体类型参数，编译器从模板生成类或函数的过程称为模板实例化。可以使用显式实例化来创建模板类或模板函数的实例化，而不用将其实际用于代码。这在创建使用模板进行分发的库文件时非常有用，因为未实例化的模板定义不会放入到目标文件中，而显示实例化可以将对应类型的模板定义放入到目标文件。
+
+```c++
+template <typename Ty, size_t num>
+struct MyStack {
+    Ty stack[num];
+    Ty push(Ty val);
+};
+
+template struct MyStack<double, 8>;             // 创建类的实例化，为所有成员生成代码
+template float MyStack<float, 8>::push(float);  // 仅实例化其中一个成员函数
+```
+
+在实例化时，可以使用extern关键字防止自动实例化成员，以阻止编译器在多个对象模块中生成相同的实例化代码。如果调用该函数，则必须在至少一个链接模块中使用指定的显式模板参数来实例化该函数模板；否则，生成程序时会出现链接器错误。
+
+```c++
+extern template struct MyStack<double, 8>;
+extern template float MyStack<float, 8>::push(float);
+```
+
+在某些情况下，模板不可能或不需要为任何类型都定义完全相同的代码，而是希望为某个特殊类型定义专用的代码路径。此时，可以为该特定类型定义模板的专用化。当用户使用该类型对模板进行实例化时，编译器使用该专用化来生成类，而对于所有其他类型，编译器会选择更常规的模板。如果专用化中的所有参数都是专用的，则称为完整专用化；如果只有一些参数是专用的，则称为部分分专用化。
+
+```c++
+template <typename Ty, typename IndexType>
+struct MyClz {
+    void operator()() { std::cout << "regular template" << std::endl; }
+};
+
+template <typename Ty>
+struct MyClz<Ty,int> {
+    void operator()() { std::cout << "specialization for int" << std::endl; }
+};
+```
+
+如果在专用化中使用extern关键字，则仅适用于在类主体外定义的成员函数；类声明中定义的函数被视为内联函数，并且始终实例化。
+
+当存在多个与函数调用的参数列表匹配的函数模板可用时，编译器从可能的匹配项中选择可用的专用化程度最高的函数模板。例如，如果一个函数模板采用Ty类型，而另一个采用Ty\*的函数模板可用，则称Ty\*版本的专用化程度更高，只要参数是指针类型，它就优先于泛型Ty版本，即使两者都是允许的匹配项。
+
+```c++
+template <typename Ty>
+void print(Ty val) { std::cout << typeid(val).name() << std::endl; }
+
+template <typename Ty>
+void print(Ty* val) { std::cout << typeid(val).name() << std::endl; }
+
+template <typename Ty>
+void print(const Ty* val) { std::cout << typeid(val).name() << std::endl; }
+
+int main(int argc, char *argv[]) {
+    int val = 5;
+    int *ptr = &val;
+    const int* cptr = &val;
+    print(val);   // i
+    print(ptr);   // Pi
+    print(cptr);  // PKi
+    return 0;
+}
+```
+
+## 模板名称解析
+
+在模板定义中，有三种类型的名称。
+
+- 局部声明的名称，包括模板本身的名称（即作为模板参数的类型名称与非类型名称），以及在模板定义中声明的任何名称。
+- 模板定义之外的封闭范围中的名称。
+- 在某种程度上依赖于模板参数的名称，称为依赖名称。
+
+尽管前两个名称也属于类和函数范围，但模板定义中仍然需要特殊规则的名称解析，来处理由依赖名称引入的额外复杂性。原因在于，在对模板进行实例化之前，编译器几乎不知道这些名称的具体类型，因为它们可能是依赖于所使用的模板参数的完全不同的类型。对于非依赖名称来说，会在模板定义时根据通用规则查找非依赖名称；对于这些独立于模板参数的名称，会为所有的模板专用化都查找一次。在将模板实例化并为每个专用化单独查找名称之前，将不会查找依赖名称。
+
+如果某个类型依赖于模板参数，则该类型属于依赖类型。具体而言，如果类型是以下之一，则属于依赖类型。
+
+```c++
+template <typename Ty> 
+struct Val {
+    using type = Ty;
+};
+
+template <typename Type, size_t length>
+class My {
+    using Ty = Type;               // (1) template argument itself
+    using vTy = typename Ty::type; // (2) qualified name with a qualification
+    using kTy = const Ty;          // (3) const or volatile type base on a dependent type
+    using pTy = Ty*;               // (4) pointer           type based on a dependent type
+    using rTy = Ty&;               // (5) reference         type based on a dependent type
+    using aTy = Ty[8];             // (6) array             type based on a dependent type
+    using fTy = Ty(*)();           // (7) function pointer  type based on a dependent type
+    using tTy = My<Val<int>, 8>;   // (8) a template type constructed from a template parameter
+    int array[length];             // (9) array whose size is based on a template parameter
+};
+```
+
+模板参数上的名称和表达式依赖项分为类型依赖项或值依赖项，具体取决于模板参数是类型参数还是值参数。此外，在模板参数上有类型依赖项的模板中声明的任何标识符都被视为依赖值，使用值依赖表达式初始化的整数类型或枚举类型也是如此。
+
+## 可变参数模板
+
+可变参数模板是支持任意数量的类型参数或值参数的类模板或函数模板，可以提供广泛的类型安全且非凡的功能和灵活性。可变参数模板以两种方式使用省略号，用在模板参数名称的左侧，表示参数包（parameter pack）；用在模板参数名称的右侧，或者函数实际参数的右侧，表示将参数包扩展为单独的名称。
+
+可变参数类模板的语法示例如下所示，其中Arguments是一个模板参数包，类MyClass是一个接受可变模板参数的模板类。
+
+```c++
+template <typename ...Arguments> class MyClass {};
+
+MyClass<> mc1;
+MyClass<int> mc2;
+MyClass<int, float> mc3;
+MyClass<int, float, std::vector<std::string>> mc4;
+```
+
+可变参数函数模板的语法示例如下所示，其中Arguments是一个模板的类型参数包，args是一个函数的形式参数包，使用`sizeof...()`运算符，可以从参数包Arguments或者args中，获得实际调用时传入的模板参数的个数。
+
+```c++
+template <typename ...Arguments> int my_function(Arguments ...args) { return sizeof...(args); }
+template <typename ...Arguments> int my_function(Arguments* ...args) { return sizeof...(args); }
+template <typename ...Arguments> int my_function(Arguments& ...args) { return sizeof...(args); }
+template <typename ...Arguments> int my_function(Arguments&& ...args) { return sizeof...(args); }
+template <typename ...Arguments> int my_function(const Arguments& ...args) { return sizeof...(args); }
+```
+
+对于可变参数模板而言，通常以模板元编程中的递归形式，来使用可变参数模板，一个使用示例如下所示。
+
+```c++
+template <typename Ty>
+void print(const Ty& value) {
+    std::cout << value << std::endl;
+}
+
+template <typename First, typename ...Rest>
+void print(const First& first, const Rest&... rest) {
+    std::cout << first << " ";
+    print(rest...);
+}
+
+int main(int argc, char *argv[]) {
+    print(15, 3.14, "Hello!");  // 15 3.14 Hello!
+    return 0;
+}
+```
+
+此外，也可以使用大括号`{}`初始化列表，直接将可变参数展开，但此时要求所有形参都是同一个数据类型，如下所示。
+
+```c++
+template <typename ...Arguments>
+int print(Arguments ...args) {
+    int num = sizeof...(args);
+    auto values = { args... };
+    for (auto val : values) {
+        std::cout << val << " ";
+    }
+    std::cout << std::endl;
+    return num;
+}
+
+int main(int argc, char *argv[]) {
+    print(1, 2, 3, 4, 5);  // 1 2 3 4 5
+    return 0;
+}
+```
+
 # C/C++预处理器
 
 预处理器（preprocessor）是一个文本处理器（text processor），在正式开始编译之前，由预处理器接受C/C++源文件文本，并对这些文件执行预操作（preliminary operation）。尽管一般情况下，编译器会首先调用预处理器，但仍可以在不进行编译的情况下单独使用预处理器处理源文件文本。
@@ -2103,11 +2362,11 @@ ANSI/ISO C99、C11、C17标准以及ISO C++14、C++17、C++20标准要求预处�
 
 `__STDC_HOSTED__`，如果标准C实现是托管实现（hosted implementation）并且支持整个必需的标准库，则定义为1；其他情况下则定义为0。
 
-`__STDC_NO_ATOMICS__`，如果标准C实现不支持可选的标准原子语义（optional standard atomics），则定义为1；在启用C11或C17编译器选项时，它也定义为1。
+`__STDC_NO_ATOMICS__`，如果标准C实现不支持可选的标准原子语义（optional standard atomics），则定义为1；在启用C11或C17编译器选项时，也为1。
 
 `__STDC_NO_COMPLEX__`，如果标准C实现不支持可选的标准复数语义（optional standard complex numbers），则定义为1；在启用C11或C17编译器选项时，它也定义为1。
 
-`__STDC_NO_THREADS__`，如果标准C实现不支持可选的标准线程语义（optional standard threads），则定义为1；在启用C11或C17编译器选项时，它也定义为1。
+`__STDC_NO_THREADS__`，如果标准C实现不支持可选的标准线程语义（optional standard threads），则定义为1；在启用C11或C17编译器选项时，也为1。
 
 `__STDC_NO_VLA__`，如果标准C实现不支持可选的标准变长数组语义（optional standard variable length array），则定义为1；在启用C11或C17编译器选项时，它也定义为1。
 
