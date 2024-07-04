@@ -2110,6 +2110,19 @@ int main(int argc, char *argv[]) {
 }
 ```
 
+此外，直接将可变参数展开时，支持先逐个调用函数再逐个展开的语法糖，如下所示。
+
+```c++
+template <typename Ty>
+Ty pick(const Ty& arg) { return arg; }
+
+template <typename ...Arguments>
+void foo(Arguments ...args) {
+    // { pick(args[0]), pick(args[1]), pick(args[2]), ... }
+    auto values = { pick(args)... };
+}
+```
+
 # C/C++预处理器
 
 预处理器（preprocessor）是一个文本处理器（text processor），在正式开始编译之前，由预处理器接受C/C++源文件文本，并对这些文件执行预操作（preliminary operation）。尽管一般情况下，编译器会首先调用预处理器，但仍可以在不进行编译的情况下单独使用预处理器处理源文件文本。
