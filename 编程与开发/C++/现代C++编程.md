@@ -2033,7 +2033,7 @@ template <typename Type, size_t length>
 class My {
     using Ty = Type;               // (1) template argument itself
     using vTy = typename Ty::type; // (2) qualified name with a qualification
-    using kTy = const Ty;          // (3) const or volatile type base on a dependent type
+    using kTy = const Ty;          // (3) const or volatile type based on a dependent type
     using pTy = Ty*;               // (4) pointer           type based on a dependent type
     using rTy = Ty&;               // (5) reference         type based on a dependent type
     using aTy = Ty[8];             // (6) array             type based on a dependent type
