@@ -14,13 +14,13 @@ IO和格式设置，\<cinttypes\>，\<cstdio\>，\<filesystem\>，\<fstream\>，
 
 内存管理，\<allocators\>，\<memory\>，\<memory_resource\>，\<new\>，\<scoped_allocator\>；原子操作，\<atomic\>；多线程处理，\<atomic\>，\<condition_variable\>，\<future\>，\<mutex\>，\<shared_mutex\>，\<thread\>；
 
-序列容器，\<array\>，\<deque\>，\<forward_list\>，\<list\>，\<vector\>；有序的关联容器，\<map\>，\<set\>；无序的关联容器，\<unordered_map\>，\<unordered_set\>；容器适配器，\<queue\>，\<stack\>；容器视图，\<span\>；迭代器，\<iterator\>；算法，\<algorithm\>，\<cstdlib\>，\<numeric\>；
+序列容器，\<array\>，\<deque\>，\<forward_list\>，\<list\>，\<vector\>；有序的关联容器，\<map\>，\<set\>；无序的关联容器，\<unordered_map\>，\<unordered_set\>；哈希容器，\<hash_map\>，\<hash_set\>；容器适配器，\<queue\>，\<stack\>；容器视图，\<span\>；迭代器，\<iterator\>；算法，\<algorithm\>，\<numeric\>，\<cstdlib\>；
 
 错误和异常处理，\<cassert\>，\<exception\>，\<stdexcept\>，\<system_error\>；
 
 常规实用工具，\<any\>，\<bit\>，\<bitset\>，\<cstdlib\>，\<execution\>，\<functional\>，\<memory\>，\<memory_resource\>，\<optional\>，\<ratio\>，\<scoped_allocator\>，\<tuple\>，\<type_traits\>，\<typeindex\>，\<utility\>，\<variant\>；
 
-其中，一些以c作为前缀的头文件，是C++提供的对相应的C标准标头的包装实现。
+其中，一些以c作为前缀的头文件，是C++提供的对相应的C标准标头的包装实现。其中，<hash_map>，<hash_set>并不是C++标准要求的标准库文件，但因为有着广泛的应用场景，编译器通常会提供实现。
 
 可按照任何顺序包括标准标头，可多次包括一个标准标头，或包括定义了相同宏或相同类型的多个标准标头。声明内不能包括标准标头。
 
