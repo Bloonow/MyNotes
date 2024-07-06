@@ -364,13 +364,22 @@ core file size              (blocks, -c) unlimited
 data seg size               (kbytes, -d) unlimited
 ```
 
-在Linux中，使用/proc/sys/kernel/core_pattern文件指定所生成的核心转储文件的路径位置模式，配置方式如下所示。
+在Linux中，使用/proc/sys/kernel/core_pattern文件临时指定所生成的核心转储文件的路径位置模式，配置方式如下所示。
 
 ```shell
 echo "core-%e-%p" > /proc/sys/kernel/core_pattern
 ```
 
 上述指定的路径模式，会在当前执行路径下生成以core开头的核心转储文件，并使用%e表示程序名称，使用%p表示进程编号、还可以使用%t表示时间戳。
+
+若要永久设置核心转储文件生成路径，可以在/etc/sysctl.conf文件中，设置sysctl的变量kernel.core_pattern值，如下所示。
+
+```shell
+kernel.core_pattern = core-%e-%p
+kernel.core_uses_pid = 0
+```
+
+其中，kernel.core_uses_pid用于控制转储文件的文件名称是否添加进程编号作为后缀，置为1表示添加，即使core_pattern中未指定%p，仍会添加进程编号。
 
 此处列举一个wrong.cpp示例文件，其试图访问nullptr野指针。
 

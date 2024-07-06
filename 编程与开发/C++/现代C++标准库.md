@@ -1,4 +1,4 @@
-# C++标准库概述
+# C++标准库头文件
 
 C++程序可以从符合标准的C++标准库实现中调用大量函数，这些函数执行基础服务（例如输入和输出），并提供常用操作的高效实现。在Windows平台上，这些基础实现由libucrt.lib、ucrt.lib等各种静态库和动态库提供。
 
@@ -20,7 +20,7 @@ IO和格式设置，\<cinttypes\>，\<cstdio\>，\<filesystem\>，\<fstream\>，
 
 常规实用工具，\<any\>，\<bit\>，\<bitset\>，\<cstdlib\>，\<execution\>，\<functional\>，\<memory\>，\<memory_resource\>，\<optional\>，\<ratio\>，\<scoped_allocator\>，\<tuple\>，\<type_traits\>，\<typeindex\>，\<utility\>，\<variant\>；
 
-其中，一些以c作为前缀的头文件，是C++提供的对相应的C标准标头的包装实现。其中，<hash_map>，<hash_set>并不是C++标准要求的标准库文件，但因为有着广泛的应用场景，编译器通常会提供实现。
+其中，一些以c作为前缀的头文件，是C++提供的对相应的C标准标头的包装实现。其中，<hash_map>，<hash_set>并不是ISO C++标准的一部分，但因为有着广泛的应用场景，编译器通常会提供实现，但它们并不位于std命名空间中，而是位于stdext命名空间或\_\_gnu\_cxx命名空间。
 
 可按照任何顺序包括标准标头，可多次包括一个标准标头，或包括定义了相同宏或相同类型的多个标准标头。声明内不能包括标准标头。
 
