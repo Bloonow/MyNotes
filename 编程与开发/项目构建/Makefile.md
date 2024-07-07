@@ -207,3 +207,24 @@ include <filepath...>
 如果文件没有找到，make会生成一条警告信息但不会马上出现致命错误，它会继续载入其他的文件，一旦完成Makefile的读取，make会重试这些没有找到或是不能读取的文件。如果还是不行，make才会出现一条致命信息。如果不想让make理会那些无法读取的文件而继续执行，可以在命令前加一个`-`，即使用`-include`，表示无论include过程中出现什么错误，都不要报错而继续执行；和其他版本兼容的相关命令是`sinclude`，作用一样。
 
 此外还有一个环境变量`MAKEFILES`。如果当前环境中定义了环境变量MAKEFILES，那么，make会把这个变量中的值做一个类似于include的动作。这个变量中的值是其它的Makefile，用空格分隔。只是，它和include不同的是，从这个环境变中引入的Makefile的“目标”不会起作用，如果环境变量中定义的文件发现错误，make也会不理。不建议使用。
+
+# 编译当前目录下所有.cpp文件并生成同名可执行文件
+
+```c++
+CC = g++
+CFLAGS = -O3
+
+# 获取当前目录下所有匹配 *.cpp 的文件名称列表
+SOURCES := $(wildcard *.cpp)
+# 将 $(SOURCES) 列表中所有 %.cpp 项替换为 % 项
+TARGETS := $(patsubst %.cpp, %, $(SOURCES))
+
+all: $(TARGETS)
+
+%: %.cpp
+	$(CC) $(CFLAGS) $< -o $@
+
+clean:
+	rm -f $(TARGETS)
+```
+
