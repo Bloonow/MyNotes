@@ -581,6 +581,8 @@ int main() {
 
 在现代C++中，避免将`NULL`宏或`0`值用作空指针常量，而应该使用nullptr，它在大多数情况下效果更好。例如，给定myFunction(std::pair<const char\*, double>)，那么调用myFunction(std::make_pair(NULL, 3.14))会导致编译器错误，因为宏NULL将扩展到0，会产生std::pair<int, double>调用，不可转换为myFunction的std::pair<const char\*, double>参数类型。而调用myFunction(std::make_pair(nullptr, 3.14))将会成功编译，因为std::make_pair(nullptr, 3.14)返回std::pair<std::nullptr_t, double>，此结果可转换std::pair<const char*, double>参数类型。
 
+> 需要注意的是，使用std::cout打印指针类型时，例如int\*指针、float\*指针等，会直接打印该指针的地址；而如果是char\*指针，使用std::cout打印时，会被解析为C风格字符串，从而打印出可能乱码的字符。想要使用std::cout打印char\*指针的地址，可以打印(void\*)pChar对象。
+
 ## Windows数据类型	
 
 在C和C++的经典Win32编程中，大多数函数使用Windows特定的typedef和#define宏来指定参数类型和返回值，它们在windef.h头文件中定义。这些Windows数据类型通常是为C/C++内置类型提供的特殊别名。其中一些typedef（例如HRESULT和LCID）很有用且具有描述性，而INT等其他类型没有特殊含义，只是基础C++类型的别名。
