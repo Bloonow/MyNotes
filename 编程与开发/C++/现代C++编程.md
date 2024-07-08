@@ -1131,6 +1131,27 @@ void (*func_ptr)();  // 无参数，无返回值，函数指针
 int (*func_ptr)(string, int, double);  // 接受string,int,double参数，返回int值，函数指针
 ```
 
+值得注意的是，对于函数名称func变量而言，它表示的是函数地址，对其进行解除引用操作或取地址操作，都会返回一样的函数地址，函数指针同样如此。
+
+```c++
+int add(int a, int b) { return a + b; }
+
+int main(int argc, char *argv[]) {
+    int (*pfn)(int, int) = add;
+    std::cout << pf(5, 3) << std::endl;       // 8
+    std::cout << (*pf)(5, 3) << std::endl;    // 8
+    printf("%p, %p, %p\n", add, *add, &add);  // 0x6469b018e260, 0x6469b018e260, 0x6469b018e260
+    printf("%p, %p, %p\n", pfn, *pfn, &pfn);  // 0x6469b018e260, 0x6469b018e260, 0x7fff96d73e00
+    return 0;
+}
+```
+
+如下示例，定义一个名称为signal的函数，该函数接受一个int参数和一个void(*)(int)函数指针参数，并返回一个void(int)原型的函数。
+
+```c++
+void (*signal(int, void(*)(int)))(int);
+```
+
 ## 成员指针
 
 指向类成员或结构体成员的指针是指针声明的一个特例。指向类成员的指针与普通指针不同，因为它同时具有该成员所属类型的信息和该成员所属的类的信息。普通指针只标识内存中的一个对象或只具有其地址，而成员指针则标识类的所有实例中的成员对象。

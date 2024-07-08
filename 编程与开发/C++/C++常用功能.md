@@ -30,7 +30,7 @@ class my_class::impl {
 };
 
 // constructor of my_class
-my_class::my_class(): pimpl( new impl ) {
+my_class::my_class(): pimpl(new impl) {
     // set impl values
 }
 ```
