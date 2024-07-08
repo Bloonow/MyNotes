@@ -279,7 +279,7 @@ int main() {
 
 运算符需要与周围的简单符号相结合才能起作用，结合性指的是，运算符尝试与周围符号结合时所遵循的顺序。左到右表示先结合左侧符号再结合右侧符号，右到左表示先结合右侧符号再结合左侧符号。无论是左到右还是右到左，都是针对双目运算符而言的，对于单目运算符，只会与第一个符号相结合，而不存在第二个符号。
 
-若存在多个运算符与简单符号结合，会按运算符的优先级从高到低依次进行，一旦某个运算符与简单符号完成结合后，就可将它们看作是一个符号整体，然后再与其它运算符结合。
+对编译器而言，总是从所声明或定义的变量名称开始解析，将其作为最初的简单符号。若存在多个运算符与简单符号结合，会按运算符的优先级从高到低依次进行，一旦某个运算符与简单符号完成结合后，就可将它们看作是一个符号整体，然后再与其它运算符结合。
 
 按照运算符的优先级从高到低，将其分为若干等级，如[下表](https://en.cppreference.com/w/cpp/language/operator_precedence)所示。值得注意的是，单独一个括号()的优先级最高。
 
@@ -2804,8 +2804,6 @@ int main() {
 
 目标文件（.obj）中的段（section or segment）指的是一个命名的数据块（named block of data），在程序的进程结构中，它作为一个单元（unit）加载到内存中。在MSVC环境下，可以使用dumpbin.exe查看.obj目标文件的结构；在Unix环境下，可使用objdump工具查看目标文件的结构。
 
-### alloc_text
-
 指令`alloc_text`指定给定函数进行定义和放置的代码段名称（name of the code section），该指令需出现在函数声明与函数定义之间，且应在同一模块中定义。由于函数地址不支持使用\_\_base进行基址寻址，因此指定函数的段位置时需要使用alloc_text指令。注意，alloc_text只适用于以C链接（C linkage）声明的函数，不能处理C++成员函数和重载函数，若要处理C++函数，需要使用extern "C"语法。
 
 ```c++
@@ -2825,8 +2823,6 @@ Dump of file main.obj
   Summary
           42 .my_func_seg
 ```
-
-### code_seg
 
 指令`code_seg`指定目标文件中存储函数的文本段（text section），又称代码段。在程序的进程结构中，代码段是包含可执行代码（executable code）的段。默认情况下，目标文件中可执行代码的代码段名称为.text，使用不带参数的code_seg指令将后续的可执行代码的代码段名称重置为.text。
 
@@ -2858,8 +2854,6 @@ Dump of file main.obj
 
 注意，code_seg不控制函数模板实例化后生成代码的放置位置（placement），也不控制编译器隐式生成的代码，例如特殊成员函数。若要控制这部分代码，可使用MSVC中的\_\_declspec(code_seg())扩展，它可以控制所有目标代码的放置位置，包括编译器生成的代码。
 
-### bss_seg
-
 指令`bss_seg`指定目标文件中存储未初始化变量（uninitialized variable）的段。在程序的进程结构中，BSS段是包含未初始化数据的段。默认情况下，目标文件中未初始化数据的BSS段名称为.bss，使用不带参数的bss_seg指令将后续的未初始化数据项的BSS段名称重置为.bss。
 
 ```c++
@@ -2885,8 +2879,6 @@ Dump of file main.obj
            4 .my_bss_seg2
 ```
 
-### data_seg
-
 指令`data_seg`指定目标文件中初始化变量（initialized variable）的段。在程序的进程结构中，数据段是包含初始化数据的段。默认情况下，目标文件中初始化数据的数据段名称为.data，使用不带参数的data_seg指令将后续的初始化数据的数据段名称重置为.data。
 
 ```c++
@@ -2911,8 +2903,6 @@ Dump of file main.obj
            8 .my_data_seg1
            4 .my_data_seg2
 ```
-
-### const_seg
 
 指令`const_seg`指定目标文件中常量变量（const variable）的段。在程序的进程结构中，常量段是包含常量数据的段。默认情况下，目标文件中常量数据的常量段名称为.rdata，使用不带参数的const_seg指令将后续的常量数据的常量段名称重置为.rdata。
 
@@ -2947,8 +2937,6 @@ Dump of file main.obj
            5 .rdata
 ```
 
-### section
-
 指令`section`用于在目标文件中创建一个段（section or segment）。一旦段被定义，它将对编译的其余部分保持有效，但必须使用诸如MSVC中的\_\_declspec(allocate())分配段空间，否则无法在段中放置任何内容。
 
 ```c++
@@ -2967,8 +2955,6 @@ int myvalue = 0;
 
 ## 程序行为
 
-### auto_inline
-
 指令`auto_inline`指定之后定义的函数是否考虑自动内联展开（automatic inline expansion）。
 
 ```c++
@@ -2982,8 +2968,6 @@ void display() {
 }
 #pragma auto_inline(off)
 ```
-
-### function
 
 指令`function`指示编译器生成给定函数的调用，而不是内联它们。
 
@@ -3001,8 +2985,6 @@ int main() {
     return 0;
 }
 ```
-
-### intrinsic
 
 指令`intrinsic`指示编译器对给定函数的调用是内部（intrinsic）的。
 
@@ -3022,8 +3004,6 @@ int main() {
 ```
 
 一些常用的库函数具有内部形式，如abs、fabs、memcmp、memcpy、memset、strcat、strcmp、strcpy、strlen等。
-
-### loop
 
 指令`loop`指定循环代码如何自动并行（auto-parallelize），或指定是否进行自动向量化（auto-vectorize）。该指令位于某个循环之前，对其之后的一个循环生效，一个循环可同时使用多个loop指令。
 
@@ -3047,11 +3027,7 @@ int main() {
 }
 ```
 
-### omp
-
 指令`omp`用于OpenMP并行编程扩展，后跟OpenMP从句，详见并行程序设计导论。
-
-### pack
 
 指令`pack`指定结构体、联合体、类成员的封装/打包对齐方式（packing alignment），按字节（byte）对齐，参数n的有效值从1、2、4、8、16中取值，默认取8为值。
 
@@ -3085,8 +3061,6 @@ int main() {
 
 ## 编译链接行为
 
-### check_stack
-
 指令`check_stack`指定编译器是否进行栈探测（stack probe）。使用不带参数的check_stack指令将重置为默认行为，此时采用编译选项指定的行为。
 
 ```c++
@@ -3095,8 +3069,6 @@ int main() {
 ```
 
 当指定为on或+表示启用栈探测，指定为off或-表示关闭栈探测。
-
-### deprecated
 
 指令`deprecated`指示函数、类型、其他任何标识符不再受将来版本支持或者不应该再使用。可以修饰一个宏名称，需要将宏名称包含在双引号`""`内，否则宏将展开。
 
@@ -3112,8 +3084,6 @@ void foo() {}
 class MyClass {};
 #define ADD(x,y) ((x)+(y))
 ```
-
-### detect_mismatch
 
 指令`detect_mismatch`将一条记录放在目标文件中，链接器将检查这些记录中的潜在不匹配项（potential mismatche）。链接项目时，如果项目包含两个名称相同但值不同的对象，则会引发链接器错误，使该指令可防止链接中存在不一致的目标文件。
 
@@ -3140,8 +3110,6 @@ int main(int artc, char *argv[]) {
 void foo() {}
 ```
 
-### include_alias
-
 指令`include_alias`指定用于#include指令中的别名，当在#include指令中找到别名（alias_filename）时，在其原位置替换为实际名称（actual_filename）。该指令允许用具有不同名称或路径的文件替换源文件中所包含的头文件名。要搜索的别名必须完全一致，大小写、拼写和双引号或尖括号的使用必须全部匹配。
 
 ```c++
@@ -3154,8 +3122,6 @@ void foo() {}
 #include <myio.h>  // actually that is stdio.h
 ```
 
-### once
-
 指令`once`用于某个.h头文件的开始位置，指示编译器在编译源代码文件时只包含该头文件一次，可以减少构建次数。这称为多次包含优化（multiple-include optimization），其功能与使用宏定义的包含防范（include guard）语法类似，但once指令不会污染宏的全局命名空间。once指令不是C++标准，但多数常用编译器都支持该语法。
 
 ```c++
@@ -3163,8 +3129,6 @@ void foo() {}
 #pragma once
 // something
 ```
-
-### warning
 
 指令`warning`用于对编译器警告信息的行为进行选择性修改。
 
@@ -3221,8 +3185,6 @@ void foo() {}
 
 ## 注入额外信息
 
-### comment
-
 指令`comment`将一条注解记录（comment record）放置于目标文件或可执行文件中。
 
 ```c++
@@ -3251,8 +3213,6 @@ void foo() {}
 #pragma comment(user, "Compiled on " __DATE__ " at " __TIME__)
 ```
 
-### component
-
 指令`component`控制对源文件中的浏览信息（browse information）或依赖信息（dependency information）的收集行为。
 
 ```c++
@@ -3270,8 +3230,6 @@ void foo() {}
 为节省磁盘空间，可以在不需要收集依赖关系信息时使用#pragma component(minrebuild,off)指令，例如在不变的头文件中，在未更改类后插入#pragma component(minrebuild,on)以重新启用依赖信息收集。
 
 使用mintypeinfo指令可以减少指定区域的调试信息，此信息的量相当大，会影响.pdb和.obj文件。注意，不能在mintypeinfo区域中调试类和结构体。
-
-### message
 
 指令`message`用于在编译期间将字符串发送到标准输出进行打印，其参数message_string是字符串字面量，遵循字符串的转移规则和连接规则，也可以是扩展到字符串字面量的宏定义。
 
