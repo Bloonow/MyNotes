@@ -62,7 +62,7 @@ dllmain.cpp --> pch.h
 #include "pch.h"
 
 BOOL APIENTRY DllMain( HMODULE hModule,				// 模块句柄
-                       DWORD  ul_reason_for_call,	// 调用原因
+                       DWORD  ul_reason_for_call,	 // 调用原因
                        LPVOID lpReserved			// 保留参数
                      )
 {

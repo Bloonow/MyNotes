@@ -329,13 +329,87 @@ IO和格式设置，\<cinttypes\>，\<cstdio\>，\<filesystem\>，\<fstream\>，
 
 程序通过读取和写入文件来与目标环境进行通信，文件可以是，(1)可重复读取和写入的数据集；(2)程序生成的字节流，例如管线；(3)从外围设备接收或发送到外围设备的字节流。最后两项是交互式文件，文件通常是程序与目标环境进行交互的主要手段。操作所有这些类型的文件的方式大致相同，就是通过调用库函数。在C风格编程中，可以使用\<stdio.h\>标准头文件中提供的函数。
 
-必须先打开文件，才能对该文件执行许多操作，打开文件会将其与流对象，以及标准C库中的`FILE`数据结构关联（该数据结构屏蔽了各类文件之间的差异），标准库将维护FILE类型对象中的每个流的状态。在程序启动前，目标环境将默认打开三个文件，即标准输入流、标准输出流、标准错误输出流。
+必须先打开文件，才能对该文件执行许多操作，打开文件会将其与流对象，并与C标准库中的`FILE`数据结构关联（该数据结构屏蔽了各类文件之间的差异），标准库将维护FILE类型对象中的每个流的状态。下面代码展示GNU对FILE数据结构的实现。
 
-！！！
+```c++
+/* The tag name of this struct is _IO_FILE to preserve historic C++ mangled names for functions taking FILE* arguments.
+   That name should not be used in new code. */
+struct _IO_FILE {
+    int _flags;  /* High-order word is _IO_MAGIC; rest is flags. */
+
+    /* The following pointers correspond to the C++ streambuf protocol. */
+    char *_IO_read_ptr;    /* Current read pointer */
+    char *_IO_read_end;    /* End of get area. */
+    char *_IO_read_base;   /* Start of putback + get area. */
+    char *_IO_write_base;  /* Start of put area. */
+    char *_IO_write_ptr;   /* Current put pointer. */
+    char *_IO_write_end;   /* End of put area. */
+    char *_IO_buf_base;    /* Start of reserve area. */
+    char *_IO_buf_end;     /* End of reserve area. */
+
+    /* The following fields are used to support backing up and undo. */
+    char *_IO_save_base;    /* Pointer to start of non-current get area. */
+    char *_IO_backup_base;  /* Pointer to first valid character of backup area */
+    char *_IO_save_end;     /* Pointer to end of non-current get area. */
+
+    struct _IO_marker *_markers;
+    struct _IO_FILE *_chain;
+
+    int _fileno;
+    int _flags2;
+    __off_t _old_offset;  /* This used to be _offset but it's too small. */
+
+    /* 1 + column number of pbase(); 0 is unknown. */
+    unsigned short _cur_column;
+    signed char _vtable_offset;
+    char _shortbuf[1];
+
+    _IO_lock_t *_lock;
+
+    __off64_t _offset;
+    
+    /* Wide character stream stuff.  */
+    struct _IO_codecvt *_codecvt;
+    struct _IO_wide_data *_wide_data;
+    struct _IO_FILE *_freeres_list;
+    void *_freeres_buf;
+    size_t __pad5;
+    int _mode;
+
+    /* Make sure we don't get into trouble again. */
+    char _unused2[15 * sizeof(int) - 4 * sizeof(void*) - sizeof(size_t)];
+};
+
+/* The opaque type of streams. This is the definition used elsewhere. */
+typedef struct _IO_FILE FILE;
+```
+
+在程序启动前，目标环境将默认打开三个文件，即标准输入流、标准输出流、标准错误输出流，它们在stdio.h标准库中定义。
+
+```c++
+/* Standard streams. */
+extern FILE *stdin;   /* Standard input stream. */
+extern FILE *stdout;  /* Standard output stream. */
+extern FILE *stderr;  /* Standard error output stream. */
+```
+
+可使用C标准库提供的fopen()函数打开文件，使用fclose()函数关闭文件，如下所示。
+
+```c++
+/* Open a file and create a new stream for it.
+   This function is a possible cancellation point and therefore not marked with __THROW. */
+extern FILE *fopen(const char *__restrict __filename, const char *__restrict __modes);
+
+/* Close STREAM.
+   This function is a possible cancellation point and therefore not marked with __THROW. */
+extern int fclose(FILE *__stream);
+```
+
+!!!
 
 
 
-可通过将库函数fopen, _wfopen与两个参数一起调用来打开文件。 （fopen 函数已弃用，请改用 fopen_s, _wfopen_s。）第一个自变量是文件名。 第二个参数是指定以下内容的 C 字符串：
+fopen 函数已弃用，请改用 fopen_s, _wfopen_s。）第一个自变量是文件名。 第二个参数是指定以下内容的 C 字符串：
 
 您是否想从该文件中读取数据和/或将数据写入该文件中。
 
