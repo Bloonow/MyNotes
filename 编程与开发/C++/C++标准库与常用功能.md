@@ -329,7 +329,23 @@ IO和格式设置，\<cinttypes\>，\<cstdio\>，\<filesystem\>，\<fstream\>，
 
 程序通过读取和写入文件来与目标环境进行通信，文件可以是，(1)可重复读取和写入的数据集；(2)程序生成的字节流，例如管线；(3)从外围设备接收或发送到外围设备的字节流。最后两项是交互式文件，文件通常是程序与目标环境进行交互的主要手段。操作所有这些类型的文件的方式大致相同，就是通过调用库函数。在C风格编程中，可以使用\<stdio.h\>标准头文件中提供的函数。
 
-必须先打开文件，才能对该文件执行许多操作，打开文件会将其与流对象，并与C标准库中的`FILE`数据结构关联（该数据结构屏蔽了各类文件之间的差异），标准库将维护FILE类型对象中的每个流的状态。下面代码展示GNU对FILE数据结构的实现。
+概念EOF（End of File）是操作系统中用于指示无法从数据源读取更多数据的情形，‌数据源通常为文件或流。但应该注意，EOF不是文件或流中实际存在的内容，它只是用于表示“文件或流的读取已经达到结尾”这一状态，可使用feof()函数检测；此外，还可以用于表示“文件或流的读取遇到错误”这一状态，可使用ferror()函数检测。在stdio.h标准头文件中，提供EOF的定义，以及相关函数如下所示。
+
+```c++
+/* The value returned by fgetc and similar functions to indicate the end of the file. */
+#define EOF (-1)
+
+/* Return the EOF indicator for STREAM. */
+extern int feof (FILE *__stream);
+/* Return the error indicator for STREAM. */
+extern int ferror (FILE *__stream);
+/* Clear the error and EOF indicators for STREAM. */
+extern void clearerr (FILE *__stream);
+```
+
+在终端输入中，‌虽然终端输入本身不会结束，‌但在将输入数据区分成多个文件时，‌需要有一种方式来指明输入的结束。‌在UNIX中，‌使用Ctrl+D组合键发送一个传输结束EOF标识，以表示文件结束，在Windows中，‌则使用Ctrl+Z组合键。
+
+对于文件操作而言，必须先打开文件，才能对该文件执行许多操作，打开文件会将其与流对象，并与C标准库中的`FILE`数据结构关联（该数据结构屏蔽了各类文件之间的差异），标准库将维护FILE类型对象中的每个流的状态。下面代码展示GNU对FILE数据结构的实现。
 
 ```c++
 /* The tag name of this struct is _IO_FILE to preserve historic C++ mangled names for functions taking FILE* arguments.
@@ -393,7 +409,7 @@ extern FILE *stdout;  /* Standard output stream. */
 extern FILE *stderr;  /* Standard error output stream. */
 ```
 
-可使用C标准库提供的fopen()函数打开文件，使用fclose()函数关闭文件，如下所示。
+使用fopen()函数打开文件，返回指向打开文件的指针，若错误则返回NULL空指针；使用fclose()函数关闭文件。
 
 ```c++
 /* Open a file and create a new stream for it.
@@ -405,18 +421,26 @@ extern FILE *fopen(const char *__restrict __filename, const char *__restrict __m
 extern int fclose(FILE *__stream);
 ```
 
-!!!
+其中，filename参数指定文件系统上的有效路径，可使用斜杠`/`或反斜杠`\`作为路径中的目录分隔符；modes参数指定文件的打开模式，如下表所示。
 
+| modes模式 | 访问类型                                                     |
+| --------- | ------------------------------------------------------------ |
+| r         | 打开文件，读取；如果文件不存在，则fopen()调用失败            |
+| w         | 打开文件，写入；如果文件已存在，则清空原文件的内容           |
+| a         | 打开文件，末尾写入（追加）；如果文件不存在，则创建新文件     |
+| r+        | 打开文件，支持读取和写入；如果文件不存在，则fopen()调用失败  |
+| w+        | 打开文件，支持读取和写入；如果文件已存在，则清空原文件的内容 |
+| a+        | 打开文件，支持读取和末尾写入（追加）；如果文件不存在，则创建新文件 |
 
+指定a访问类型、或a+访问类型打开文件时，所有写入操作均将在文件末尾进行，虽然可使用fseek()或rewind()重新定位文件指针，但在执行任何写入操作前，文件指针将始终被移回文件末尾，因此无法覆盖现有数据。
 
-fopen 函数已弃用，请改用 fopen_s, _wfopen_s。）第一个自变量是文件名。 第二个参数是指定以下内容的 C 字符串：
+指定r+访问类型、w+访问类型、或a+访问类型时，允许读取和写入。但是，当从读取切换到写入时，写入操作必须以EOF标记结束，否则必须使用fsetpos()函数、fseek()函数、或rewind()函数对文件进行定位；从写入切换到读取时，必须使用fflush()函数刷新缓冲区。
 
-您是否想从该文件中读取数据和/或将数据写入该文件中。
+除前述的modes模式，还支持将以下字符追加到modes参数以指定换行符（newline character）的转换模式。文件IO操作将在文本或二进制这两种转换模式之一中进行，具体取决于文件是在哪种模式下打开的。
 
-你是想为文件生成新内容（如果之前不存在文件，则创建文件），还是保留现有内容。
+| modes修饰符 | 访问类型                                                     |
+| ----------- | ------------------------------------------------------------ |
+| t           | 文本模式（默认）；输入时，CR-LF字符组合被转换为LF字符，Ctrl+Z或Ctrl+D被转换为文件尾EOF字符；输出时，LF字符被转换为CR-LF字符组合 |
+| b           | 二进制模式（无转换）；禁止涉及回车CR字符和换行LF字符的转换   |
 
-对文件进行写入是否可更改现有内容还是只应在文件尾追加字节。
-
-您是要操作文本流还是二进制流。
-
-一旦成功打开此文件，您就可以确定此流是面向字节的（字节流）还是面向宽度的（宽度流）。 最初，流处于未绑定状态。 调用要对流使用的特定函数可使流成为面向字节的流，而其他函数可使流成为面向宽度的流。 创建后，流将维护自己的方向，直至通过调用 fclose 或 freopen 将其关闭。
+在文本模式下，Ctrl+Z或Ctrl+D被解释为输入上的EOF字符。在使用a+打开的文件中，fopen()将检查文件末尾的Ctrl+Z或Ctrl+D并删除之，将其删除是因为使用fseek()和ftell()在以Ctrl+Z或Ctrl+D结尾的文件中移动时，可能导致fseek()在文件末尾附近错误运行。
