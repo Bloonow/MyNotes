@@ -36,7 +36,7 @@ Thrust提供五类常用算法，包括：(1)变换（transformation），例如
 $$
 y_k = x_0 + x_1 + \cdots + x_k
 $$
-其中，对于原序列各元素之间的运算可以是加法$+$求累加和、乘法$\times$求累乘积，默认操作时求累加和。若$y_k$的表达式包含$y_k$，则称为包含扫描（inclusive scan）；若$y_k$的表达式只包含到$x_{k-1}$​，则称为非包含扫描（exclusive scan）。
+其中，对于原序列各元素之间的运算可以是加法$+$求累加和、乘法$\times$求累乘积，默认操作时求累加和。若$y_k$的表达式包含$x_k$，则称为包含扫描（inclusive scan）；若$y_k$的表达式只包含到$x_{k-1}$​，则称为非包含扫描（exclusive scan）。
 
 使用thrust::device_vector设备向量的一个示例如下所示。
 
