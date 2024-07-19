@@ -31,7 +31,7 @@ if __name__ == '__main__':
     if my_rank != 0:
         # 将除主进程外的其他进程的标准输出置为None
         sys.stdout, sys.stderr = None, None
-   	print(f'======== world_size: {world_size} ========')
+    print(f'======== world_size: {world_size} ========')
     torch.cuda.set_device(my_rank)
     device = torch.cuda.current_device()
 

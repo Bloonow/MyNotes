@@ -160,6 +160,8 @@ SelectTypeParameters=CR_CPU_Memory
 
 在步骤3中，Slurm将任务（task）分发到步骤1选择的节点上。每个任务仅分发到一个节点，但每个节点可以分发多个任务。除非使用--overcommit选项指定CPU数目可以小于任务数目（即可对CPU过度使用），否则分配到节点的任务数量，将受到节点上分配的CPU数量和每个任务的CPU数量的限制。如果配置了可消耗资源，或者允许资源共享，则来自多个作业/步骤的任务可以在同一节点上同时运行。
 
+> 这里的任务指的是用户需要执行的某个命令，例如在sbatch脚本中的python script.sh命令，或者srun program.exe命令。
+
 在可选的步骤4中，Slurm从步骤3所分发的节点中，将每个任务分发并绑定到已分配CPU的子集上。分发到同一节点的不同任务可以绑定到相同的CPU子集或绑定到不同的子集。此步骤称为任务亲和性，或任务/CPU绑定。
 
 步骤1由slurmctld和select插件控制；步骤2由slurmctld和select插件控制；步骤3由slurmctld控制；步骤4由slurmd和任务插件控制。
@@ -194,4 +196,13 @@ SelectTypeParameters=CR_CPU_Memory
 | --ntasks-per-node   | 控制每个分配的节点的最大任务数                               | 1、2、3    |
 | --ntasks-per-socket | 控制每个分配的插槽的最大任务数                               | 1、2、3    |
 | --ntasks-per-core   | 控制每个分配的核心的最大任务数                               | 1、2、3、4 |
+
+值得注意的是，对于使用sbatch提交的作业脚本而言，可以在脚本中通过特定的注释行指定sbatch命令的参数，如下所示。
+
+```shell
+#!/bin/sh
+#SBATCH --nodes 4
+#SBATCH --ntasks-per-node 8
+python script.sh
+```
 
