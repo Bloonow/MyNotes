@@ -543,19 +543,21 @@ FRP客户端负责将内网的服务请求转发到服务端，而FRP服务端�
 
 通过下载链接获得可执行文件和配置文件的压缩包，将其解压到特定目录文件当中，其中配置文件支持TOML、YAML、JSON等格式，也支持旧式INI格式，但已经不推荐使用旧的INI格式。
 
-在服务端，进入特定目录中，编写frps.toml配置文件，内容如下所示，设置FRP服务端用于接收客户端连接的端口。
+在服务端，进入特定目录中，编写frps.toml配置文件，内容如下所示。其中，配置bindPort表示FRP服务端用于接收客户端连接的端口；配置auth.token用于身份认证，只允许具有相同token的服务端和客户端之间可以进行通信，并确保只有授权用户能够建立连接。
 
 ```toml
 bindPort = 7000
+auth.token = "AuthorizeToken"
 ```
 
 在特定目录下通过执行./frps -c ./frps.toml命令，来启动服务端。
 
-在客户端，进入特定目录中，编写frpc.toml配置文件，内容如下所示。其中，配置localIP和配置localPort表示需要从公网访问的内网服务的地址和端口，例如TCP服务连接的默认端口即是22，如下所示；配置remotePort表示要在FRP服务端监听的端口，访问此端口的流量将被转发到内网服务的相应端口。
+在客户端，进入特定目录中，编写frpc.toml配置文件，内容如下所示。其中，配置localIP和配置localPort表示需要从公网访问的内网服务的地址和端口，例如TCP服务连接的默认22端口，如下所示；配置remotePort表示要在FRP服务端监听的端口，访问此端口的流量将被转发到内网服务的相应端口。
 
 ```toml
 serverAddr = "x.x.x.x"
 serverPort = 7000
+auth.token = "AuthorizeToken"
 
 [[proxies]]
 name = "ssh"
