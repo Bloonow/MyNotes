@@ -49,7 +49,7 @@ Linux系统初始化需要做的事情非常多，需要启动后台服务，如
 | --------- | ------------------------------------------------------------ |
 | service   | 启动并控制服务后台进程，例如MySQLd，是最常用的一种           |
 | socket    | 封装系统中的本地IPC和网络套接字，用于基于套接字的启动        |
-| target    | 对其他unit配置单元进行逻辑分组，引用其他配置单元。可以对配置单元做一个统一的控制，例如，将所有图形化服务和配置单元组合为一个target，用于控制系统进入图形化模式 |
+| target    | 对其他unit配置单元进行逻辑分组，引用其他配置单元；可以对配置单元做一个统一的控制，例如，将所有图形化服务和配置单元组合为一个target，用于控制系统进入图形化模式 |
 | device    | 封装Linux设备树中的设备，用于基于设备的启动                  |
 | mount     | 封装文件系统中的一个挂载点                                   |
 | automount | 封装文件系统中的一个自动挂载点                               |
@@ -59,13 +59,13 @@ Linux系统初始化需要做的事情非常多，需要启动后台服务，如
 | slice     | 对其它用于系统资源管理的配置单元进行分组                     |
 | scope     | 与服务配置单元类型，用于管理服务进程                         |
 
-每个配置单元unit都有一个对应的配置文件，并以配置单元的类型为后缀名，位于/usr/lib/systemd/system目录中。系统管理员的任务就是编写和维护这些不同的配置文件，例如一个ssh服务对应一个ssh.service文件，如下所示。
+每个配置单元unit都有一个对应的配置文件，并以配置单元的类型为后缀名，位于/usr/lib/systemd/system目录中，用户也可以在/etc/systemd/system目录中进行配置。系统管理员的任务就是编写和维护这些不同的配置文件，例如一个ssh服务对应一个ssh.service文件，如下所示。
 
 ```shell
 cat /usr/lib/systemd/system/ssh.service
 ```
 
-```shell
+```toml
 [Unit]
 Description=OpenBSD Secure Shell server
 Documentation=man:sshd(8) man:sshd_config(5)
@@ -102,7 +102,7 @@ Service段，仅service类型的配置单元文件使用，用于定义服务的
 systemctl [option] command [unit]
 ```
 
-使用systemctl list-units命令列出所有unit信息；使用systemctl status命令查看unit信息；使用systemctl start命令或systemctl stop命令启动或停止一个unit；使用systemctl restart命令或systemctl reload命令重新启动或重新加载一个unit；使用systemctl enable命令启用一个unit随系统启动；使用systemctl disable命令禁用一个unit不随系统启动。
+使用systemctl list-units命令列出所有unit信息；使用systemctl status命令查看unit信息；使用systemctl start命令或systemctl stop命令启动或停止一个unit；使用systemctl restart命令或systemctl reload命令重新启动或重新加载一个unit；使用systemctl enable命令启用一个unit随系统开机启动；使用systemctl disable命令禁用一个unit不随系统开机启动。
 
 # 配置Linux环境变量
 
@@ -138,201 +138,6 @@ export LD_RUN_PATH=$XXX_LID:$LD_RUN_PATH          # during linking
 或者直接在/etc/ld.so.conf文件中，或/etc/ld.so.conf.d/xxx.conf文件中，添加所需库文件的绝对路径（每行一个路径）。然后运行sudo ldconfig命令，以重建/etc/ld.so.cache文件，包含进新添加的路径。
 
 此外，在/etc/profile文件或/etc/profile.d/xxx.sh文件中，配置某个工具或库的二进制可执行文件。
-
-# 图形界面
-
-目前Linux/UNIX中最为流行的两种图形桌面套件是GNOME（GNU Network Object Model Environment）和KDE（Kool Desktop Environment）桌面套件环境。在Ubuntu操作系统中，默认使用的是GNOME桌面套件。
-
-在Ubuntu操作系统的图形界面中，若要进入命令行界面（Command Line Interface，CLI），即纯字符界面，可以使用Ctrl+Alt+F#组合键（F#代表F1,F2,...,F6按键），切换到第x个虚拟字符控制台。Ubuntu操作系统默认开启了六个虚拟终端（虚拟控制台），用于登录到纯字符模式的操作界面，这六个虚拟终端分别表示为tty1,tty2,...,tty6终端。若要从字符控制台返回到已经开启的图形桌面环境，可以使用Alt+F7组合键；而在字符控制台之间进行转换时，只需使用Alt+F#x组合键即可。
-
-> 注意，使用Ctrl+Alt+F#登录到虚拟终端时，并不会关闭图形界面，可使用Alt+F7返回到图形界面。
->
-> 注意，若Ubuntu系统在虚拟环境中，某些情况下，组合键中还需加入Shift才能生效。
-
-注意，要执行下述命令，先执行su以进入root账号，避免进入命令行界面时出现卡死的情况。
-
-此外，也可使用如下命令进入或退出纯字符命令行终端界面，如下所示。
-
-```shell
-sudo init 3  # 进入命令行终端
-sudo init 5  # 退出命令行终端
-```
-
-> 注意，使用sudo init 3进入命令行终端时，会关闭图形界面，使用sudo init 5会重新开启图形环境并进入。
-
-下述命令可用于管理图形界面与命令行界面，如下所示。
-
-```shell
-sudo systemctl isolate multi-user.target      # 关闭当前图形界面，即启用多用户文本界面，即命令行终端
-sudo systemctl isolate graphical.target       # 启动图形界面，即启用多用户文本界面，即命令行终端
-```
-
-```shell
-sudo systemctl set-default multi-user.target  # 默认命令行终端启动，即机器启动时不启动图形界面
-sudo systemctl set-default graphical.target   # 默认图形界面启动
-```
-
-```shell
-sudo systemctl stop display-manager     # 关闭图形界面
-sudo systemctl start display-manager    # 启动图形界面
-sudo systemctl disable display-manager  # 禁用图形界面
-sudo systemctl enable display-manager   # 启用图形界面
-```
-
-若Linux系统不存在图形界面，则在Ubuntu上可使用如下命令安装图形界面。
-
-```shell
-sudo apt install xinit
-sudo apt install ubuntu-desktop
-```
-
-# X协议
-
-对于Windows平台来说，图形化界面是在Windows内核中实现的，是操作系统内核的一部分。而对于类Unix系统来说，其内核中并无图形化界面的实现，类Unix系统的图形化界面只是一个应用程序，这些图形化界面的实现底层通常是基于X协议（X protocol）的，也即X协议是类UNIX操作系统用来实现图形界面的，目前是X11版本。
-
-<img src="使用Linux操作系统.assets/X协议.png" style="zoom:50%;" />
-
-其中，X Server负责管理显示相关的输入输出设备的交互，它负责接受输入设备（键盘鼠标）的动作，并将其告知基于X Client的应用程序，同时负责将图形写入输出设备（显卡等），以进行屏幕画面的绘制与显示。而基于X Client的应用程序，则接受X Server传递的动作事件等，进行程序业务逻辑的处理，并将需要显示的图形告知X Server来显示。
-
-通常来说，X Server与X Client运行在同一主机上，但同时X协议栈也可基于TCP/IP协议，那么X协议就支持X Server与X Client运行在不同主机上。如此，通过SSH X11 Forwarding转发，就可以实现常见的开发场景，即在服务器端运行某个程序（X Client），而在本地显示程序的GUI界面（X Server），这可以满足“在无图形界面的Linux上开发GUI应用程序”的需求。
-
-通过如下命令在Ubuntu系统上安装X11应用程序。
-
-```shell
-sudo apt install xorg
-```
-
-使用sudo权限修改/etc/ssh/sshd_config文件，打开X11Forwarding和X11UseLocalhost注释，并分别设为yes和no，如下所示。
-
-```shell
-X11Forwarding yes
-X11UseLocalhost no
-```
-
-重启sshd服务，如下所示。
-
-```shell
-sudo systemctl restart sshd.service
-```
-
-在Windows平台上启用X11 Server有多种方式，这里使用[Xming](http://www.straightrunning.com/XmingNotes/)工具，可在[Public Domain Releases](https://sourceforge.net/projects/xming/files/)网址下载安装。通过所安装的XLaunch启动X11 Server服务，并将Display Number指定为0值，表示采用0.0号进行显示。
-
-打开安装目录下的Xming/X0.hosts文件，将要连接的远程主机IP地址添加到后面新行中，如下所示。
-
-```shell
-localhost
-10.10.10.102  # Remote Host IP (No this comment)
-```
-
-在Visual Studio Code中安装Remote-SSH与Remote X11扩展，配置远程主机的SSH设置如下所示，也即指定X11相关的设置。
-
-```shell
-Host MyRemoteHost
-  HostName 10.10.10.102  # Remote Host IP (No this comment)
-  Port 22
-  User MyName
-  ForwardX11 yes
-  ForwardX11Trusted yes
-  ForwardAgent yes
-```
-
-在用户的.bashrc文件中，将本地机器的IP地址，以及X11 Server所设置的0.0添加其中，以在每次启动shell时执行，配置bash的环境变量。
-
-```shell
-export DISPLAY=10.10.10.101:0.0  # Local Host IP (No this comment)
-```
-
-此时，使用VS Code连接远程服务器，执行GUI代码时，即可将图形显示在本地。
-
-> freedesktop.org以前称为X Desktop Group（XDG），是一个致力于基于X11等桌面环境互操作性和共享基础技术的项目，该项目制定了互操作性规范，并定义了一系列XDG_XXX环境变量，许多工具和应用程序默认使用这些变量。
->
-> 在用户家目录中的\$HOME/.config/user-dirs.dirs文件中，XDG配置了一些环境变量，用于指定用户家目录中的一些诸如Desktop、Downloads之类的文件夹，可以修改这些环境变量以更改相应的文件夹。
-
-# SSH
-
-安全外壳协议（Secure Shell Protocol）是一个网络协议，处于计算机网络协议栈中的应用层，通常基于TCP/IP协议，使用22作为默认端口号。SSH通过在数据传输中使用各种加密技术（例如AES、RSA、ECDSA、SHA-256等算法）来保证通信的安全性，防止数据在网络中被监听、篡改和冒名顶替。
-
-SSH通常用于登录远程计算机的shell或命令行界面（CLI）并在远程服务器上执行命令，它还支持隧道、TCP端口转发和X11连接机制，并且可用于使用关联的SSH文件传输协议（SFTP）或安全复制协议（SCP）传输文件。SSH采用客户端-服务器（Client-Server）架构，SSH客户端程序通常用于建立与SSH守护程序（如sshd）的连接，以接受远程连接。两者通常都存在于大多数现代操作系统中，包括macOS 、多数Linux发行版等。
-
-目前广泛使用的是SSH-2版本，常见的支持SSH协议的软件包括OpenSSH、PuTTY等。OpenSSH套件包含若干工具，将在下面介绍。
-
-在Linux平台上，使用apt install openssh-client命令和apt install openssh-server命令安装OpenSSH客户端与服务器端的相关组件，它们的配置分别位于/etc/ssh/ssh_config文件和/etc/ssh/sshd_config文件中。使用systemctl start ssh命令启动SSH服务，使用systemctl enable ssh命令使SSH随系统启动。
-
-ssh命令连接到指定destination目标主机，并远程登录shell终端，如果指定command命令，则在远程主机执行command命令而不是登录shell终端。其中destination可以是[user@]hostname形式或是ssh://[user@]hostname[:port]形式，其中hostname可以是远程主机IP地址或URL地址。
-
-```shell
-ssh [option] destination [command]
-```
-
-使用-l选项指定login_name登录用户名；使用-p选项指定port端口；使用-R选项指定address地址；使用-T选项禁止分配虚拟终端；使用-i选项指定验证身份的密钥文件（私钥），默认是位于用户\$HOME/.ssh目录下的id_rsa、id_ecdsa、id_ecdsa_sk、id_ed25519、id_ed25519_sk、id_dsa文件。
-
-```shell
-ssh bln@10.10.10.105
-```
-
-```
-The authenticity of host '10.10.10.105 (10.10.10.105)' can't be established.
-ED25519 key fingerprint is SHA256:nH2WQr0seOo+RIkY/yh0UzJ1fHRuxGkzP8S4Am35Tww.
-This key is not known by any other names
-Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
-Warning: Permanently added '10.10.10.105' (ED25519) to the list of known hosts.
-bln@10.10.10.105's password: 
-Welcome to Ubuntu 22.04.3 LTS (GNU/Linux 5.15.0-97-generic x86_64)
-
-  System information as of Tue Apr 16 01:53:12 AM CST 2024
-
-  Memory usage:             6%
-  Swap usage:               7%
-  IPv4 address for docker0: 172.17.0.1
-  IPv4 address for enp4s0:  10.10.10.105
-  IPv6 address for enp4s0:  fd00:f484:8de3:2a9b::1011
-  IPv6 address for enp4s0:  fd00:f484:8de3:2a9b:67c:16ff:febc:16c9
-
-Last login: Fri Apr 12 11:16:11 2024 from 10.10.10.112
-```
-
-ssh-keygen命令生成并管理身份验证密钥文件，默认位于\$HOME/.ssh目录中。在生成过程中会以交互方式确定私钥文件的名称路径，相对的公钥文件以相同路径存储并使用.pub后缀，可选项的密码短语（passphrase），主机密钥必须具有空的密码短语。
-
-```shell
-ssh-keygen [option]
-```
-
-使用-t选项指定密钥类型，可选rsa、ecdsa、ecdsa-sk、ed25519、ed25519-sk、dsa六种类型，默认使用ed25519类型的密钥；使用-b选项指定所创建密钥的位数；使用-f指定密钥文件的名称路径；使用-s选项指定证书颁发机构的CA密钥文件，以对公钥进行签名；使用-h选项创建主机证书而不是用户证书，以向用户验证服务器主机身份。
-
-ssh-add命令将私钥文件添加到验证代理ssh-agent程序，该命令在使用自定义文件名称路径的密钥时有用。不带参数的版本会加载默认的位于用户\$HOME/.ssh目录下的id_rsa、id_ecdsa、id_ecdsa_sk、id_ed25519、id_ed25519_sk、id_dsa文件。
-
-```shell
-ssh-add [option] [path]
-```
-
-使用-l选项列出ssh-agent代理当前加载的所有私钥指纹；使用-L选项列出ssh-agent代理当前加载的所有公钥指纹。
-
-ssh-agent是一个持有私钥的程序进程，所持有的私钥用于公钥验证。通过使用环境变量，可以在使用ssh登录其他计算机时找到ssh-agent代理并自动用于身份验证。
-
-sshd是ssh的守护程序进程，监听来自客户端的连接。它为每个请求的连接创建一个新的fork守护进程，以进行密钥交换、加密、身份验证、命令执行和数据交换。sshd可以使用命令行选项或配置文件进行配置，默认配置文件位于/etc/ssh/sshd_config路径。
-
-在sshd的配置文件/etc/ssh/sshd_config中，使用AuthorizedKeysFile条目指定包含公钥的文件，用于公钥认证，默认为用户目录下的\$HOME/.ssh/authorized_keys文件。在\$HOME/.ssh/known_hosts文件中，保存所有已知主机的主机公钥，每当用户连接到未知主机时，其密钥都会添加到每个用户的known_hosts文件中。
-
-使用SSH登录远程Linux服务器时，在用户目录下创建.ssh目录并设置权限。
-
-```shell
-mkdir ~/.ssh
-chmod 700 ~/.ssh
-touch ~/.ssh/authorized_keys
-chmod 600 ~/.ssh/authorized_keys
-```
-
-在本地系统中使用ssh-keygen命令创建公钥-私钥对，将本地系统公钥文件id_rsa.pub中的内容拷贝到远程服务器的authorized_keys文件中，即可实现本地系统免密登录远程服务器。
-
-如果使用VS Code登录远程服务器，只需为SSH登录设置指定IdentityFile为本地系统的私钥文件路径即可，如下所示。
-
-```shell
-Host connection_name
-  HostName remote_host
-  Port port
-  User user
-  IdentityFile $HOME/.ssh/id_rsa
-```
 
 # Vim编辑器
 
@@ -532,3 +337,274 @@ Emacs使用的调试模式最初由Eric Raymond在1992年编写，也即Emacs项
 <img src="使用Linux操作系统.assets/Emacs GDB.png" style="zoom:50%;" />
 
 值得注意的是，使用gdb -i=mi executable_file启动GDB调试时，可能会出现警告'set target-async', an alias for the command 'set mi-async', is deprecated，对set mi-async的别名set target-async已弃用，需要直接使用set mi-async命令。
+
+# 图形界面
+
+目前Linux/UNIX中最为流行的两种图形桌面套件是GNOME（GNU Network Object Model Environment）和KDE（Kool Desktop Environment）桌面套件环境。在Ubuntu操作系统中，默认使用的是GNOME桌面套件。
+
+在Ubuntu操作系统的图形界面中，若要进入命令行界面（Command Line Interface，CLI），即纯字符界面，可以使用Ctrl+Alt+F#组合键（F#代表F1,F2,...,F6按键），切换到第x个虚拟字符控制台。Ubuntu操作系统默认开启了六个虚拟终端（虚拟控制台），用于登录到纯字符模式的操作界面，这六个虚拟终端分别表示为tty1,tty2,...,tty6终端。若要从字符控制台返回到已经开启的图形桌面环境，可以使用Alt+F7组合键；而在字符控制台之间进行转换时，只需使用Alt+F#x组合键即可。
+
+> 注意，使用Ctrl+Alt+F#登录到虚拟终端时，并不会关闭图形界面，可使用Alt+F7返回到图形界面。
+>
+> 注意，若Ubuntu系统在虚拟环境中，某些情况下，组合键中还需加入Shift才能生效。
+
+注意，要执行下述命令，先执行su以进入root账号，避免进入命令行界面时出现卡死的情况。
+
+此外，也可使用如下命令进入或退出纯字符命令行终端界面，如下所示。
+
+```shell
+sudo init 3  # 进入命令行终端
+sudo init 5  # 退出命令行终端
+```
+
+> 注意，使用sudo init 3进入命令行终端时，会关闭图形界面，使用sudo init 5会重新开启图形环境并进入。
+
+下述命令可用于管理图形界面与命令行界面，如下所示。
+
+```shell
+sudo systemctl isolate multi-user.target      # 关闭当前图形界面，即启用多用户文本界面，即命令行终端
+sudo systemctl isolate graphical.target       # 启动图形界面，即启用多用户文本界面，即命令行终端
+```
+
+```shell
+sudo systemctl set-default multi-user.target  # 默认命令行终端启动，即机器启动时不启动图形界面
+sudo systemctl set-default graphical.target   # 默认图形界面启动
+```
+
+```shell
+sudo systemctl stop display-manager     # 关闭图形界面
+sudo systemctl start display-manager    # 启动图形界面
+sudo systemctl disable display-manager  # 禁用图形界面
+sudo systemctl enable display-manager   # 启用图形界面
+```
+
+若Linux系统不存在图形界面，则在Ubuntu上可使用如下命令安装图形界面。
+
+```shell
+sudo apt install xinit
+sudo apt install ubuntu-desktop
+```
+
+# X协议
+
+对于Windows平台来说，图形化界面是在Windows内核中实现的，是操作系统内核的一部分。而对于类Unix系统来说，其内核中并无图形化界面的实现，类Unix系统的图形化界面只是一个应用程序，这些图形化界面的实现底层通常是基于X协议（X protocol）的，也即X协议是类UNIX操作系统用来实现图形界面的，目前是X11版本。
+
+<img src="使用Linux操作系统.assets/X协议.png" style="zoom:50%;" />
+
+其中，X Server负责管理显示相关的输入输出设备的交互，它负责接受输入设备（键盘鼠标）的动作，并将其告知基于X Client的应用程序，同时负责将图形写入输出设备（显卡等），以进行屏幕画面的绘制与显示。而基于X Client的应用程序，则接受X Server传递的动作事件等，进行程序业务逻辑的处理，并将需要显示的图形告知X Server来显示。
+
+通常来说，X Server与X Client运行在同一主机上，但同时X协议栈也可基于TCP/IP协议，那么X协议就支持X Server与X Client运行在不同主机上。如此，通过SSH X11 Forwarding转发，就可以实现常见的开发场景，即在服务器端运行某个程序（X Client），而在本地显示程序的GUI界面（X Server），这可以满足“在无图形界面的Linux上开发GUI应用程序”的需求。
+
+通过如下命令在Ubuntu系统上安装X11应用程序。
+
+```shell
+sudo apt install xorg
+```
+
+使用sudo权限修改/etc/ssh/sshd_config文件，打开X11Forwarding和X11UseLocalhost注释，并分别设为yes和no，如下所示。
+
+```shell
+X11Forwarding yes
+X11UseLocalhost no
+```
+
+重启sshd服务，如下所示。
+
+```shell
+sudo systemctl restart sshd.service
+```
+
+在Windows平台上启用X11 Server有多种方式，这里使用[Xming](http://www.straightrunning.com/XmingNotes/)工具，可在[Public Domain Releases](https://sourceforge.net/projects/xming/files/)网址下载安装。通过所安装的XLaunch启动X11 Server服务，并将Display Number指定为0值，表示采用0.0号进行显示。
+
+打开安装目录下的Xming/X0.hosts文件，将要连接的远程主机IP地址添加到后面新行中，如下所示。
+
+```shell
+localhost
+10.10.10.102  # Remote Host IP (No this comment)
+```
+
+在Visual Studio Code中安装Remote-SSH与Remote X11扩展，配置远程主机的SSH设置如下所示，也即指定X11相关的设置。
+
+```shell
+Host MyRemoteHost
+  HostName 10.10.10.102  # Remote Host IP (No this comment)
+  Port 22
+  User MyName
+  ForwardX11 yes
+  ForwardX11Trusted yes
+  ForwardAgent yes
+```
+
+在用户的.bashrc文件中，将本地机器的IP地址，以及X11 Server所设置的0.0添加其中，以在每次启动shell时执行，配置bash的环境变量。
+
+```shell
+export DISPLAY=10.10.10.101:0.0  # Local Host IP (No this comment)
+```
+
+此时，使用VS Code连接远程服务器，执行GUI代码时，即可将图形显示在本地。
+
+> freedesktop.org以前称为X Desktop Group（XDG），是一个致力于基于X11等桌面环境互操作性和共享基础技术的项目，该项目制定了互操作性规范，并定义了一系列XDG_XXX环境变量，许多工具和应用程序默认使用这些变量。
+>
+> 在用户家目录中的\$HOME/.config/user-dirs.dirs文件中，XDG配置了一些环境变量，用于指定用户家目录中的一些诸如Desktop、Downloads之类的文件夹，可以修改这些环境变量以更改相应的文件夹。
+
+# SSH
+
+安全外壳协议（Secure Shell Protocol）是一个网络协议，处于计算机网络协议栈中的应用层，通常基于TCP/IP协议，使用22作为默认端口号。SSH通过在数据传输中使用各种加密技术（例如AES、RSA、ECDSA、SHA-256等算法）来保证通信的安全性，防止数据在网络中被监听、篡改和冒名顶替。
+
+SSH通常用于登录远程计算机的shell或命令行界面（CLI）并在远程服务器上执行命令，它还支持隧道、TCP端口转发和X11连接机制，并且可用于使用关联的SSH文件传输协议（SFTP）或安全复制协议（SCP）传输文件。SSH采用客户端-服务器（Client-Server）架构，SSH客户端程序通常用于建立与SSH守护程序（如sshd）的连接，以接受远程连接。两者通常都存在于大多数现代操作系统中，包括macOS 、多数Linux发行版等。
+
+目前广泛使用的是SSH-2版本，常见的支持SSH协议的软件包括OpenSSH、PuTTY等。OpenSSH套件包含若干工具，将在下面介绍。
+
+在Linux平台上，使用apt install openssh-client命令和apt install openssh-server命令安装OpenSSH客户端与服务器端的相关组件，它们的配置分别位于/etc/ssh/ssh_config文件和/etc/ssh/sshd_config文件中。使用systemctl start ssh命令启动SSH服务，使用systemctl enable ssh命令使SSH随系统启动。
+
+ssh命令连接到指定destination目标主机，并远程登录shell终端，如果指定command命令，则在远程主机执行command命令而不是登录shell终端。其中destination可以是[user@]hostname形式或是ssh://[user@]hostname[:port]形式，其中hostname可以是远程主机IP地址或URL地址。
+
+```shell
+ssh [option] destination [command]
+```
+
+使用-l选项指定login_name登录用户名；使用-p选项指定port端口；使用-R选项指定address地址；使用-T选项禁止分配虚拟终端；使用-i选项指定验证身份的密钥文件（私钥），默认是位于用户\$HOME/.ssh目录下的id_rsa、id_ecdsa、id_ecdsa_sk、id_ed25519、id_ed25519_sk、id_dsa文件。
+
+```shell
+ssh bln@10.10.10.105
+```
+
+```
+The authenticity of host '10.10.10.105 (10.10.10.105)' can't be established.
+ED25519 key fingerprint is SHA256:nH2WQr0seOo+RIkY/yh0UzJ1fHRuxGkzP8S4Am35Tww.
+This key is not known by any other names
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added '10.10.10.105' (ED25519) to the list of known hosts.
+bln@10.10.10.105's password: 
+Welcome to Ubuntu 22.04.3 LTS (GNU/Linux 5.15.0-97-generic x86_64)
+
+  System information as of Tue Apr 16 01:53:12 AM CST 2024
+
+  Memory usage:             6%
+  Swap usage:               7%
+  IPv4 address for docker0: 172.17.0.1
+  IPv4 address for enp4s0:  10.10.10.105
+  IPv6 address for enp4s0:  fd00:f484:8de3:2a9b::1011
+  IPv6 address for enp4s0:  fd00:f484:8de3:2a9b:67c:16ff:febc:16c9
+
+Last login: Fri Apr 12 11:16:11 2024 from 10.10.10.112
+```
+
+ssh-keygen命令生成并管理身份验证密钥文件，默认位于\$HOME/.ssh目录中。在生成过程中会以交互方式确定私钥文件的名称路径，相对的公钥文件以相同路径存储并使用.pub后缀，可选项的密码短语（passphrase），主机密钥必须具有空的密码短语。
+
+```shell
+ssh-keygen [option]
+```
+
+使用-t选项指定密钥类型，可选rsa、ecdsa、ecdsa-sk、ed25519、ed25519-sk、dsa六种类型，默认使用ed25519类型的密钥；使用-b选项指定所创建密钥的位数；使用-f指定密钥文件的名称路径；使用-s选项指定证书颁发机构的CA密钥文件，以对公钥进行签名；使用-h选项创建主机证书而不是用户证书，以向用户验证服务器主机身份。
+
+ssh-add命令将私钥文件添加到验证代理ssh-agent程序，该命令在使用自定义文件名称路径的密钥时有用。不带参数的版本会加载默认的位于用户\$HOME/.ssh目录下的id_rsa、id_ecdsa、id_ecdsa_sk、id_ed25519、id_ed25519_sk、id_dsa文件。
+
+```shell
+ssh-add [option] [path]
+```
+
+使用-l选项列出ssh-agent代理当前加载的所有私钥指纹；使用-L选项列出ssh-agent代理当前加载的所有公钥指纹。
+
+ssh-agent是一个持有私钥的程序进程，所持有的私钥用于公钥验证。通过使用环境变量，可以在使用ssh登录其他计算机时找到ssh-agent代理并自动用于身份验证。
+
+sshd是ssh的守护程序进程，监听来自客户端的连接。它为每个请求的连接创建一个新的fork守护进程，以进行密钥交换、加密、身份验证、命令执行和数据交换。sshd可以使用命令行选项或配置文件进行配置，默认配置文件位于/etc/ssh/sshd_config路径。
+
+在sshd的配置文件/etc/ssh/sshd_config中，使用AuthorizedKeysFile条目指定包含公钥的文件，用于公钥认证，默认为用户目录下的\$HOME/.ssh/authorized_keys文件。在\$HOME/.ssh/known_hosts文件中，保存所有已知主机的主机公钥，每当用户连接到未知主机时，其密钥都会添加到每个用户的known_hosts文件中。
+
+使用SSH登录远程Linux服务器时，在用户目录下创建.ssh目录并设置权限。
+
+```shell
+mkdir ~/.ssh
+chmod 700 ~/.ssh
+touch ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+在本地系统中使用ssh-keygen命令创建公钥-私钥对，将本地系统公钥文件id_rsa.pub中的内容拷贝到远程服务器的authorized_keys文件中，即可实现本地系统免密登录远程服务器。
+
+如果使用VS Code登录远程服务器，只需为SSH登录设置指定IdentityFile为本地系统的私钥文件路径即可，如下所示。
+
+```shell
+Host connection_name
+  HostName remote_host
+  Port port
+  User user
+  IdentityFile $HOME/.ssh/id_rsa
+```
+
+# FRP
+
+FRP（Fast Reverse Proxy）是一个性能高效的反向代理工具，官网地址是https://gofrp.org，可以从https://github.com/fatedier/frp下载最新发布版，例如在Linux平台上的frp_0.59.0_linux_arm64.tar.gz版本。
+
+FRP采用C/S模式，服务端部署在具有公网IP的机器上，客户端部署在内网或防火墙内的机器上，通过访问暴露在服务器上的端口，反向代理到处于内网的服务，以实现内网穿透。在此基础上，FRP支持TCP、UDP、HTTP、HTTPS等多种协议，提供加密、压缩、身份认证、代理限速、负载均衡等众多能力。
+
+FRP客户端负责将内网的服务请求转发到服务端，而FRP服务端则将请求转发给真正的目标服务。这样，即使目标服务在内网中，用户也可以通过外网访问到它。FRP支持自定义域名和端口映射，用户可以通过配置文件灵活地设置转发规则。
+
+通过下载链接获得可执行文件和配置文件的压缩包，将其解压到特定目录文件当中，其中配置文件支持TOML、YAML、JSON等格式，也支持旧式INI格式，但已经不推荐使用旧的INI格式。
+
+在服务端，进入特定目录中，编写frps.toml配置文件，内容如下所示，设置FRP服务端用于接收客户端连接的端口。
+
+```toml
+bindPort = 7000
+```
+
+在特定目录下通过执行./frps -c ./frps.toml命令，来启动服务端。
+
+在客户端，进入特定目录中，编写frpc.toml配置文件，内容如下所示。其中，配置localIP和配置localPort表示需要从公网访问的内网服务的地址和端口，例如TCP服务连接的默认端口即是22，如下所示；配置remotePort表示要在FRP服务端监听的端口，访问此端口的流量将被转发到内网服务的相应端口。
+
+```toml
+serverAddr = "x.x.x.x"
+serverPort = 7000
+
+[[proxies]]
+name = "ssh"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 22
+remotePort = 12345
+```
+
+在特定目录下通过执行./frpc -c ./frpc.toml命令，来启动客户端。
+
+之后，即可在用户本地机器上，即可使用x.x.x.x:12345地址，以TCP类型，连接到内网的服务，FRP会将发送到x.x.x.x:12345的流量转发到内网机器的22端口。
+
+如果需要FRP在后台长期运行，可以结合诸如systemd的工具一起使用。
+
+在服务端，创建并编辑/etc/systemd/system/frps.service文件如下所示，并使用sudo systemctl start frps命令启动服务。
+
+```toml
+[Unit]
+Description = frps Service
+After = network.target syslog.target
+Wants = network.target
+
+[Service]
+Type = simple
+# 启动 frps 的命令
+ExecStart = /path/to/frps -c /path/to/frps.toml
+
+[Install]
+WantedBy = multi-user.target
+```
+
+在客户端，创建并编辑/etc/systemd/system/frpc.service文件如下所示，并使用sudo systemctl start frpc命令启动服务。
+
+```toml
+[Unit]
+Description = frpc Service
+After = network.target syslog.target
+Wants = network.target
+
+[Service]
+Type = simple
+# 启动 frpc 的命令
+ExecStart = /path/to/frpc -c /path/to/frpc.toml
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy = multi-user.target
+```
+
+分别使用sudo systemctl enable frps命令和sudo systemctl enable frpc命令，以设置服务的开机自动启动。
