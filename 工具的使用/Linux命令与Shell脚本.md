@@ -1274,11 +1274,11 @@ aptitude [option] command [package_name]
 apt [option] command [package_name]
 ```
 
-| apt command | 描述                     |
-| ----------- | ------------------------ |
-| install     | 安装软件包               |
-| remove      | 移除软件包               |
-| autoremove  | 自动移除所有无用的软件包 |
+| apt command | 描述                                                      |
+| ----------- | --------------------------------------------------------- |
+| install     | 安装软件包，使用-t=target_release选项指定要安装的软件版本 |
+| remove      | 移除软件包                                                |
+| autoremove  | 自动移除所有无用的软件包                                  |
 
 或者直接使用dpkg工具，使用-i或--install命令离线安装本地.deb软件包文件，使用-l或--list命令列出系统已安装的软件包，使用-L命令列出某个软件包安装到本机上的所有文件，使用-S命令查找某个特定文件属于哪个软件包；使用--instdir选项指定软件包要安装的目录。
 

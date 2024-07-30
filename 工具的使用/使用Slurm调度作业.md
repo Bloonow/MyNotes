@@ -202,7 +202,9 @@ SelectTypeParameters=CR_CPU_Memory
 ```shell
 #!/bin/sh
 #SBATCH --nodes 4
-#SBATCH --ntasks-per-node 8
+#SBATCH --ntasks-per-node=8
+#SBATCH --cpus-per-task=4
+#SBATCH --gres=gpu:4
 python script.sh
 ```
 

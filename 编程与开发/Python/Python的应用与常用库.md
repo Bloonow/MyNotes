@@ -803,7 +803,7 @@ pip install -r requirements.txt  # 导入环境文件
 
 ### conda/anaconda
 
-Anaconda的虚拟环境中主要用conda和pip下载和管理各种包，conda是一个跨平台的包和运行环境管理工具，其安装的包通常来自于Anaconda repository和Anaconda Cloud。和pip安装的包不同的是，conda包是二进制格式的，因此无需预先安装编译器。除此之外，conda更强大的地方在于其不仅可以安装Python包，还可以安装C（C++）、R语言包以及其他语言编写的包等。
+Anaconda的虚拟环境中主要用conda和pip下载和管理各种包，conda是一个跨平台的包和运行环境管理工具，其安装的包通常来自于Anaconda repository和Anaconda Cloud镜像网站。和pip安装的包不同的是，conda包是二进制格式的，因此无需预先安装编译器。除此之外，conda更强大的地方在于其不仅可以安装Python包，还可以安装C（C++）、R语言包以及其他语言编写的包等。
 
 可以使用如下命令创建一个Python虚拟环境。
 
@@ -824,12 +824,13 @@ conda remove -n old_env_name --all
 conda env list
 ```
 
-可使用如下命令激活和撤销一个虚拟环境，并使用remove命令彻底删除一个虚拟环境。
+可使用如下命令激活和撤销一个虚拟环境，并使用remove命令彻底删除一个虚拟环境，在某个环境中使用info命令可显示当前环境的基本信息。
 
 ```shell
 conda activate env_name
 conda deactivate
-conda remove -n env_name --all 
+conda remove -n env_name --all
+conda info
 ```
 
 如果在使用Environment Modules软件管理环境变量的集群上，并且在.bashrc文件中使用诸如module load anaconda命令加载模块，则要按照如下方式激活。因为module load命令会简单地将路径拼接到\$PATH变量之前，而conda activate则会检查\$PATH环境中是否存在已激活的python环境，这将导致可能的逻辑错误。例如，在登录节点加载.bashrc时加载anaconda并激活所需env_name环境，而使用sbatch将任务run.sh提交到计算机点，再次加载.bashrc时，因module load只执行简单拼接，而conda activate会先检查再确定是否激活，这使得anaconda路径被重复拼接到\$PATH变量之前，而目标python环境env_name因已存在于\$PATH路径中不会重复激活，从而导致anaconda的基础base环境覆盖掉所需python环境。
@@ -855,6 +856,58 @@ conda list
 ```shell
 conda list -e > requirements.txt             # 导出环境文件
 conda install --yes --file requirements.txt  # 导入环境文件
+```
+
+## 软件包管理工具
+
+本质上，pip和conda都是Python的软件包管理工具，它们都具有的常用命令如下所示。
+
+| pip或conda命令 | 描述                                                         |
+| -------------- | ------------------------------------------------------------ |
+| install        | 在指定虚拟环境下，安装软件包；pip工具使用package-name==version指定版本；conda工具使用package-name=version指定版本 |
+| uninstall      | 在指定虚拟环境下，卸载软件包；conda工具的uninstall命令是remove命令的别名 |
+| search         | 搜索指定名称的软件包                                         |
+| list           | 在指定虚拟环境下，列出当前已经安装的软件包                   |
+| inspect/info   | pip工具使用inspect命令查看当前环境信息；conda工具使用info命令查看当前环境信息 |
+
+对于任何软件包管理工具而言，都会使用一个或多个软件仓库镜像源。对于pip工具的相关命令而言，其默认情况下使用Python官方提供的软件仓库镜像源，即https://pypi.org/simple网站，即https://pypi.org/simple网站。对于conda工具的相关命令而言，其默认情况下使用Anaconda官方提供的软件仓库镜像源，即https://repo.anaconda.com/pkgs/main网站。
+
+pip工具可以使用-i选项或--index选项指定所使用的镜像源，如下所示。
+
+```shell
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple package-name
+```
+
+或者，可以在用户家目录下，创建.pip/pip.conf文件，配置pip工具所使用的镜像源，添加清华的镜像源如下所示。
+
+```
+[global]
+index-url = https://pypi.tuna.tsinghua.edu.cn/simple
+[install]
+use-mirrors = true
+mirrors = https://pypi.tuna.tsinghua.edu.cn/simple
+trusted-host = pypi.tuna.tsinghua.edu.cn
+```
+
+conda工具可以使用-c选项或--channel选项指定所使用的镜像源，如下所示。
+
+```shell
+conda install -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main package-name
+```
+
+或者，可以在用户家目录下，创建.condarc文件，配置conda工具所使用的镜像源，添加清华的镜像源如下所示。
+
+```
+channels:
+  - defaults
+show_channel_urls: true
+default_channels:
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r
+  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2
+custom_channels:
+  conda-forge: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+  pytorch: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
 ```
 
 # 二、Python语言特性

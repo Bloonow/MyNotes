@@ -1756,6 +1756,27 @@ class ZeroRedundancyOptimizer(Optimizer, Joinable):
 
 其中的torchrun模块可以使分布式PyTorch作业具有容错性和弹性，它是torch.distributed.launch启动工具的一个超集。
 
+在使用Slurm管理的集群上，启动多节点分布式作业的脚本示例如下所示。
+
+```shell
+#!/bin/bash
+# sbatch -N 2 --gres=gpu:8 submit.sh
+
+nodes=($(scontrol show hostnames $SLURM_JOB_NODELIST))
+nodes_array=($nodes)
+head_node=${nodes_array[0]}
+head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address)
+echo Master Node IP: $head_node_ip
+
+torchrun
+    --nnodes=2
+    --nproc-per-node=8
+    --rdzv_id=$RANDOM
+    --rdzv-backend=c10d
+    --rdzv-endpoint=$head_node_ip:29500
+    TRAIN_SCRIPT.py --script-args
+```
+
 ## 1. Quickstart
 
 要启动容错（fault-tolerant）的作业，需在所有节点上执行程序，使用下述命令。
