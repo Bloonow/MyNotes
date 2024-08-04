@@ -41,7 +41,7 @@ C风格字符串（string）是BUG的另一个主要来源，通过使用std::st
 - find_if，默认搜索（search）算法。
 - sort、lower_bound，以及其他默认的排序和搜索算法。
 
-若要编写比较运算符（comparator），请使用严格的`<`符号，并尽可能使用命名lambda表达式，如下示例。
+若要编写比较运算符（comparator），请使用严格的`<`符号，并尽可能使用命名Lambda表达式，如下示例。
 
 ```c++
 auto comp = [](const widget& w1, const widget& w2) { return w1.weight() < w2.weight(); }
@@ -68,7 +68,7 @@ std::vector<int> vec{ 1,2,3,4,5,6,7,8 };
 for (int i = 0; i < vec.size(); ++i) {
     std::cout << vec[i] << std::endl;
 }
-// Modern C++:
+// Modern C++
 for (const auto &num : vec) {
     std::cout << num << std::endl;
 }
@@ -113,7 +113,7 @@ int main(int argc, char* argv[]) {
     vec.push_back(s2);
     vec.push_back(s3);
 
-    // Modern C++:
+    // Modern C++
     std::vector<Str> vec2{ s1, s2, s3 };
     // or
     std::vector<Str> vec3{ {"Norah", 2.7f}, {"Frank", 3.5f}, {"Jeri", 85.9f} };
@@ -135,7 +135,7 @@ int main(int argc, char* argv[]) {
 
 在C风格编程中，可以通过使用函数指针将函数传递到另一个函数。但函数指针不便于维护和理解，它们引用的函数可能是在源代码的其他位置中定义的，而不是从调用它的位置定义的。此外，它们不是类型安全的。
 
-现代C++提供了函数对象和重写`operator()`运算符的类，可以像调用函数一样调用它们。创建函数对象的最简便方法是使用内联lambda表达式。下面的示例演示如何使用lambda表达式传递函数对象，然后由find_if函数在vector的每个元素中调用此函数对象。
+现代C++提供了函数对象和重写`operator()`运算符的类，可以像调用函数一样调用它们。创建函数对象的最简便方法是使用内联Lambda表达式。下面的示例演示如何使用Lambda表达式传递函数对象，然后由find_if函数在vector的每个元素中调用此函数对象。
 
 ```c++
 std::vector<int> vec{ 1,2,3,4,5,6,7,8 };
@@ -168,7 +168,7 @@ C++17引入了更加安全可靠的std::variant类，来作为联合体的替代
 
 - 全局范围（global scope），全局名称（global name）是在任何类、函数或命名空间（namespace）之外声明的名称，不过在C++中，这些名称具有隐式的全局命名空间。全局名称的范围从声明点（point of declaration）到文件末尾可见。对于全局名称，其可见性还受链接规则（rules of linkage）的约束，这些规则确定名称在程序的其他文件中是否可见。
 - 命名空间范围（namespace scope），在命名空间中声明的名称，在任何类或枚举定义或函数块之外，其范围从声明点到命名空间末尾可见。命名空间可以跨不同文件定义。
-- 局部范围（local scope），在函数或lambda中声明的名称（包括参数名称）具有局部范围，它们通常被称为局部变量（locals）。它们仅从声明点到函数或lambda体的末尾可见。
+- 局部范围（local scope），在函数或Lambda中声明的名称（包括参数名称）具有局部范围，它们通常被称为局部变量（locals）。它们仅从声明点到函数或Lambda体的末尾可见。
 - 类范围（class scope），类成员的名称具有类范围，该范围在整个类定义中可见，与声明点位置无关。类成员的访问性（accessibility）由public、private、protected关键字进一步控制。
 - 语句范围（statement scope），在for、if、while、switch语句中声明的名称在语句块结束之前可见。
 - 函数范围（function scope），goto语句的标签（label）具有函数范围，这意味着即使在声明点之前，它在整个函数体中也是可见的，函数范围允许在声明cleanup标签之前编写诸如goto cleanup之类等语句。
@@ -806,6 +806,92 @@ int main() {
 }
 ```
 
+## auto关键字与decltype说明符
+
+最初，auto关键字用于声明一个自动存储类型的变量；之后，auto关键字又用于从一个初始化表达式中推导声明的类型，指示编译器使用已声明变量的初始化表达式或Lambda表达式参数来推导类型。需要注意的是，auto关键字是类型的占位符，但它本身不是类型，因此不能用于强制转换或sizeof和typeid运算符。
+
+在大多数情况下，建议使用auto关键字，因为auto关键字具有若干优势。(1)可靠性，如果表达式的类型发生更改（包括函数返回类型发生更改的情况），auto也可以正常工作；(2)性能，auto确保不会进行转换；(3)可用性，不必担心类型名称拼写困难和拼写有误；(4)效率，代码会变得更高效。
+
+关键字auto的常用语法形式如下所示，此外还有一些特殊用法，将在之后介绍。
+
+```c++
+auto variable = initializer;
+auto function(auto parameter) { return ret_value; }
+```
+
+使用auto关键字声明一个变量时无需指定具体类型，但需要指定初始化表达式，编译器会计算初始化表达式，然后使用该信息来推断变量类型。此外，还可使用限定符对auto关键字进行修饰，例如，使用const/volatile限定符、指针*符号、引用&符号、右值引用&&符号等来修饰auto关键字。因为只使用auto关键字会删除const/volatile、指针、引用等限定信息。
+
+```c++
+int main(int argc, char* argv[]) {
+    int a = 10, b = 10, c = 10;
+    int& aRef = a;  aRef++;
+    auto bRef = b;  bRef++;
+    auto& cRef = c; cRef++;
+    // 11, 10, 11
+    std::cout << a << ", " << b << ", " << c << std::endl;
+    return 0;
+}
+```
+
+decltype用作一个类型说明符，用于生成指定表达式的类型。decltype类型说明符常与auto关键字一起使用，以辅助编写模板库。可以使用decltype和auto声明一个函数模板，其返回类型取决于模板参数自变量的类型；或者，使用decltype和auto声明函数模板（转发函数），该模板包装对其他函数的调用，然后返回一个返回任何类型的其他函数对象。
+
+基本的使用形式如decltype(expression)语法所示，根据expression的不同，decltype说明符可以起到不同的作用，并会保留表达式expression的const/volatile限定符、指针*符号、引用&符号、右值引用&&符号等信息。
+
+- 如果expression是一个标识符或一个类成员访问语句，则decltype(expression)是由expression所命名的实体类型，如果名称不存在或expression命名的是组重载函数（无法确定具体类型），则编译器将生成错误消息。
+- 如果expression是对一个函数或一个重载运算符函数的调用，则decltype(expression)是函数的返回类型，并忽略重载运算符两边的括号。
+- 如果expression是一个rvalue，则decltype(expression)就是expression的类型；如果expression是一个lvalue，则decltype(expression)是expression类型的lvalue引用。
+
+```c++
+template <typename T> struct info           { static constexpr const char value[] = "type";        };
+template <typename T> struct info<T*>       { static constexpr const char value[] = "type*";       };
+template <typename T> struct info<T&>       { static constexpr const char value[] = "type&";       };
+template <typename T> struct info<T&&>      { static constexpr const char value[] = "type&&";      };
+template <typename T> struct info<const T>  { static constexpr const char value[] = "const type";  };
+template <typename T> struct info<const T*> { static constexpr const char value[] = "const type*"; };
+template <typename T> struct info<const T&> { static constexpr const char value[] = "const type&"; };
+
+struct MyStruct { int val = 0; };
+const char* greetings() { return "hello"; }
+
+int main(int argc, char* argv[]) {
+    const MyStruct obj = MyStruct();
+    std::cout << info<decltype(obj)>::value            << std::endl;  // const type   //  obj  是一个标识符
+    std::cout << info<decltype((obj))>::value          << std::endl;  // const type&  // (obj) 是一个左值表达式
+    std::cout << info<decltype(obj.val)>::value        << std::endl;  // type         //  obj.val  是一个成员访问
+    std::cout << info<decltype((obj.val))>::value      << std::endl;  // const type&  // (obj.val) 是一个左值表达式
+    std::cout << info<decltype(std::move(obj))>::value << std::endl;  // type&&       // std::move(obj) 是一个右值表达式
+    std::cout << typeid(decltype(greetings())).name()  << std::endl;  // PKc
+    std::cout << typeid(decltype(greetings)).name()    << std::endl;  // FPKcvE
+    std::cout << typeid(decltype(&greetings)).name()   << std::endl;  // PFPKcvE
+    return 0;
+}
+```
+
+自C++11标准以来，支持使用拖尾返回类型（trailing return type）声明函数的返回类型，这种新语法在普通函数中用得不多，但在指定模板函数的返回类型时非常有用。在C++11中，可以结合拖尾返回类型，并使用decltype类型说明符和auto关键字来声明一个函数模板，其返回类型取决于其模板自变量的类型。
+
+在C++14中，允许不使用拖尾返回类型，而使用decltype(auto)指定模板函数的返回类型，从而指示编译器根据return语句的表达式推断返回类型。这是因为，当以auto类型作函数返回类型时，或作为接收值的数据类型时，会丢失掉const/volatile限定符、指针*符号、引用&符号、右值引用&&符号等信息，虽然可以使用decltype(expression)语法，但当expression表达式非常复杂时，代码将会变得不易读。为此，C++14引入decltype(auto)实现与decltype(expression)等同的作用和功能，其中decltype(auto)作为一种特殊的数据类型，可以定义变量。
+
+例如，考虑下面的代码示例，由UNKNOWN占位符指示的返回类型无法指定，此时便可以使用拖尾返回类型并结合decltype说明符和auto关键字。
+
+```c++
+template <typename T, typename U, typename UNKNOWN>
+UNKNOWN add_func1(T&& v1, U&& v2) { 
+    return std::forword<T>(v1) + std::forword<U>(v2);
+}
+
+// C++11
+template <typename T, typename U>
+auto add(T&& v1, U&& v2) -> decltype(std::forward<T>(v1) + std::forward<U>(v2)) {
+    return std::forward<T>(v1) + std::forward<U>(v2);
+}
+
+// C++14
+template <typename T, typename U>
+decltype(auto) add(T&& v1, U&& v2) {
+    return std::forward<T>(v1) + std::forward<U>(v2);
+}
+```
+
 ## 运行时类型信息
 
 运行时类型信息（Run-time Type Information，RTTI）是一种允许在程序执行过程中确定对象类型的机制。目前，RTTI已添加到C++标准库的\<typeinfo\>头文件中。历史遗留问题，此前许多第三方类库供应商自行实现此功能，导致类库之间存在不兼容的情况。此处讨论的C++标准支持的RTTI对指针和引用都适用。
@@ -854,9 +940,13 @@ T max(T a, T b) {
 
 # 存储类型关键字
 
+const关键字指定指针在初始化后无法修改，此后指针将受到保护，防止进行修改。声明带const关键字的成员函数将指定该函数是一个只读函数，它不能修改任何非静态数据成员或调用任何非const成员函数。若要声明常量成员函数，请在参数列表的右括号后放置const关键字，声明和定义中都需要const关键字。
+
+volatile关键字指定某个名称关联的值可以被用户应用程序以外的操作修改。因此，volatile关键字可用于声明共享内存（shared memory）中由多个进程访问的对象，或用于声明与中断服务例程（interrupt service routine）进行通信的全局数据区域（global data area）。如果某个名称被声明为volatile，则每当程序访问该名称时，编译器都会重新加载内存中的值，这将显著减少可能的优化。但是，当对象的状态可能意外更改时，这是保证程序可预见性的唯一方法。
+
 在C++变量声明的上下文中，存储类型（storage class）是管理对象的生命周期（lifetime）、链接类型（linkage）、内存位置（memory location）的类型说明符（type specifier），一个给定对象只能有一个存储类型。
 
-默认情况下，在块中定义的变量具有自动存储（automatic storage）类型，除非使用`static`、`extern`、`thread_local`说明符另行指定。自动存储类型的对象和变量不具有外部链接，它们对于块外部的代码是不可见的。在程序执行进入块时，会自动为其分配内存，并在退出块时释放分配内存。不再将`auto`关键字作为C++存储类型说明符。
+默认情况下，在块中定义的变量具有自动存储（automatic storage）类型，除非使用`static`、`extern`、`thread_local`说明符另行指定。自动存储类型的对象和变量不具有外部链接，它们对于块外部的代码是不可见的。在程序执行进入块时，会自动为其分配内存，并在退出块时释放分配内存。现代C++标准中，不再将`auto`关键字作为C++存储类型说明符。
 
 可将`mutable`关键字视为存储类型说明符，但它只存在于类定义的成员列表中。此关键字只能应用于类的非静态和非常量数据成员，如果某个数据成员被声明为mutable，则从const成员函数为此数据成员赋值是合法的。如下所示。
 
@@ -1058,7 +1148,7 @@ void DoSomething() {
 - 迭代访问数组或其他数据结构中的元素；
 - 将函数传递给其他函数。
 
-在C风格编程中，原始指针（raw pointer）用于所有这些场景，但可能会导致许多严重的编程错误。现代C++提供了智能指针（smart pointer）用于分配对象，提供了迭代器（iterator）用于遍历数据结构，提供了lambda表达式用于传递函数，它们可使程序更安全、更易于调试，以及更易于理解和维护。
+在C风格编程中，原始指针（raw pointer）用于所有这些场景，但可能会导致许多严重的编程错误。现代C++提供了智能指针（smart pointer）用于分配对象，提供了迭代器（iterator）用于遍历数据结构，提供了Lambda表达式用于传递函数，它们可使程序更安全、更易于调试，以及更易于理解和维护。
 
 ## 原始指针
 
@@ -1121,7 +1211,7 @@ int main() {
 }
 ```
 
-在C风格的编程中，函数指针主要用于将函数传递给其他函数，此方法使调用方能够在不修改函数的情况下自定义函数的行为。在现代C++中，lambda表达式提供了相同的功能，并且提供了更高的类型安全性和其他优势。
+在C风格的编程中，函数指针主要用于将函数传递给其他函数，此方法使调用方能够在不修改函数的情况下自定义函数的行为。在现代C++中，Lambda表达式提供了相同的功能，并且提供了更高的类型安全性和其他优势。
 
 ```c++
 using std::string;
@@ -1237,11 +1327,11 @@ int* ptr;    // wrong, but clearer
 
 ## const和volatile指针
 
-`const`和`volatile`关键字可更改指针的处理方式。
+`const`关键字指定指针在初始化后无法修改，此后指针将受到保护，防止进行修改。声明带const关键字的成员函数将指定该函数是一个只读函数，它不能修改任何非静态数据成员或调用任何非const成员函数。若要声明常量成员函数，请在参数列表的右括号后放置const关键字，声明和定义中都需要const关键字。
 
-const关键字指定指针在初始化后无法修改，此后指针将受到保护，防止进行修改。声明带const关键字的成员函数将指定该函数是一个只读函数，它不能修改任何非静态数据成员或调用任何非const成员函数。若要声明常量成员函数，请在参数列表的右括号后放置const关键字，声明和定义中都需要const关键字。
+`volatile`关键字指定某个名称关联的值可以被用户应用程序以外的操作修改。因此，volatile关键字可用于声明共享内存（shared memory）中由多个进程访问的对象，或用于声明与中断服务例程（interrupt service routine）进行通信的全局数据区域（global data area）。如果某个名称被声明为volatile，则每当程序访问该名称时，编译器都会重新加载内存中的值，这将显著减少可能的优化。但是，当对象的状态可能意外更改时，这是保证程序可预见性的唯一方法。
 
-volatile关键字指定某个名称关联的值可以被用户应用程序以外的操作修改。因此，volatile关键字可用于声明共享内存（shared memory）中由多个进程访问的对象，或用于声明与中断服务例程（interrupt service routine）进行通信的全局数据区域（global data area）。如果某个名称被声明为volatile，则每当程序访问该名称时，编译器都会重新加载内存中的值，这将显著减少可能的优化。但是，当对象的状态可能意外更改时，这是保证程序可预见性的唯一方法。
+const和volatile关键字可更改指针的处理方式。
 
 ```c++
 const char *cp;     // 指针指向的对象为 const 类型
@@ -1501,7 +1591,7 @@ int main(int argc, char* argv[]) {
 
 在决定如何传递shared_ptr时，确定被调用方是否必须共享底层资源的所有权，所有者（owner）指的是只要它需要就可以使底层资源一直有效的对象或函数。如果调用方必须保证被调用方可以将指针的生命周期延长到其（函数）生命周期以外，则请使用第一个选项。如果不关心被调用方是否延长生命周期，则按引用传递并让被调用方复制或不复制它。
 
-如果必须为辅助函数提供对底层指针的访问权限，并且知道辅助函数只是使用该指针并且在被调用函数返回前返回，则该函数不必共享底层指针的所有权，它只需在调用方的shared_ptr的生命周期内访问指针即可。在这种情况下，按引用传递shared_ptr或传递原始指针或传递底层对象引用是安全的。有时，在一个vector\<shared_ptr\<T\>\>中，可能必须将每个shared_ptr传递给lambda表达式，如果lambda表达式没有存储指针，则将按引用传递shared_ptr可以避免调用每个元素的复制构造函数。
+如果必须为辅助函数提供对底层指针的访问权限，并且知道辅助函数只是使用该指针并且在被调用函数返回前返回，则该函数不必共享底层指针的所有权，它只需在调用方的shared_ptr的生命周期内访问指针即可。在这种情况下，按引用传递shared_ptr或传递原始指针或传递底层对象引用是安全的。有时，在一个vector\<shared_ptr\<T\>\>中，可能必须将每个shared_ptr传递给Lambda表达式，如果Lambda表达式没有存储指针，则将按引用传递shared_ptr可以避免调用每个元素的复制构造函数。
 
 ```c++
 void use_shared_ptr_by_value(std::shared_ptr<int> sp) { std::cout << sp.use_count() << std::endl; }
