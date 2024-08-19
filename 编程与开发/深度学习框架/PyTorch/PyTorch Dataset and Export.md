@@ -513,7 +513,7 @@ Open Neural Network eXchange（ONNX）是一个用于表示机器学习模型的
 
 ```python
 # 加载其他类型的模型
-model = torch.load(f='model.pth')
+model = torch.load(f='model.pt')
 
 # 若模型接收多个输入，如model(X1,X2)，则需要将多个输入放到元组tuple中
 # 其中X1与X2是与输入形状相同的随机张量，用来指定模型所接收输入的形状
