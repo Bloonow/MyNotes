@@ -320,7 +320,7 @@ int lockf(int fd, int cmd, off_t len);
 ## （一）概述
 
 ```shell
-ipsc [-options]
+ipcs [-options]
 ```
 
 - 在Linux终端下使用ipcs命令查看当前系统下已经创建的IPC通信进制，如消息队列（Message Queues）、共享内存（Shared Memory Segments）、信号量（Semaphore Arrays，以数组为单位创建）。
