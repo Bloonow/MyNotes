@@ -2014,6 +2014,212 @@ int main() {
 
 在上述示例的函数z()中，编译器将发出warning C4172: returning address of local variable or temporary警告。在简单程序中，如果调用方在覆盖内存位置之前访问引用，则有时可能不会发生访问冲突，但这纯属运气，请注意该警告。
 
+# 函数与Lambda表达式
+
+## C风格可变参数列表函数
+
+当函数参数列表中的参数数目可变时，称为可变参数列表函数。在实现机制上，可变参数列表的函数，是通过控制函数栈帧的参数传递部分来支持的。
+
+在C/C++的实现中，通过`...`省略号占位符和va_start()宏定义、va_arg()宏定义、va_end()宏义来支持可变参数列表。这些宏实际上是对诸如\_\_builtin\_va\_start()函数、\_\_builtin\_va\_arg()函数、\_\_builtin\_va\_end()函数等内置函数的封装。这些宏定义在\<stdarg.h\>头文件中或者\<cstdarg\>头文件中提供。
+
+所有具有可变参数列表的函数都至少应该有一个已命名参数（通常用于表示实际传入参数的数目），并使用`...`省略号占位符表示可变参数。使用示例如下所示。
+
+```c++
+void print_ints(int length, ...) {
+	va_list args;                     // 用于表示可变参数列表
+	va_start(args, length);           // 初始化可变参数列表的起始位置，其中 length 是可变参数列表的前一个参数
+	for (int i = 0; i < length; ++i) {
+        int val = va_arg(args, int);  // 从可变参数列表中获取一个 int 类型的数据，并移动堆栈指针
+		std::cout << val << " ";
+	}
+	va_end(args);                     //释放内存，确保函数结束后，堆栈处于稳定状态
+    std::cout << std::endl;
+}
+
+int main(int argc, char *argv[]) {
+    print_ints(5, 10, 20, 30, 40, 50);
+    return 0;
+}
+```
+
+需要注意的是，可变参数列表无结束标志，因而要显式规定，例如可以让第一个参数表示传入参数的数目，或当参数是一组指针时，可以要求最后一个指针是NULL等。注意，不推荐使用C风格的可变参数列表，因为其十分不安全，不知道参数的数目，不知道参数的类型。
+
+## C++中的Lambda表达式
+
+在C++11及其更高版本中，Lambda表达式是定义匿名函数对象（闭包）的一种简便方法，用于被其它代码调用，或作为函数参数进行传递。
+
+```c++
+void select_print(int a, int b, int(*fn)(int, int)) {
+    std::cout << fn(a, b) << std::endl;
+}
+
+int main(int argc, char* argv[]) {
+    select_print(3, 5, [](int a, int b) -> int {
+        return a < b ? a : b;
+    });  // 3
+    return 0;
+}
+```
+
+Lambda通常用于封装传递给算法或异步函数的少量代码行，其语法格式如下所示。
+
+```c++
+[capture_clause] (parameter_list) mutable noexcept -> return_type { body; }
+```
+
+通常来说，Lambda表达式的函数调用运算符是常量函数，但可以通过指定mutable关键字，使Lambda表达式的主体部分可以修改通过值捕获的变量。但因为是值捕捉，此修改并不会反映到周边封闭范围内的原始变量。
+
+在常量表达式中允许初始化捕获或引入的每个数据成员时，可以将Lambda表达式声明为constexpr常量函数，即在mutable关键字的位置指定constexpr关键字。如果Lambda表达式结果满足constexpr函数的要求，则Lambda表达式是隐式的constexpr函数。
+
+此外，可以使用noexcept异常规范来指示Lambda表达式不会引发任何异常，与普通函数一样，如果Lambda表达式声明noexcept异常规范且Lambda主体引发异常，则编译器将生成警告。其中，noexcept关键字等价于throw()关键字。
+
+### 捕捉子句
+
+capture_clause，捕捉子句，也称为Lambda引导（introducer），用于在Lambda表达式的主体种引入新的变量，还可以访问（或捕捉）周边封闭范围内的变量。Lambda表达式以捕捉子句开始，用于指定捕捉哪些变量，多个捕捉变量之间使用逗号分隔，且不允许重复捕捉。同时可以指定捕捉是通过引用还是通过值进行的，使用&前缀的变量通过引用进行访问，而没有该前缀的变量通过值进行访问。
+
+需要注意的是，通过值捕捉会将整个闭包（即封装Lambda表达式的匿名函数对象）复制到Lambda被调用的每个位置点。当Lambda表达式在并行或异步操作中执行时，通过值捕捉非常有用；它在某些硬件体系结构（例如NUMA）上特别有用。在使用多线程的Lambda表达式时，尤其需要注意以下几点。
+
+- 引用捕捉可用于修改外部变量，而值捕捉却不能修改外部变量，即是指定mutable允许修改副本，而不能修改原始项。
+- 引用捕捉会反映外部变量的更新，而值捕捉不会。
+- 引用捕捉引入生存期依赖项，而值捕捉却没有生存期依赖项；当Lambda表达式以异步方式运行时，这一点尤其重要。假设异步Lambda表达式通过引用捕捉局部变量，而如果该局部变量在Lambda表达式运行时被释放，则代码可能会导致在运行时发生访问冲突。
+
+可以使用默认的捕捉模式指示如何捕捉在Lambda表达式主体中访问的任何外部变量，使用[]指示Lambda主体不访问封闭范围中的变量，使用[&]指示通过引用捕捉所有变量，使用[=]指示通过值捕捉所有变量。可以使用默认捕捉模式，然后为特定变量显式指定相反的模式。在使用默认捕捉时，只有Lambda主体中提及的变量才会真正被捕捉。
+
+```c++
+int main(int argc, char* argv[]) {
+    int min = 0, max = 10;
+    auto clamp = [min, max](int value) -> int {
+        int val = value;
+        val = val < min ? min : val;
+        val = val > max ? max : val;
+        return val;
+    };
+    std::cout << clamp(-25) << std::endl;  // 0
+    return 0;
+}
+```
+
+在类成员函数体中使用Lambda表达式时，使用[this]子句可以捕捉this指针，以提供对封闭类的成员数据和成员函数的访问权限，如下所示。在C++17及更高版本中，使用[\*this]子句可以通过值来捕捉this指针。
+
+```c++
+class MyClass {
+public:
+    std::string self_name;
+    MyClass(std::string self_name_) : self_name(self_name_) {}
+    void say_hello(std::string name) {
+        auto greetings = [this](std::string name) -> std::string {
+            return "Hello, " + name + ", love from " + this->self_name + "!";
+        };
+        std::cout << greetings(name) << std::endl;
+    }
+};
+
+int main(int argc, char* argv[]) {
+    MyClass mc("MyClass");
+    mc.say_hello("Bloonow");  // Hello, Bloonow, love from MyClass!
+    return 0;
+}
+```
+
+在C++14中，可在capture_clause捕捉子句中引入并初始化新的变量，而无需让这些变量存在于Lambda函数所在的封闭范围内。初始化可以使用任意表达式表示，并且会从该表达式生成的类型推导新变量的类型。借助此功能，可以从周边范围捕捉只能移动的变量并使用它们，例如std::unique_ptr智能指针。
+
+```c++
+int main(int argc, char* argv[]) {
+    std::unique_ptr<int> pInt = std::make_unique<int>(99);
+    auto fn = [ptr = std::move(pInt)]() -> void {
+        std::cout << *ptr << std::endl;
+    };
+    fn();  // 99
+    return 0;
+}
+```
+
+### 参数列表与返回类型
+
+parameter_list，参数列表，也称为Lambda声明符（declarator），是可选的，它在许多方面都类似于函数的参数列表。在C++14中，如果参数类型是泛型，则可以使用auto关键字作为类型说明符，此关键字将告知编译器以函数模板的形式创建函数调用运算符，参数列表中的每个auto实例等效于一个不同的类型参数。
+
+```c++
+int main(int argc, char* argv[]) {
+    auto fn = [](auto var1, auto var2) -> void {
+        std::cout << var1 << " " << var2 << std::endl;
+    };
+    fn(3.14, "Good");  // 3.14 Good
+    return 0;
+}
+```
+
+由于参数列表是可选的，因此在不使用参数列表，并且不使用mutable、noexcept、return_type的情况下，可以省略()空括号。
+
+由于Lambda表达式已类型化，因此可以将其与C++模板一起使用。
+
+```c++
+template <typename Ty>
+void negate_all(std::vector<Ty>& vec) {
+    std::for_each(vec.begin(), vec.end(), [](Ty& val) { val = -val; });
+}
+```
+
+return_type，返回类型，用于表示Lambda表达式的主体部分的返回值的类型。若指定拖尾返回类型return_type，则编译器会检测Lambda表达式的返回类型。如果Lambda表达式的主体仅包含一个返回语句，或者Lambda表达式无返回值，则可以省略Lambda表达式的return_type部分。如果Lambda表达式的主体包含单个返回语句，编译器将从返回表达式的类型推导返回类型，而无需使用auto关键字；否则，编译器会将返回类型推导为void。
+
+### 表达式的主体
+
+Lambda表达式的主体部分可以包含普通函数或成员函数中允许访问的任何内容，包括，从封闭范围捕获变量，参数，本地声明变量，类数据成员（在类内部声明并且捕获this时），具有静态存储持续时间的任何变量（例如全局变量）。
+
+```c++
+int main(int argc, char* argv[]) {
+    std::vector<int> vec(8);
+    static int gen_value = 1;
+    std::generate(vec.begin(), vec.end(), []() { return gen_value++; });
+    return 0;
+}
+```
+
+## 函数对象与Lambda表达式
+
+编写代码时，可能会使用函数指针和函数对象来解决问题和执行计算，尤其是当使用C++标准库算法时。函数指针和函数对象各有利弊。例如，函数指针具有最低的语法开销，但不保持范围内的状态，函数对象可保持状态，但需要类定义的语法开销。
+
+Lambda表达式结合函数指针和函数对象的优点并避免其缺点。与函数对象一样，Lambda表达式是灵活的并且可以保持状态，但与函数对象不同之处在于其简洁的语法不需要显式类定义。使用Lambda表达式，可以编写出比等效的函数对象代码更简洁、更不容易出错的代码。
+
+```c++
+void demo_lambda() {
+    std::vector<int> vec = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    int even_count = 0;
+    std::for_each(vec.begin(), vec.end(), [&even_count](int val) {
+        std::cout << val;
+        if (val % 2 == 0) {
+            std::cout << " is even" << std::endl;
+            even_count++;
+        } else {
+            std::cout << " is odd" << std::endl;
+        }
+    });
+    std::cout << "There are " << even_count << " even numbers in vector." << std::endl;
+}
+```
+
+```c++
+struct Functor {
+    int& even_count;
+    Functor(int& even_count_) : even_count(even_count_) {}
+    void operator()(int val) {
+        std::cout << val;
+        if (val % 2 == 0) {
+            std::cout << " is even" << std::endl;
+            this->even_count++;
+        } else {
+            std::cout << " is odd" << std::endl;
+        }
+    }
+};
+
+void demo_functor() {
+    std::vector<int> vec = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    int even_count = 0;
+    std::for_each(vec.begin(), vec.end(), Functor(even_count));
+    std::cout << "There are " << even_count << " even numbers in vector." << std::endl;
+}
+```
+
 # 模板
 
 作为强类型语言，C++要求所有变量都具有特定类型，由程序员显式声明或编译器推导。但是，许多数据结构和算法在无论在哪种类型上操作，都具有相同的结构和逻辑。使用模板可以定义类或函数的操作，并让用户指定这些操作应处理的具体类型。
@@ -2245,212 +2451,6 @@ template <typename ...Arguments>
 void foo(Arguments ...args) {
     // { pick(args[0]), pick(args[1]), pick(args[2]), ... }
     auto values = { pick(args)... };
-}
-```
-
-# 函数与Lambda表达式
-
-## C风格可变参数列表函数
-
-当函数参数列表中的参数数目可变时，称为可变参数列表函数。在实现机制上，可变参数列表的函数，是通过控制函数栈帧的参数传递部分来支持的。
-
-在C/C++的实现中，通过`...`省略号占位符和va_start()宏定义、va_arg()宏定义、va_end()宏义来支持可变参数列表。这些宏实际上是对诸如\_\_builtin\_va\_start()函数、\_\_builtin\_va\_arg()函数、\_\_builtin\_va\_end()函数等内置函数的封装。这些宏定义在\<stdarg.h\>头文件中或者\<cstdarg\>头文件中提供。
-
-所有具有可变参数列表的函数都至少应该有一个已命名参数（通常用于表示实际传入参数的数目），并使用`...`省略号占位符表示可变参数。使用示例如下所示。
-
-```c++
-void print_ints(int length, ...) {
-	va_list args;                     // 用于表示可变参数列表
-	va_start(args, length);           // 初始化可变参数列表的起始位置，其中 length 是可变参数列表的前一个参数
-	for (int i = 0; i < length; ++i) {
-        int val = va_arg(args, int);  // 从可变参数列表中获取一个 int 类型的数据，并移动堆栈指针
-		std::cout << val << " ";
-	}
-	va_end(args);                     //释放内存，确保函数结束后，堆栈处于稳定状态
-    std::cout << std::endl;
-}
-
-int main(int argc, char *argv[]) {
-    print_ints(5, 10, 20, 30, 40, 50);
-    return 0;
-}
-```
-
-需要注意的是，可变参数列表无结束标志，因而要显式规定，例如可以让第一个参数表示传入参数的数目，或当参数是一组指针时，可以要求最后一个指针是NULL等。注意，不推荐使用C风格的可变参数列表，因为其十分不安全，不知道参数的数目，不知道参数的类型。
-
-## C++中的Lambda表达式
-
-在C++11及其更高版本中，Lambda表达式是定义匿名函数对象（闭包）的一种简便方法，用于被其它代码调用，或作为函数参数进行传递。
-
-```c++
-void select_print(int a, int b, int(*fn)(int, int)) {
-    std::cout << fn(a, b) << std::endl;
-}
-
-int main(int argc, char* argv[]) {
-    select_print(3, 5, [](int a, int b) -> int {
-        return a < b ? a : b;
-    });  // 3
-    return 0;
-}
-```
-
-Lambda通常用于封装传递给算法或异步函数的少量代码行，其语法格式如下所示。
-
-```c++
-[capture_clause] (parameter_list) mutable noexcept -> return_type { body; }
-```
-
-通常来说，Lambda表达式的函数调用运算符是常量函数，但可以通过指定mutable关键字，使Lambda表达式的主体部分可以修改通过值捕获的变量。但因为是值捕捉，此修改并不会反映到周边封闭范围内的原始变量。
-
-在常量表达式中允许初始化捕获或引入的每个数据成员时，可以将Lambda表达式声明为constexpr常量函数，即在mutable关键字的位置指定constexpr关键字。如果Lambda表达式结果满足constexpr函数的要求，则Lambda表达式是隐式的constexpr函数。
-
-此外，可以使用noexcept异常规范来指示Lambda表达式不会引发任何异常，与普通函数一样，如果Lambda表达式声明noexcept异常规范且Lambda主体引发异常，则编译器将生成警告。其中，noexcept关键字等价于throw()关键字。
-
-### 捕捉子句
-
-capture_clause，捕捉子句，也称为Lambda引导（introducer），用于在Lambda表达式的主体种引入新的变量，还可以访问（或捕捉）周边封闭范围内的变量。Lambda表达式以捕捉子句开始，用于指定捕捉哪些变量，多个捕捉变量之间使用逗号分隔，且不允许重复捕捉。同时可以指定捕捉是通过引用还是通过值进行的，使用&前缀的变量通过引用进行访问，而没有该前缀的变量通过值进行访问。
-
-需要注意的是，通过值捕捉会将整个闭包（即封装Lambda表达式的匿名函数对象）复制到Lambda被调用的每个位置点。当Lambda表达式在并行或异步操作中执行时，通过值捕捉非常有用；它在某些硬件体系结构（例如NUMA）上特别有用。在使用多线程的Lambda表达式时，尤其需要注意以下几点。
-
-- 引用捕捉可用于修改外部变量，而值捕捉却不能修改外部变量，即是指定mutable允许修改副本，而不能修改原始项。
-- 引用捕捉会反映外部变量的更新，而值捕捉不会。
-- 引用捕捉引入生存期依赖项，而值捕捉却没有生存期依赖项；当Lambda表达式以异步方式运行时，这一点尤其重要。假设异步Lambda表达式通过引用捕捉局部变量，而如果该局部变量在Lambda表达式运行时被释放，则代码可能会导致在运行时发生访问冲突。
-
-可以使用默认的捕捉模式指示如何捕捉在Lambda表达式主体中访问的任何外部变量，使用[]指示Lambda主体不访问封闭范围中的变量，使用[&]指示通过引用捕捉所有变量，使用[=]指示通过值捕捉所有变量。可以使用默认捕捉模式，然后为特定变量显式指定相反的模式。在使用默认捕捉时，只有Lambda主体中提及的变量才会真正被捕捉。
-
-```c++
-int main(int argc, char* argv[]) {
-    int min = 0, max = 10;
-    auto clamp = [min, max](int value) -> int {
-        int val = value;
-        val = val < min ? min : val;
-        val = val > max ? max : val;
-        return val;
-    };
-    std::cout << clamp(-25) << std::endl;  // 0
-    return 0;
-}
-```
-
-在类成员函数体中使用Lambda表达式时，使用[this]子句可以捕捉this指针，以提供对封闭类的成员数据和成员函数的访问权限，如下所示。在C++17及更高版本中，使用[\*this]子句可以通过值来捕捉this指针。
-
-```c++
-class MyClass {
-public:
-    std::string self_name;
-    MyClass(std::string self_name_) : self_name(self_name_) {}
-    void say_hello(std::string name) {
-        auto greetings = [this](std::string name) -> std::string {
-            return "Hello, " + name + ", love from " + this->self_name + "!";
-        };
-        std::cout << greetings(name) << std::endl;
-    }
-};
-
-int main(int argc, char* argv[]) {
-    MyClass mc("MyClass");
-    mc.say_hello("Bloonow");  // Hello, Bloonow, love from MyClass!
-    return 0;
-}
-```
-
-在C++14中，可在capture_clause捕捉子句中引入并初始化新的变量，而无需让这些变量存在于Lambda函数所在的封闭范围内。初始化可以使用任意表达式表示，并且会从该表达式生成的类型推导新变量的类型。借助此功能，可以从周边范围捕捉只能移动的变量并使用它们，例如std::unique_ptr智能指针。
-
-```c++
-int main(int argc, char* argv[]) {
-    std::unique_ptr<int> pInt = std::make_unique<int>(99);
-    auto fn = [ptr = std::move(pInt)]() -> void {
-        std::cout << *ptr << std::endl;
-    };
-    fn();  // 99
-    return 0;
-}
-```
-
-### 参数列表与返回类型
-
-parameter_list，参数列表，也称为Lambda声明符（declarator），是可选的，它在许多方面都类似于函数的参数列表。在C++14中，如果参数类型是泛型，则可以使用auto关键字作为类型说明符，此关键字将告知编译器以函数模板的形式创建函数调用运算符，参数列表中的每个auto实例等效于一个不同的类型参数。
-
-```c++
-int main(int argc, char* argv[]) {
-    auto fn = [](auto var1, auto var2) -> void {
-        std::cout << var1 << " " << var2 << std::endl;
-    };
-    fn(3.14, "Good");  // 3.14 Good
-    return 0;
-}
-```
-
-由于参数列表是可选的，因此在不使用参数列表，并且不使用mutable、noexcept、return_type的情况下，可以省略()空括号。
-
-由于Lambda表达式已类型化，因此可以将其与C++模板一起使用。
-
-```c++
-template <typename Ty>
-void negate_all(std::vector<Ty>& vec) {
-    std::for_each(vec.begin(), vec.end(), [](Ty& val) { val = -val; });
-}
-```
-
-return_type，返回类型，用于表示Lambda表达式的主体部分的返回值的类型。若指定拖尾返回类型return_type，则编译器会检测Lambda表达式的返回类型。如果Lambda表达式的主体仅包含一个返回语句，或者Lambda表达式无返回值，则可以省略Lambda表达式的return_type部分。如果Lambda表达式的主体包含单个返回语句，编译器将从返回表达式的类型推导返回类型，而无需使用auto关键字；否则，编译器会将返回类型推导为void。
-
-### 表达式的主体
-
-Lambda表达式的主体部分可以包含普通函数或成员函数中允许访问的任何内容，包括，从封闭范围捕获变量，参数，本地声明变量，类数据成员（在类内部声明并且捕获this时），具有静态存储持续时间的任何变量（例如全局变量）。
-
-```c++
-int main(int argc, char* argv[]) {
-    std::vector<int> vec(8);
-    static int gen_value = 1;
-    std::generate(vec.begin(), vec.end(), []() { return gen_value++; });
-    return 0;
-}
-```
-
-## 函数对象与Lambda表达式
-
-编写代码时，可能会使用函数指针和函数对象来解决问题和执行计算，尤其是当使用C++标准库算法时。函数指针和函数对象各有利弊。例如，函数指针具有最低的语法开销，但不保持范围内的状态，函数对象可保持状态，但需要类定义的语法开销。
-
-Lambda表达式结合函数指针和函数对象的优点并避免其缺点。与函数对象一样，Lambda表达式是灵活的并且可以保持状态，但与函数对象不同之处在于其简洁的语法不需要显式类定义。使用Lambda表达式，可以编写出比等效的函数对象代码更简洁、更不容易出错的代码。
-
-```c++
-void demo_lambda() {
-    std::vector<int> vec = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    int even_count = 0;
-    std::for_each(vec.begin(), vec.end(), [&even_count](int val) {
-        std::cout << val;
-        if (val % 2 == 0) {
-            std::cout << " is even" << std::endl;
-            even_count++;
-        } else {
-            std::cout << " is odd" << std::endl;
-        }
-    });
-    std::cout << "There are " << even_count << " even numbers in vector." << std::endl;
-}
-```
-
-```c++
-struct Functor {
-    int& even_count;
-    Functor(int& even_count_) : even_count(even_count_) {}
-    void operator()(int val) {
-        std::cout << val;
-        if (val % 2 == 0) {
-            std::cout << " is even" << std::endl;
-            this->even_count++;
-        } else {
-            std::cout << " is odd" << std::endl;
-        }
-    }
-};
-
-void demo_functor() {
-    std::vector<int> vec = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    int even_count = 0;
-    std::for_each(vec.begin(), vec.end(), Functor(even_count));
-    std::cout << "There are " << even_count << " even numbers in vector." << std::endl;
 }
 ```
 

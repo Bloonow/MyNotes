@@ -277,11 +277,13 @@ objdump --section=.text -S -C a.o | grep "<main>" -A20
 
 LLVM是一组编译器和工具链技术，可用于开发任何编程语言的前端（frontend for any programming language）和任何指令集架构的后端（backend for any instruction set architecture）。LLVM是围绕一种与语言无关的中间表示（Intermediate Representation，IR）设计的，它作为一种可移植的高级汇编语言，可以通过多个阶段的各种转换技术进行优化。LLVM最初名为低级虚拟机（Low Level Virtual Machine），目前该项目已扩展，这个名字已成为LLVM项目的名称。
 
-LLVM是用C++编写的，旨在为编译时（compile-time）优化、链接时（link-time）优化、运行时（runtime）优化、空闲时（idle-time）优化而设计。虽然最初是为C和C++实现的，但LLVM的语言无关设计已经产生了各种各样的前端，使用LLVM的或不直接使用但能生成LLVM IR编译程序的，所产生的带有编译器的语言包括：ActionScript、Ada、C#、CUDA、Fortran、Java bytecode、Kotlin、Lua、Objective-C、OpenCL、SQL、Ruby、Rust、Swift等。
+<img src="GNU编译套件.assets/LLVM架构.png" style="zoom: 50%;" />
 
-Clang是C、C++、Objective-C、Objective-C++编程语言的编译器前端，支持OpenMP、OpenCL、RenderScript、CUDA、SYCL和HIP框架。它充当GNU编译器集合GCC的临时替代品，支持其大多数编译标志和非官方语言扩展。它包括一个静态分析器和几个代码分析工具。
+LLVM是用C++编写的，旨在为编译时（compile-time）优化、链接时（link-time）优化、运行时（runtime）优化、空闲时（idle-time）优化而设计。虽然最初是为C和C++实现的，但LLVM的语言无关设计已经产生了各种各样的前端，使用LLVM的或不直接使用但能生成LLVM IR编译程序的，所产生的带有编译器的语言包括，ActionScript、Ada、C#、CUDA、Fortran、Java bytecode、Kotlin、Lua、Objective-C、OpenCL、SQL、Ruby、Rust、Swift等。
 
-Clang与LLVM编译器后端协同工作，是LLVM 2.6及更高版本的子项目。Clang前端和LLVM后端的组合被命名为Clang/LLVM或简称为Clang。
+不同的前端后端使用统一的中间代码LLVM Intermediate Representation（LLVM IR）；如果需要支持一种新的编程语言，那么只需要实现一个新的前端；如果需要支持一种新的硬件设备，那么只需要实现一个新的后端；优化阶段是一个通用的阶段，它针对的是统一的LLVM IR，不论是支持新的编程语言，还是支持新的硬件设备，都不需要对优化阶段做修改。相比之下，GCC的前端和后端没分得太开，前端后端耦合在了一起，所以GCC为了支持一门新的语言，或者为了支持一个新的目标平台，就变得特别困难。
+
+Clang是C、C++、Objective-C、Objective-C++编程语言的编译器前端，支持OpenMP、OpenCL、RenderScript、CUDA、SYCL和HIP框架。它充当GNU编译器集合GCC的临时替代品，支持其大多数编译标志和非官方语言扩展。它包括一个静态分析器和几个代码分析工具。Clang与LLVM编译器后端协同工作，是LLVM 2.6及更高版本的子项目。Clang前端和LLVM后端的组合被命名为Clang/LLVM或简称为Clang。
 
 # 使用GDB调试
 
