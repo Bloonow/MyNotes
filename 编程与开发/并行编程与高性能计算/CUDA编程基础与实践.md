@@ -28,18 +28,19 @@ CUDA（Compute Unified Device Architecture）是显卡厂商NVIDIA推出的运�
 
 下表列出了各个GPU主计算能力的架构代号与名称。
 
-| 计算能力 | 架构代号             | Tesla系列   | Quadro系列   | GeForce 系列        | Jetson系列 |
-| -------- | -------------------- | ----------- | ------------ | ------------------- | ---------- |
-| X=1      | 特斯拉（Tesla）      |             |              |                     |            |
-| X=2      | 费米（Fermi）        |             |              |                     |            |
-| X=3      | 开普勒（Kepler）     | Tesla K系列 | Quadro K系列 | GeForce 600/700系列 | Tegra K1   |
-| X=5      | 麦克斯韦（Maxwell）  | Tesla M系列 | Quadro M系列 | GeForce 900系列     | Tegra X1   |
-| X=6      | 帕斯卡（Pascal）     | Tesla P系列 | Quadro P系列 | GeForce 1000系列    | Tegra X2   |
-| X=7      | 伏特（Volta）        | Tesla V系列 |              |                     | AGX Xavier |
-| X=7.5    | 图灵（Turning）      | Tesla T系列 | Quadro T系列 | GeForce 2000系列    |            |
-| X=8      | 安培（Ampere）       | Tesla A系列 |              | GeForce 3000系列    | AGX Orin   |
-| X=8.9    | 艾达（Ada·Lovelace） | Tesla L系列 |              | GeForce 4000系列    |            |
-| X=9      | Hopper               | Tesla H系列 |              |                     |            |
+| 计算能力 | 架构代号             | Tesla系列                 | Quadro系列   | GeForce 系列        | Jetson系列 |
+| -------- | -------------------- | ------------------------- | ------------ | ------------------- | ---------- |
+| 1.0      | 特斯拉（Tesla）      |                           |              |                     |            |
+| 2.0      | 费米（Fermi）        |                           |              |                     |            |
+| 3.0      | 开普勒（Kepler）     | Tesla K系列               | Quadro K系列 | GeForce 600/700系列 | Tegra K1   |
+| 5.0      | 麦克斯韦（Maxwell）  | Tesla M系列               | Quadro M系列 | GeForce 900系列     | Tegra X1   |
+| 6.0      | 帕斯卡（Pascal）     | Tesla P系列               | Quadro P系列 | GeForce 1000系列    | Tegra X2   |
+| 7.0      | 伏特（Volta）        | Tesla V系列               |              |                     | AGX Xavier |
+| 7.5      | 图灵（Turning）      | Tesla T系列               | Quadro T系列 | GeForce 2000系列    |            |
+| 8.0      | 安培（Ampere）       | Tesla A系列               |              | GeForce 3000系列    | AGX Orin   |
+| 8.9      | 艾达（Ada·Lovelace） | Tesla L系列               |              | GeForce 4000系列    |            |
+| 9.0      | Hopper               | Tesla H系列（H100、H200） |              |                     |            |
+| 10.x     | Blackwell            | Tesla B系列（B40）        |              | GeForce 5000系列    |            |
 
 需要注意的是，特斯拉（Tesla）既是第一代GPU架构的代号，也是科学计算系列GPU的统称，其具体含义要根据上下文确定。
 

@@ -806,6 +806,52 @@ int main() {
 }
 ```
 
+## 运行时类型信息
+
+运行时类型信息（Run-time Type Information，RTTI）是一种允许在程序执行过程中确定对象类型的机制。目前，RTTI已添加到C++标准库的\<typeinfo\>头文件中。历史遗留问题，此前许多第三方类库供应商自行实现此功能，导致类库之间存在不兼容的情况。此处讨论的C++标准支持的RTTI对指针和引用都适用。
+
+```c++
+const type_info& ty_info = typeid(type_id);
+const type_info& ty_info = typeid(expression);
+```
+
+其中，typeid运算符允许在运行时确定对象的类型，其返回结果是const type_info&类型的实例，用于对type_id或expression的类型信息提供描述。
+
+运算符typeid在用于访问多态类型的对象时，会执行运行时检查，因为其实际类型不能由提供的静态信息确定。例如，对类的实例对象的引用，对指针的取消引用（dereference）访问的实例对象，对指针的下标运算（subscript）访问的实例对象；如果不取消引用指针，则结果是指针的type_info类型信息，而不是它指向的实例对象。
+
+如果expression指向基类，但该对象实际上是派生类的实例，则typeid的结果是派生类的type_info类型信息。需要注意的是，expression指向的类应是具有虚函数的多态类型，否则，结果是就是expression中引用的静态类的type_info类型信息。如果expression正在取消引用某个指针，并且该指针的值是零（null），则typeid将引发std::bad_typeid异常。
+
+```c++
+class Base { public: virtual ~Base() {}  /* make class polynomial */ };
+class Derived : public Base {};
+
+int main() {
+    Derived *pd = new Derived();
+    Base *pb = dynamic_cast<Base*>(pd);
+    std::cout << typeid(pb).name() << std::endl;   // class Base *
+    std::cout << typeid(*pb).name() << std::endl;  // class Derived
+    std::cout << typeid(pd).name() << std::endl;   // class Derived *
+    std::cout << typeid(*pd).name() << std::endl;  // class Derived
+    Base *pnull = nullptr;
+    try {
+        std::cout << typeid(*pnull).name() << std::endl;
+    } catch (const std::bad_typeid& bt) {
+        std::cout << bt.what() << std::endl;  // Attempted a typeid of nullptr pointer!
+    }
+    return 0;
+}
+```
+
+typeid也可以在模板中使用，以确定模板参数的类型，如下所示。
+
+```c++
+template <typename T>
+T max(T a, T b) {
+    std::cout << "Compare " << typeid(T).name() << " values." << std::endl;
+    return a > b ? a : b;
+}
+```
+
 ## auto关键字与decltype说明符
 
 最初，auto关键字用于声明一个自动存储类型的变量；之后，auto关键字又用于从一个初始化表达式中推导声明的类型，指示编译器使用已声明变量的初始化表达式或Lambda表达式参数来推导类型。需要注意的是，auto关键字是类型的占位符，但它本身不是类型，因此不能用于强制转换或sizeof和typeid运算符。
@@ -892,50 +938,44 @@ decltype(auto) add(T&& v1, U&& v2) {
 }
 ```
 
-## 运行时类型信息
+## const关键字与constexpr关键字
 
-运行时类型信息（Run-time Type Information，RTTI）是一种允许在程序执行过程中确定对象类型的机制。目前，RTTI已添加到C++标准库的\<typeinfo\>头文件中。历史遗留问题，此前许多第三方类库供应商自行实现此功能，导致类库之间存在不兼容的情况。此处讨论的C++标准支持的RTTI对指针和引用都适用。
+说明符const关键字指示某个对象或变量是常量，通知编译器防止程序对其进行修改。const关键字还可在指针声明中使用，可以将指向常量数据的指针用作函数参数，以防止函数通过指针修改所传递的参数。
 
-```c++
-const type_info& ty_info = typeid(type_id);
-const type_info& ty_info = typeid(expression);
-```
-
-其中，typeid运算符允许在运行时确定对象的类型，其返回结果是const type_info&类型的实例，用于对type_id或expression的类型信息提供描述。
-
-运算符typeid在用于访问多态类型的对象时，会执行运行时检查，因为其实际类型不能由提供的静态信息确定。例如，对类的实例对象的引用，对指针的取消引用（dereference）访问的实例对象，对指针的下标运算（subscript）访问的实例对象；如果不取消引用指针，则结果是指针的type_info类型信息，而不是它指向的实例对象。
-
-如果expression指向基类，但该对象实际上是派生类的实例，则typeid的结果是派生类的type_info类型信息。需要注意的是，expression指向的类应是具有虚函数的多态类型，否则，结果是就是expression中引用的静态类的type_info类型信息。如果expression正在取消引用某个指针，并且该指针的值是零（null），则typeid将引发std::bad_typeid异常。
+声明为const的常量对象，只能调用同样声明为const的常量成员函数，常量成员函数不能修改任何非静态数据成员或调用不是常量的任何成员函数，如下所示。非常量对象可以调用常量或非常量成员函数，此外还可以使用const关键字重载成员函数，这可以使得常量对象和非常量对象调用不同版本的函数。不能将const关键词用于声明构造函数或析构函数。
 
 ```c++
-class Base { public: virtual ~Base() {}  /* make class polynomial */ };
-class Derived : public Base {};
+class MyClz {
+private:
+    int m_variable;
+public:
+    MyClz(int var) : m_variable(var) {}
+    void set_variable(int var) { m_variable = var; }
+    int get_variable() const { return m_variable; }  // 常量成员函数
+};
 
-int main() {
-    Derived *pd = new Derived();
-    Base *pb = dynamic_cast<Base*>(pd);
-    std::cout << typeid(pb).name() << std::endl;   // class Base *
-    std::cout << typeid(*pb).name() << std::endl;  // class Derived
-    std::cout << typeid(pd).name() << std::endl;   // class Derived *
-    std::cout << typeid(*pd).name() << std::endl;  // class Derived
-    Base *pnull = nullptr;
-    try {
-        std::cout << typeid(*pnull).name() << std::endl;
-    } catch (const std::bad_typeid& bt) {
-        std::cout << bt.what() << std::endl;  // Attempted a typeid of nullptr pointer!
-    }
+int main(int argc, char *argv[]) {
+    const MyClz mc{ 50 };
+    // mc.set_variable(60);  // error, const object can't call non-const function
+    std::cout << mc.get_variable() << std::endl;  // 50
     return 0;
 }
 ```
 
-typeid也可以在模板中使用，以确定模板参数的类型，如下所示。
+需要注意的是，在C中，常量值默认为外部链接，因此它们只能出现在源文件中；在C++中，常量值默认为内部链接，这使它们可以出现在标头文件中。
+
+说明符constexpr关键字在C++11中引入，并在C++14中改进，它表示常量表达式。如果在编译时（而非运行时）计算某个值，它可以使程序运行速度更快、占用内存更少。为限制编译器计算编译时常量的复杂性及其对编译时间的潜在影响，C++14标准要求常量表达式中所涉及的类型均为字面量类型。const与constexpr变量之间的主要区别是，const变量的初始化可以推迟到运行时进行，而constexpr变量必须在编译时进行初始化。
+
+与const一样，它可以应用于变量，如果任何代码试图修改该值，将引发编译器错误。每当需要const整数时（例如在模板参数和数组声明中），都可以使用constexpr整数值。与const不同，constexpr也可以应用于函数和类的构造函数，指示其返回值是常量，如果可能，将会在编译时进行计算。
+
+constexpr函数是指在使用需要它的代码时，可在编译时计算其返回值的函数。主要用于代码需要编译时的返回值来初始化constexpr变量的情况，或者用于提供非类型模板自变量。当参数自变量为constexpr值时，constexpr函数将生成编译时常量，当参数自变量为非constexpr值时，constexpr函数将与正常函数一样，在运行时生成一个值。这种双重行为使用户无需编写同一函数的constexpr版本和非constexpr版本。
 
 ```c++
-template <typename T>
-T max(T a, T b) {
-    std::cout << "Compare " << typeid(T).name() << " values." << std::endl;
-    return a > b ? a : b;
-}
+template <typename Ty, int size = 32>
+struct Warp {
+    static constexpr int warp_size = size;
+    constexpr int get_warp_size() { return warp_size; }
+};
 ```
 
 # 存储类型关键字
