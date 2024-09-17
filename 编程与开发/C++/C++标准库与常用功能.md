@@ -1,40 +1,5 @@
 # C++标准应用
 
-术语pimpl是一种新式C++技术，用于隐藏实现、分离接口、最小化耦合、最小化编译依赖、提高可移植性，术语pimpl是短语pointer to implementation的缩写，意为指向实现的指针。这个概念在其它技术描述中，可能存在其它名称，例如Cheshire Cat或Compiler Firewall等术语。
-
-在接口头文件中，可以定义API如下。
-
-```c++
-// my_calss.h
-#include <unique.h>
-
-class my_class {
-    //  all public and protected stuff goes here
-private:
-    // opaque type here
-    class impl;
-    std::unique_ptr<impl> pimpl;
-};
-```
-
-在实现文件中，定义具体实现细节如下，并将实现编译为动态库或共享库提供。
-
-```c++
-// my_class.cpp
-#include "my_class.h"
-
-// defined privately here
-class my_class::impl {
-    // all private data and functions, and
-    // can now change without recompiling callers
-};
-
-// constructor of my_class
-my_class::my_class(): pimpl(new impl) {
-    // set impl values
-}
-```
-
 ## main()的参数与程序退出状态
 
 在标准的C和C++程序中，程序的入口函数有两个参数，这些参数是程序开始运行时由命令行传入的。

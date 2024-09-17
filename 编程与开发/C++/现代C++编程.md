@@ -1298,7 +1298,7 @@ void (*signal(int, void(*)(int)))(int);
 
 指向类成员或结构体成员的指针是指针声明的一个特例。指向类成员的指针与普通指针不同，因为它同时具有该成员所属类型的信息和该成员所属的类的信息。普通指针只标识内存中的一个对象或只具有其地址，而成员指针则标识类的所有实例中的成员对象。
 
-需要注意的是，指向成员的指针不能指向类的静态成员、引用类型成员或void类型。静态成员的地址不是指向成员的指针，它是指向静态成员的一个实例的常规指针，因为对于给定类的所有对象，只存在一个静态成员的实例。
+需要注意的是，指向成员的指针不能指向类的静态成员、引用类型成员或void类型。静态成员的地址不是指向成员的指针，它是指向静态成员的一个实例的常规指针，因为对于给定类的所有对象，只存在一个静态成员的实例。这意味着可以使用普通的取地址\&运算符和取消引用\*运算符访问它们。
 
 与普通指针一样，允许在单个声明中使用多个指针变量名称，以及任何关联的初始值；语法格式如下所示，其中Type是类成员的数据类型。
 
@@ -1337,6 +1337,8 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 ```
+
+通过指向成员函数的指针调用虚函数就如同直接调用函数一样，在虚函数表中查找正确的函数并调用。虚函数工作的关键是通过指向基类的指针来调用它们。
 
 ## 数组与指针
 
@@ -2259,6 +2261,1097 @@ void demo_functor() {
     std::cout << "There are " << even_count << " even numbers in vector." << std::endl;
 }
 ```
+
+# 类和结构体
+
+在C++语言中，类（class）和结构体（struct）是相同的，用于定义用户自定义的类型，可以包括数据成员和函数成员，区别仅在于，类的默认访问权限是私有的，而结构体和联合体的默认访问权限是公共的。类由成员组成，类所维持的状态存储在数据成员中，类的功能由成员函数提供，类成员的初始化由构造函数完成，释放内存和释放资源等清理工作由析构函数完成。在C++11及更高版本中，数据成员可以（并且通常应该）在声明时初始化。在类中可以定义嵌套类。
+
+
+## 成员访问控制
+
+在C++中提供一些关键字，称为访问控制说明符，用于控制对类中成员的访问权限，并控制派生方式，以控制基类成员继承到子类中时的访问权限。访问说明符应用于它之后声明的所有成员，直到遇到下一个访问说明符，访问说明符可按任何顺序使用任意次数。虽然类对象的存储分配是依赖于实现的，但是，编译器必须保证在访问说明符之间将成员分配到更高的连续内存地址。
+
+| 访问类型  | 说明                                                         |
+| --------- | ------------------------------------------------------------ |
+| private   | 只能由类的成员函数和友元使用；以该方式继承到子类中时，会将基类所有成员都改为private权限 |
+| protected | 可以由类的成员函数和友元使用，此外，还可以由派生自该类的子类使用；以该方式继承到子类中时，会将基类的public成员改为protected权限 |
+| public    | 可以由任意范围的函数使用；以该方式继承到子类中时，可以保持基类所有成员的访问权限不变 |
+
+在C++语言中，类的默认访问权限是private私有的，而结构体和联合体的默认访问权限是public公共的；类的派生默认是private类型的，结构体的派生默认是public类型的，联合体不能进行派生。
+
+```c++
+class MyA {
+private:
+    int a = 1;
+protected:
+    int b = 2;
+public:
+    int c = 3;
+};
+
+class MyB : protected MyA {
+public:
+    void foo() {
+        // std::cout << a << std::endl;  // can't access private base member
+        std::cout << b << std::endl;  // b is protected now
+        std::cout << c << std::endl;  // c is protected now
+    }
+};
+```
+
+需要注意的是，类在进行派生时，所指定的派生访问权限仅仅会影响类的非静态成员。对于基类中的公共静态成员，即使子类使用private派生，也可以在子类中使用::运算符访问基类中的公共静态成员，如下所示。这是因为静态成员属于类本身，无需通过类的对象实例来访问。
+
+```c++
+class MyA {
+public: 
+    static int var1;
+    int var2 = 20;
+};
+int MyA::var1 = 10;
+
+class MyB : private MyA {};
+
+class MyC : public MyB {
+public:
+    void foo() {
+        std::cout << ::MyA::var1 << std::endl;
+        // std::cout << ::MyA::var2 << std::endl;  // can't convert MyC (this) to MyA
+    }
+};
+```
+
+对于声明为virtual的虚函数来说，在子类中进行重载时并不会继承基类的访问控制权限，但在使用指针类型进行多态调用时，会按照代码上的指针变量类型进行判断，以确认在该指针类型下是否拥有相关成员的访问权限，如下所示。
+
+```c++
+class MyA {
+public:
+    virtual void foo() { std::cout << "MyA"  << std::endl; }
+};
+
+class MyB : public MyA {
+private:
+    virtual void foo() override { std::cout << "MyB" << std::endl; }
+};
+
+int main(int argc, char *argv[]) {
+    MyB mb;
+    MyA* pa = &mb;
+    MyB* pb = &mb;
+    pa->foo();     // "MyB", MyA* can call foo function
+    // pb->foo();  // error, can't call private foo function
+    return 0;
+}
+```
+
+在涉及虚拟基类的多重继承树中，可通过多个路径到达给定的子类，由于可沿着不同路径应用不同的访问控制，因此该编译器会选择允许大多数访问的继承路径。
+
+```mermaid
+graph BT
+base[class VBase]
+left[class LeftPath : virtual private VBase] --> base
+right[class RightPath : virtual public VBase] --> base
+derived[class Derived : public LeftPath, public RightPath]
+derived --> left
+derived --> right
+```
+
+如上图所示的继承树，编译器会选择RightPath的继承路径，因为该条路径的访问控制更易于访问。
+
+## 友元函数与友元类
+
+在某些情况下，向不属于类成员的函数或单独类授予成员级别的访问权限非常有用，这些自由函数和单独类称为友元，友元可以访问一个类的所有成员。仅在类的实现中可以声明所授权的友元，函数或单独类不能将自身声明为任何类的友元。并且，友元关系不能继承。
+
+使用friend关键字标记一个类的友元，并且可声明在类的任何位置，不受private、protected、public的限制，可在类内或类外定义，友元函数或友元类不是类的成员，调用形式与普通函数或普通类相同。同一个函数或类可声明为多个类的友元。使用friend声明的函数或单独类被视为已使用extern关键字声明。
+
+尽管具有全局范围的自由函数可以在其定义之前声明为friend函数，但是类的成员函数在它们的完整类定义出现前不能声明为friend函数。
+
+```c++
+void foo(MyClz&);
+class FriendClz;  // void bar(MyClz&);
+
+class MyClz {
+private:
+    int variable = 10;
+    friend void foo(MyClz&);
+    // friend void FriendClz::bar(MyClz&);  // error
+};
+
+void foo(MyClz& mc) {
+	std::cout << mc.variable << std::endl;
+}
+```
+
+在C++11中，一个类有两种形式的友元声明，即friend class Clz或是friend Clz，如下所示。第一种形式，在找不到友元类的声明时，会自动引入该类的声明；第二种形式，在找不到友元类的声明时，不会引入该类的声明且编译出错，同时，可以使用该形式将模板参数类型或typedef类型声明为友元。
+
+```c++
+template <typename ClzType>
+class MyClz {
+    friend class Friend;
+    friend ClzType;
+};
+```
+
+## this指针
+
+在类、结构体、联合体的非静态成员函数范围内，存在一个this指针，指向的是调用该成员函数的类的实例对象，非静态成员函数不具有this指针。对象的this指针并不是对象本身的一部分，在实例对象上调用sizeof语句并不会统计this指针，实际上，this指针是对象本身，当实例对象调用非静态成员函数时，编译器会将该对象的地址作为隐藏的参数传递给成员函数，也即this指针。
+
+    object.function(arguments);    // call format
+    function(&object, arguments);  // this pointer
+
+对象的地址可从成员函数的内部由this指针提供，在访问类成员时可以显式使用this指针。此外，表达式*this通常用于从成员函数返回当前对象，也可以使用this指针防止自引用，如下所示。由于this指针不可修改，因此不允许对this赋值。
+
+    class MyClz {
+    public:
+        MyClz& operator=(MyClz& other) {
+            if (this != &other) {
+                // copy assignment
+            }
+            return *this;
+        }
+    };
+
+this指针的类型会根据函数声明是否包括const或volatile关键字而更改，且成员函数声明的const或volatile限定符适用于由该函数范围中的this指针。
+
+| 成员函数声明               | this指针类型             |
+| -------------------------- | ------------------------ |
+| void Func()                | MyClass\*                |
+| void Func() const          | const MyClass\*          |
+| void Func() volatile       | volatile MyClass\*       |
+| void Func() const volatile | const volatile MyClass\* |
+
+修饰为const的this指针，无法更改成员数据，无法调用不是const的成员函数；修饰为volatile的this指针，每当访问成员数据时，都会从内存中加载该数据，禁用某些优化，无法调用不是volatile的成员函数。例外是，构造函数和析构函数不能声明为const或volatile，但是，可以在const或volatile对象上调用它们。
+
+## 类的成员概述
+
+### 成员函数概述
+
+成员函数是静态或非静态的，静态成员函数的行为与其他成员函数的行为不同，因为静态成员函数不具有隐式this指针。可以在类声明的内部或外部定义成员函数（无论是静态的还是非静态的）。如果在类声明的内部定义一个成员函数，则该函数会被视为内联函数，并且不需要用其类名来限定函数名称。尽管会将类声明中定义的函数视为内联函数，但用户仍可以使用`inline`关键字来标识代码。
+
+```c++
+class Account {
+private:
+    double balance;
+public:
+    // declare the member function Deposit within the declaration of class Account
+    double Deposit(double HowMuch) {
+        balance += HowMuch;
+        return balance;
+    }
+};
+```
+
+如果成员函数的定义在类声明的外部，则仅在将该函数显式声明为`inline`时才将其视为内联函数。此时通过范围解析运算符`::`和类名称限定定义中的函数名称。
+
+```c++
+class Account {
+private:
+    double balance;
+public:
+    // declare the member function Deposit but do not define it
+    double Deposit(double HowMuch);
+
+};
+inline double Account::Deposit(double HowMuch) {
+    balance += HowMuch;
+    return balance;
+}
+```
+
+虽然成员函数既可在类声明的内部进行定义也可单独进行定义，但在定义类后，不能将任何成员函数添加到类中。包含成员函数的类可具有多个声明，但成员函数本身只能在程序中有一个定义，多个定义会导致在链接时出现错误消息。如果类包含内联函数定义，则这些函数定义必须遵守“一个定义”规则。
+
+### 特殊成员函数
+
+特殊成员函数是类或结构体的成员函数，在某些情况下，编译器会自动生成这些特殊成员函数，包括默认构造函数、析构函数、复制构造函数、复制赋值运算符、移动构造函数、移动赋值运算符。编译器生成的实现称为默认特殊成员函数。编译器不会生成不需要的函数。
+
+如果类未定义一个或多个特殊成员函数，则编译器可以隐式声明和定义所使用的函数。可以使用defalut关键字显式声明默认的特殊成员函数，这使得编译器仅在需要时才定义函数，就像根本没有声明函数一样。若用户自定义任意一个采用参数的构造函数时，则编译器不会再生成默认构造函数，对于其它特殊成员函数而言也是如此。若要显式防止自动生成特殊成员函数，可以使用delete关键字将其声明为已删除。
+
+    class MyClz {
+    public:
+        MyClz() = default;
+        MyClz(MyClz&&) = delete;
+    };
+
+编译器生成的默认构造函数，会对实例对象执行简单的逐个成员的默认初始化，默认初始化使所有成员变量处于不确定状态。同样的，默认析构函数会对实例对象执行逐个成员的析构，并且，仅当基类析构函数为虚函数时，子类的析构函数才是虚的。默认的复制构造、复值赋值运算、移动构造、移动赋值运算等，会执行非静态数据成员的逐个成员的位模式复制或移动。
+
+### 可变数据成员
+
+可以使用`mutable`关键字修饰类的非静态、非常量、非引用数据成员，从const成员函数中对此类可修改数据成员进行赋值是合法的。
+
+```c++
+class MyClz {
+private:
+    mutable int m_variable = 0;
+public:
+    int increase(int value) const {
+        m_variable += value;
+        return m_variable;
+    }
+};
+```
+
+在上述代码中，常量成员函数increase()无法修改类实例对象的数据成员，但将m_variable成员声明为mutable可变的，即可被常量函数修改。
+
+### 静态成员
+
+类可以包含静态成员数据和成员函数，当数据成员被声明为`static`时，只会为类的所有实例对象保留一个数据副本。静态数据成员不是某个自定义类型的对象的一部分，因此，静态数据成员的声明不被视为一个定义。在类范围中声明静态数据成员，必须在实现文件的范围内执行定义。这些静态成员具有外部链接。
+
+```c++
+class BufferedOutput {
+public:
+    // static member declaration
+    static long s_bytecount;
+    static void ResetCount() {
+        s_bytecount = 0;  // reset the counter
+    }
+};
+// define bytecount in file scope and initialize
+long BufferedOutput::s_bytecount = 4096;
+
+int main(int argc, char *argv[]) {
+    BufferedOutput::s_bytecount = 1024;  // access static member via ClassName
+    return 0;
+}
+```
+
+对于静态成员而言，可以在不需要类的实例对象的情况下，在类的外部使用类名称来引用公共静态成员。同时，静态成员遵循类成员访问规则，因此对于私有静态成员而言，只允许在内的内部访问或供友元访问。但无论静态成员的访问限制如何，都必须在文件范围内进行定义，如果显式初始化静态数据成员，则必须使用定义提供初始值设定项。
+
+### 指向成员的指针
+
+指向类成员或结构体成员的指针是指针声明的一个特例。指向类成员的指针与普通指针不同，因为它同时具有该成员所属类型的信息和该成员所属的类的信息。普通指针只标识内存中的一个对象或只具有其地址，而成员指针则标识类的所有实例中的成员对象。
+
+需要注意的是，指向成员的指针不能指向类的静态成员、引用类型成员或void类型。静态成员的地址不是指向成员的指针，它是指向静态成员的一个实例的常规指针，因为对于给定类的所有对象，只存在一个静态成员的实例。这意味着可以使用普通的取地址\&运算符和取消引用\*运算符访问它们。
+
+与普通指针一样，允许在单个声明中使用多个指针变量名称，以及任何关联的初始值；语法格式如下所示，其中Type是类成员的数据类型。
+
+```c++
+Type ClassName::*pointer_variable = &ClassName::member;
+```
+
+对于一个成员指针来说，无法直接对其解除引用，而需要通过类的实例对象进行访问，对象使用.*运算符访问成员指针，对象指针使用->*访问成员指针。
+
+```c++
+class Window {
+public:
+    int W, H;
+    char* WinCaption;
+    Window(int width, int height, const char* caption) {
+        W = width; H = height;
+        strcpy(WinCaption, caption);
+    }
+    bool SetCaption(const char* caption) {
+        strcpy(WinCaption, caption);
+        return true;
+    }
+};
+
+int main(int argc, char *argv[]) {
+    // 指向成员变量的指针
+    int Window::*pW = &Window::W, Window::*pH = &Window::H;
+    char* Window::*pCaption = &Window::WinCaption;
+    // 指向成员函数的指针
+    bool (Window::*pFunction)(const char*) = &Window::SetCaption;
+    Window win(800, 600, "HelloWindow");
+    std::cout << win.*pCaption << std::endl;  // HelloWindow
+    // 因为函数调用运算符()的优先级更高，所以成员指针解除运算符.*需要加上括号
+    (win.*pFunction)("SayWindow");
+    std::cout << win.*pCaption << std::endl;  // SayWindow
+    return 0;
+}
+```
+
+通过指向成员函数的指针调用虚函数就如同直接调用函数一样，在虚函数表中查找正确的函数并调用。虚函数工作的关键是通过指向基类的指针来调用它们。
+
+## 类的构造函数
+
+若要自定义类初始化其成员的方式，或者要在创建类的对象时调用函数，需要自定义构造函数，可以定义所需数量的重载构造函数，以各种方式自定义初始化。构造函数具有与类相同的名称，没有返回值。通常，构造函数具有公共可访问性，以便类定义或继承层次结构外部的代码可以创建类的对象，但也可以将构造函数声明为protected或private访问权限。
+
+```c++
+class Box {
+private:
+    int m_length = 0, m_width = 0, m_height = 0;
+public:
+    Box() {};  // default constructor
+    Box(int val) : m_length(val), m_width(val), m_height(val) {}
+    Box(int length, int width, int height) : m_length(length), m_width(width), m_height(height) {}
+    int Volume() { return m_length * m_width * m_height; }
+};
+
+int main(int argc, char *argv[]) {
+    // 声明类的实例时，编译器会基于重载决策选择要调用的构造函数
+    Box b1;
+    Box b2{ 5 };
+    Box b3{ 5, 4, 3 };
+    return 0;
+}
+```
+
+构造函数可以使用friend、inline、explicit、constexpr声明修饰符。构造函数可以初始化一个已声明为const、volatile或者const volatile的对象，该对象在构造函数完成之后成为const等相应类型。
+
+构造函数可以选择采用成员初始化表达式列表，该列表由冒号后的所有identifier(argument)表达式组成。与在构造函数主体中赋值相比，初始化类成员是更高效的方式，应该首选使用成员初始化表达式列表，而不是在构造函数主体中赋值。类的const成员和引用成员必须在成员初始化表达式列表中进行初始化。若要确保在派生构造函数运行之前完全初始化基类，也需要在初始化表达式列表中调用基类的构造函数。
+
+```c++
+class Base {
+private:
+    int m_variable;
+public:
+    Base(int var) : m_variable(var) {};
+};
+
+class Derived : public Base {
+private:
+    float m_point;
+public:
+    Derived(int var, float point) : Base(var), m_point(point) {};  // invoke the constructor of Base
+};
+```
+
+如果某个构造函数采用std::initializer_list\<T\>作为参数，并且其他参数都具有默认值，则当类通过直接初始化来实例化时，会在重载决策中选择该构造函数。可以使用initializer_list初始化可接受它的任何成员，如下所示。初始化列表std::initializer_list在头文件\<initializer_list\>中。
+
+```c++
+class MyClz {
+private:
+    std::vector<std::string> m_strings;
+    int m_id;
+public:
+    MyClz(initializer_list<std::string> args, int id = 0) : m_strings(args), m_id(id) {}
+};
+```
+
+在一个类定义中，可以包含其它类对象作为成员，这时需要在成员初始化表达式列表中，调用所包含类对象的构造函数，如下所示。
+
+```c++
+class Label {
+private:
+    std::string m_name;
+public:
+    Label(std::string name) : m_name(name) {}
+};
+
+class Box {
+private:
+    int m_width, m_height;
+public:
+    Box(int width, int height) : m_width(width), m_height(height) {}
+};
+
+class StorageBox : public Box {
+private:
+    Label m_label;
+public:
+    StorageBox(int width, int height, Label label) : Box(width, height), m_label(label) {}
+};
+```
+
+### 默认构造函数
+
+默认构造函数通常没有参数，但它们可以具有带默认值的参数。默认构造函数是特殊成员函数之一，如果类中未声明构造函数，则编译器将提供隐式inline默认构造函数，可以通过delete关键字删除默认构造函数。如果有任何类成员不是默认可构造，则编译器生成的默认构造函数会定义为已删除。例如，类的所有基础数据成员以及类型成员都必须具有可访问的默认构造函数和析构函数；引用类型的所有数据成员和所有const成员都必须具有默认成员初始化表达式。
+
+如果用户依赖于隐式默认构造函数，请确保在类定义中初始化成员，如果成员没有初始化表达式，则成员会处于未初始化状态，其值是不确定的垃圾值。一般而言，即使不依赖于隐式默认构造函数，也最好在定义时初始化成员。
+
+调用编译器生成的默认构造函数并尝试使用括号时，系统会发出警告。因为编译器可以将这种语法形式解释为函数声明或是对默认构造函数的调用。因为C++分析程序更偏向于声明，因此表达式会被视为函数声明。因此调用默认构造函数时，无需使用空括号表示无需参数或默认参数，或者可以使用花括号统一初始化语法。
+
+```c++
+class MyClz {
+private:
+    int m_variable = 0;  // initialize
+public:
+    MyClz(int var = 1) : m_variable(var) {}
+};
+
+int main(int argc, char *argv[]) {
+    MyClz mc1();  // as function declaration
+    MyClz mc2{};  // object instance
+    MyClz mc3;    // object instance
+    return 0;
+}
+```
+
+如果类没有默认构造函数，则无法通过单独使用方括号语法来构造该类的对象数组，但是，可以使用一组初始化表达式列表来初始化类的对象数组。
+
+```c++
+class Point {
+private:
+    int mx, my;
+public:
+    Point(int x, int y) : mx(x), my(y) {}
+};
+
+int main(int argc, char *argv[]) {
+    // Point points[8];  // error
+    Point points[3] = { { 1, 2 }, { 3, 4 }, { 5, 6 } };
+    return 0;
+}
+```
+
+### 委托构造函数
+
+委托构造函数调用同一类中的其他构造函数，以完成部分初始化工作，在具有多个全都必须执行类似工作的构造函数时，此功能非常有用。可以在一个构造函数中编写主逻辑，并从其他构造函数调用它，通常使用成员初始化表达式列表语法，如下所示。
+
+```c++
+class Box {
+private:
+    int m_length, m_width, m_height;
+    Box(int length, int width, int height) {
+        m_length = length > 0 ? length : 1;
+        m_width  = width  > 0 ? width  : 1;
+        m_height = height > 0 ? height : 1;
+    }
+    // 委托构造函数，避免冗余的判断代码
+    Box(int val) : Box(val, val, val) {}
+};
+```
+
+### 显式构造函数
+
+如果类具有带一个参数的构造函数，则在构造时，编译器可以对参数进行隐式的类型转换，以匹配可能的构造函数。
+
+```c++
+class Cube {
+private:
+    int m_length;
+public:
+    Cube(int length) : m_length(length) {}
+};
+
+class MyClz {
+private:
+    std::string m_name;
+    Cube m_cube;
+public:
+    MyClz(std::string name, Cube cube) : m_name(name), m_cube(cube) {}
+};
+
+int main(int argc, char *argv[]) {
+    MyClz mc = { "Bloonow", 100 };  // 100 -> Cube(100)
+    return 0;
+}
+```
+
+这种构造函数的隐式类型转换，可能会导致代码中发生细微但严重的错误。可以使用`explicit`关键字以防止出现这种隐式类型转换，如下所示。
+
+```c++
+class MyClz {
+private:
+    std::string m_name;
+    Cube m_cube;
+public:
+    explicit MyClz(std::string name, Cube cube) : m_name(name), m_cube(cube) {}
+};
+```
+
+### 复制构造函数与复制赋值运算符
+
+复制构造函数通过从相同类型的对象复制成员值来初始化对象。如果类成员都是简单类型，则编译器生成的复制构造函数已够用，而无需自定义复制构造函数。如果类需要更复杂的初始化，则需要实现自定义的复制构造函数。例如，如果类成员是指针，则需要定义复制构造函数以分配新内存，并从其他指针指向的对象复制值。编译器生成的复制构造函数只是复制指针，这会导致新指针仍指向其他指针的内存位置。可以通过将复制构造函数定义为已删除来阻止复制对象。
+
+```c++
+struct Box { int width, height; };
+class MyClz {
+private:
+    Box* mp_box = nullptr;
+public:
+    MyClz(int width, int height) {
+        mp_box = new Box;
+        mp_box->width = width;
+        mp_box->height = height;
+    }
+    ~MyClz() {
+        delete mp_box;
+        mp_box = nullptr;
+    }
+    // 复制构造函数
+    MyClz(const MyClz& other) {
+        mp_box = new Box;
+        mp_box->width = other.mp_box->width;
+        mp_box->height = other.mp_box->height;
+    }
+    // 复制赋值运算符
+    MyClz& operator=(const MyClz& other) {
+        if (this == &other) return *this;
+        if (mp_box == nullptr) mp_box = new Box;
+        mp_box->width = other.mp_box->width;
+        mp_box->height = other.mp_box->height;
+        return *this;
+    }
+};
+```
+
+应尽可能令复制构造函数的参数为const ClzName&类型，这可防止复制构造函数意外更改复制的对象，此外这还允许从const对象复制。定义复制构造函数时，还应定义operator=复制赋值运算符。声明复制构造函数不会取消编译器生成的复制赋值运算符，反之亦然。如果实现其中任一方法，建议也实现另一个，同时实现这两者时，代码的含义是明确的。
+
+### 移动构造函数与移动赋值运算符
+
+移动构造函数和移动复制运算符使右值对象拥有的资源无需复制即可移动到左值当中，它将现有对象数据的所有权移交给新变量，而不复制原始数据。这需要用到移动语义。如果类声明了移动构造函数或移动赋值运算符，则隐式声明的复制构造函数会定义为已删除。
+
+此处以一个内存缓冲区的C++类为示例。
+
+```c++
+class MemoryBlock {
+private:
+    size_t m_bytes;
+    char *m_data = nullptr;
+public:
+    MemoryBlock(size_t bytes) : m_bytes(bytes), m_data(new char[bytes]) {}
+    ~MemoryBlock() {
+        if (m_data != nullptr) delete[] m_data;
+    }
+    // 移动构造函数
+    MemoryBlock(MemoryBlock&& other) : m_bytes(0), m_data(nullptr) {
+        m_bytes = other.m_bytes;
+        other.m_bytes = 0;
+        // 将 other 内存块的所有权转移给 this 对象
+        m_data = other.m_data;
+        // 将 other 对象的 m_data 指针指向空地址，防止 other 的析构函数释放该块内存
+        other.m_data = nullptr;
+    }
+    // 移动赋值运算符
+    MemoryBlock& operator=(MemoryBlock&& other) {
+        if (this == &other) return *this;
+        m_bytes = other.m_bytes;
+        other.m_bytes = 0;
+        if (m_data != nullptr) delete[] m_data;
+        m_data = other.m_data;
+        other.m_data = nullptr;
+        return *this;
+    }
+};
+```
+
+针对移动构造函数和移动赋值运算符，可以使用移动语义来提高性能，如下所示。
+
+```c++
+int main(int argc, char *argv[]) {
+    MemoryBlock mb1(1024);
+    int *array1 = (int*)(mb1.storage());
+    array1[0] = 99;
+    MemoryBlock mb2 = std::move(mb1);
+    int* array2 = (int*)(mb2.storage());
+    std::cout << array2[0] << std::endl;  // 99
+    return 0;
+}
+```
+
+如果自定义的类同时提供了移动构造函数和移动赋值运算符，则可以编写移动构造函数来调用移动赋值运算符，从而消除冗余代码，如下所示。
+
+```c++
+class MemoryBlock {
+public:
+    // 移动构造函数
+    MemoryBlock(MemoryBlock&& other) : m_bytes(0), m_data(nullptr) {
+        *this = std::move(other);  // 调用移动赋值运算符
+    }
+};
+```
+
+### 类继承结构中的构造函数
+
+如果一个类是从多个基类派生的，那么将按照派生类声明中列出的顺序调用基类的构造函数，如下所示。
+
+```c++
+class Base1 {
+public:
+    Base1() { std::cout << "Base1 constructor" << std::endl; }
+};
+class Base2 {
+public:
+    Base2() { std::cout << "Base2 constructor" << std::endl; }
+};
+class Derived : public Base1, public Base2 {
+public:
+    Derived() { std::cout << "Derived constructor" << std::endl; }
+};
+
+int main(int argc, char *argv[]) {
+    // Base1 constructor
+    // Base2 constructor
+    // Derived constructor
+    Derived d;
+    return 0;
+}
+```
+
+派生类可以使用using声明从直接基类继承构造函数，这可以将来自基类的所有构造函数引入范围，并作为派生类自己的构造函数，如下面的示例所示。
+
+```c++
+class Base {
+private:
+    int num;
+    char letter;
+public:
+    Base() { std::cout << "Base()" << std::endl; }
+    Base(const Base& other) { std::cout << "Base(Base&)" << std::endl; }
+    explicit Base(int i) : num(i) { std::cout << "Base(int)" << std::endl; }
+    explicit Base(char c) : letter(c) { std::cout << "Base(char)" << std::endl; }
+};
+
+class Derived : Base {
+public:
+    using Base::Base;  // 继承基类的所有构造函数
+};
+
+int main(int argc, char *argv[]) {
+    Derived d1;       // Base()
+    Derived d2(65);   // Base(int)
+    Derived d3('a');  // Base(char)
+    Derived d4 = d1;  // Base(Base&)
+    return 0;
+}
+```
+
+### 构造函数的工作顺序
+
+在构造一个类的实例对象时，构造函数会按照特定的顺序进行调用，具体的执行顺序如下所述。
+
+1. 根据对象的实例化方式，选择合适的构造函数签名，若存在默认参数对象，则按照ABI指定的顺序构造参数对象；
+2. 若存在基类，则按照基类的继承顺序，调用基类的构造函数（若无默认构造函数，则在派生类的初始化表达式列表中指定参数），转到基类的1步骤；
+3. 若不存在基类，或基类构造函数调用完毕，则进入成员初始化表达式列表，按照成员对象在类中声明的顺序依次构造，而不按照其在列表中出现的顺序；
+4. 执行当前类的构造函数体中的语句。
+
+一个类实例对象的构造过程，如下示例代码所示。
+
+```c++
+struct Base1 { Base1(int var) { std::cout << "Base1(" << var << ")" << std::endl; } };
+struct Base2 { Base2(int var) { std::cout << "Base2(" << var << ")" << std::endl; } };
+struct Argument { Argument(int var) { std::cout << "Argument(" << var << ")" << std::endl; } };
+struct Member { Member(int var) { std::cout << "Member(" << var << ")" << std::endl; } };
+struct MyClz : public Base1, public Base2 {
+    Member m0 = { 0 };
+    Member m1, m2;
+    MyClz(Argument arg1 = Argument(1), Argument arg2 = Argument(2)) : Base1(1), Base2(2), m2(2), m1(1) {
+        std::cout << "MyClz()" << std::endl;
+    }
+};
+
+int main(int argc, char *argv[]) {
+    // Argument(2)
+    // Argument(1)
+    // Base1(1)
+    // Base2(2)
+    // Member(1)
+    // Member(2)
+    // Member(0)
+    // MyClz()
+    MyClz mc;
+    return 0;
+}
+```
+
+此外，如果类派生自虚拟基类，则会将对象的虚拟基指针（virtual base pointer）初始化；如果类具有或继承了虚函数，则会将对象的虚函数指针（virtual function pointer）初始化。虚函数指针指向类中的虚函数表（virtual function table），确保虚函数正确地调用绑定代码。
+
+如果构造函数引发异常，则会依次调用析构函数，析构的顺序与构造的顺序相反。构造函数主体中的代码将进行堆栈展开。基类和成员对象将被销毁，顺序与声明顺序相反。如果是非委托构造函数，所有完全构造的基类对象和成员均会销毁。但是，最终要构造的对象本身不是完全构造的，因此其析构函数不会运行。
+
+## 类的析构函数
+
+析构函数是一个成员函数，在对象超出范围或通过delete或delete[]显式销毁对象时，会自动调用对象的析构函数。析构函数与类同名，前面带有`~`波形符，不接受参数。如果用户未定义析构函数，则编译器会提供一个默认的空的析构函数。当自定义类维护着必须显式释放的资源（例如系统资源的句柄，或指向当对象销毁时应释放的内存指针）时，则需要自定义一个的析构函数，用于释放类所维护的系统资源。
+
+如下一个自定义字符串类所示，析构函数中使用delete[]显式释放为字符串动态分配的内存空间。
+
+```c++
+class MyString {
+private:
+    char* m_text = nullptr;
+public:
+    MyString(const char* text) {
+        size_t size = strlen(text) + 1;  // +1 for '\0'
+        m_text = new char[size];
+        strcpy(m_text, text);
+    }
+    ~MyString() {
+        if (m_text != nullptr) {
+            delete[] m_text;
+            m_text = nullptr;
+        }
+    }
+};
+```
+
+在声明析构函数时需要遵守一些限制规则，析构函数不接受参数自变量，无返回值，无法声明为const、volatile、static说明符修饰，但可以被修饰为const、volatile、static的对象的进行析构调用。可以将析构函数声明为virtual虚函数，通过使用虚析构函数，无需知道对象的类型即可销毁对象，使用虚函数机制调用该对象的正确析构函数，从实际子类型一直调用到根基类。析构函数也可以声明为抽象类的纯虚函数。
+
+对象可以使用析构函数的完全限定名显式调用析构函数，并且析构函数可以随意调用类的成员函数和访问类成员数据。但是，程序不能提取析构函数的地址，并且派生类不继承其基类的析构函数。
+
+在析构一个类的实例对象时，析构函数会按照特定的顺序进行调用，具体的执行顺序如下所述。
+
+1. 调用该类的析构函数，并且会执行该析构函数的主体；
+2. 对非静态成员对象而言，按其在类中声明的相反顺序调用析构函数，其构造时的成员初始化列表不影响构造或析构的顺序；
+3. 非虚拟基类的析构函数，按照与声明的相反顺序调用；
+4. 虚拟基类的析构函数，按照与声明的相反顺序调用。
+
+```c++
+struct A1      { virtual ~A1() { printf("A1 dtor\n"); } };
+struct A2 : A1 { virtual ~A2() { printf("A2 dtor\n"); } };
+struct A3 : A2 { virtual ~A3() { printf("A3 dtor\n"); } };
+struct B1      { ~B1() { printf("B1 dtor\n"); } };
+struct B2 : B1 { ~B2() { printf("B2 dtor\n"); } };
+struct B3 : B2 { ~B3() { printf("B3 dtor\n"); } };
+
+int main(int argc, char *argv[]) {
+    // A3 dtor
+    // A2 dtor
+    // A1 dtor
+    A1 * a1 = new A3; delete a1;
+    // B1 dtor
+    B1 * b1 = new B3; delete b1;
+    // B3 dtor
+    // B2 dtor
+    // B1 dtor
+    B3 * b3 = new B3; delete b3;
+    return 0;
+}
+```
+
+## 自定义类型转换
+
+类型转换会将一个类型的值转换成另一个类型的新值，标准转换内置于C++语言并支持其内置类型。标准转换执行内置类型之间的转换、通过继承相关联的类型的指针或引用之间的转换、void指针的双向转换、null指针的转换。可以创建用户定义的转换，以对用户自定义类型进行转换，从其它类型转换为用户定义类型，或将用户类型转换为其它类型。可以将它们实现为转换构造函数或转换函数。
+
+当一个标准转换无法完成隐式转换时，编译器可以使用用户定义的转换（可选择随后使用其他标准转换）来完成此操作。当转换提供两个或多个用户定义的用于执行相同转换的转换时，该转换将被视为不明确。这种不明确性是一个错误，因为编译器无法确定应选择哪一个可用转换。但若只是定义执行相同转换的多种方式，则它不是一个错误，因为可用的转换集在源代码中的不同位置可能不同，例如，可取决于源文件中所包含的头文件。
+
+默认情况下，当创建自定义类型的构造函数时，编译器可使用它来执行隐式转换。通过使用explicit关键字，告知编译器某个构造函数不能用于执行隐式转换。
+
+```c++
+class Money1 {
+private:
+    double m_amount = 0.0;
+public:
+    Money1(double value) : m_amount(value) {}
+};
+
+class Money2 {
+private:
+    double m_amount = 0.0;
+public:
+    explicit Money2(double value) : m_amount(value) {}
+};
+
+int main(int argc, char *argv[]) {
+    Money1 m1 = 100.0;
+    Money2 m2 = 100.0;  // error, can't convert from double to Money2
+    return 0;
+}
+```
+
+此外，可以定义转换函数，用于执行从用户类型到其他类型的转换，这些函数有时称为强制转换运算符。转换函数不指定返回类型和参数自变量，转换函数的目标类型由转换函数的名称以形如operator TargetType()的方式指定。转换函数可由explicit修饰。转换函数可以是虚函数。
+
+```c++
+struct Price {
+    double m_price = 0.0;
+    explicit Price(double value) : m_price(value) {
+        std::cout << "Price()" << std::endl;
+    }
+};
+
+class Money {
+private:
+    double m_amount = 0.0;
+public:
+    Money(double value) : m_amount(value) {}
+    operator double() { return m_amount; }
+    operator Price() {
+        std::cout << "convert from Money to Price" << std::endl;
+        return Price(m_amount);
+    }
+};
+
+void foo(const Price& price) {
+    std::cout << price.m_price << std::endl;
+}
+
+int main(int argc, char *argv[]) {
+    // convert from Money to Price
+    // Price()
+    // 9.8
+    foo(Money(9.8));
+    return 0;
+}
+```
+
+## 类的继承与派生
+
+可使用名为继承的机制从现有类派生新类，用于派生的类称为特定派生类的基类，语法如下所示。
+
+```c++
+class Derived : [virtual] [access_specifier] Base1, [virtual] [access_specifier] Base2, ... {
+   // member list
+};
+```
+
+在类的名称标记后面，使用一个后跟基类列表的冒号，以这种方式访问的基类必须已提前声明。语法中包含访问说明符，它是关键字public、protected、private（缺省时默认）之一，用于控制基类的成员在派生到子类中时所使用的访问权限。可以使用关键字virtual指示虚拟继承，此时的基类称为虚拟基类。可指定多个基类，并用逗号分隔。
+
+```c++
+class Base {
+public:
+    void print() { std::cout << "Base" << std::endl; }
+};
+
+class Derived : public Base {
+public:
+    void print() { std::cout << "Derived" << std::endl; }
+};
+
+int main(int argc, char *argv[]) {
+    Base b;    b.print();  // Base
+    Derived d; d.print();  // Derived
+    return 0;
+}
+```
+
+在继承中，派生类包含基类的成员以及新添加的所有新成员。因此，在派生类中可以引用基类的成员，除非在派生类中重新定义这些成员。即使当在派生类中重新定义了基类的成员（覆盖），仍然可以使用范围解析运算符`::`访问到这些基类成员。这实际上只是在派生类中，通过新的定义实现，将基类中的同名成员覆盖而已，基类中的同名成员仍然存在。需要注意的是，这种直接覆盖并不能实现面向对象的动态多态性，而应该使用virtual虚函数实现动态多态性。
+
+### 虚函数
+
+虚函数指的是应该在派生类中重新定义的成员函数，这些成员函数在基类中声明或者定义，并使用`virtual`关键字修饰。不能将全局函数、静态成员函数、构造函数声明为virtual虚函数，但能将析构函数声明为虚函数。在派生类中声明重写函数时可使用virtual关键字，但不是必需的，因为虚函数的重写始终是虚拟的。
+
+当使用基类的指针或引用来访问派生类的实例对象时，在该对象上调用虚函数会执行该函数的正确的派生类版本。虚函数能够确保为该对象调用正确的函数，这与用于进行函数调用的表达式类型无关，从而实现动态多态性。这种在派生类中重新定义基类中虚函数的行为称为重写，只有派生类函数与基类函数的签名完全一致（返回类型、函数名称、参数列表）时才起作用，否则就只是普通的函数重载，而不是虚函数重写。
+
+对于形如`Type* ptr = new Object;`的指针声明或引用声明而言，将左侧的Type称为声明变量类型，将右侧的Object称为实际对象类型。则对于虚函数来说，在调用时是根据对象的实际类型Object动态选择的；对于普通的非虚函数来说，在调用时是根据声明类型Type在编译时选择的。
+
+```c++
+class Document {
+public:
+    std::string m_name;
+    Document(const char* name) : m_name(name) {}
+    virtual void print_name_of() { std::cout << "Name of Document: " << m_name << std::endl; }
+};
+
+class Book : public Document {
+public:
+    Book(const char* name) : Document(name) {}
+    virtual void print_name_of() { std::cout << "Name of Book: " << m_name << std::endl; }
+};
+
+class Paper : public Document {
+public:
+    Paper(const char* name) : Document(name) {}
+    virtual void print_name_of() { std::cout << "Name of Paper: " << m_name << std::endl; }
+};
+
+int main(int argc, char *argv[]) {
+    Document *p1 = new Book("Parallel Program Guide");
+    Document *p2 = new Paper("Attention Is All You Need");
+    p1->print_name_of();  // Name of Book: Parallel Program Guide
+    p2->print_name_of();  // Name of Paper: Attention Is All You Need
+    return 0;
+}
+```
+
+可通过使用范围解析运算符`::`与类名称一起显式限定函数名称来禁用虚函数调用机制，如下所示。
+
+```c++
+class Base {
+public:
+    virtual void print() { std::cout << "Base" << std::endl; }
+};
+
+class Derived : public Base {
+public:
+    virtual void print() { std::cout << "Derived" << std::endl; }
+};
+
+int main(int argc, char *argv[]) {
+    Base *p = new Derived;
+    p->print();        // Derived
+    p->Base::print();  // Base
+    return 0;
+}
+```
+
+对于虚函数重写而言，它要求派生类函数与基类函数的签名完全一致，否则就只是普通的函数重载。为显式检测这种一致性，可以在虚函数重写时，使用`override`关键字修饰，指示编译器检测虚函数重写的语法格式是否正确，如下所示。
+
+```c++
+class Base {
+public:
+    virtual void print() { std::cout << "Base" << std::endl; }
+};
+
+class Derived : public Base {
+public:
+    virtual void print() override { std::cout << "Derived" << std::endl; }
+    virtual bool print(int value) { std::cout << "Derived" << std::endl; }  // ok, but not override, no checking
+    // virtual bool print() override { std::cout << "Derived" << std::endl; }         // error, signature is not same
+    // virtual void print(int val) override { std::cout << "Derived" << std::endl; }  // error, signature is not same
+    // virtual void print() const override { std::cout << "Derived" << std::endl; }   // error, signature is not same
+};
+```
+
+对于虚函数而言，若基类中的虚函数不想再允许派生类能够重写，则可以使用`final`关键字修饰，指示无法在派生类中重写的虚函数。
+
+```c++
+class Base {
+public:
+    virtual void print() final { std::cout << "Base" << std::endl; }
+};
+
+class Derived : public Base {
+public:
+    // virtual void print() { std::cout << "Derived" << std::endl; }  // error, can't override final function
+};
+```
+
+### 纯虚函数与抽象类
+
+抽象类（接口）作为一般概念的表达，可以从中派生更具体的类。无法创建抽象类的实例对象，但可以声明抽象类的指针和引用。通过声明至少一个纯虚成员函数来创建抽象类，纯虚函数使用数字`0`声明，语法形式如下所示。派生自抽象类的类必须实现纯虚函数，否则派生类也是抽象类。如果抽象类的构造函数调用一个纯虚函数，无论是以直接还是间接方式，结果都是不确定的。但是，抽象类的构造函数和析构函数都可以调用普通的成员函数。
+
+```c++
+class MyClz {
+public:
+    virtual void function() = 0;  // 纯虚函数
+};
+```
+
+抽象类中的纯虚函数可以定义或具有实现，但是只能在类外提供实现。在设计基类包含纯虚析构函数的类层次结构时，定义纯虚析构函数非常有用，这保证对象在销毁期间能够始终调用到基类的析构函数，从而确保析构函数至少存在一个实现。如果没有析构函数的实现，则链接器将生成调用未解析外部符号的错误。
+
+```c++
+class Base {
+public:
+    virtual ~Base() = 0;
+};
+Base::~Base() { std::cout << "~Base()" << std::endl; }
+
+class Derived : public Base {};
+
+int main(int argc, char *argv[]) {
+    Base *p = new Derived;
+    delete p;  // ~Base()
+    return 0;
+}
+```
+
+### 多继承与虚继承
+
+一个类可以派生自多个基类，多个基类之间使用逗号分隔。对于所继承基类的指定顺序而言，构造函数将按照指定顺序依次调用，析构函数将按照指定顺序的相反顺序依次调用。基类的顺序会影响类的内存布局，但不要基于内存中基类成员的顺序做出任何编程决策。
+
+```c++
+struct Base1 {
+    Base1() { std::cout << "Base1()" << std::endl; }
+    ~Base1() { std::cout << "~Base1()" << std::endl; }
+};
+struct Base2 {
+    Base2() { std::cout << "Base2()" << std::endl; }
+    ~Base2() { std::cout << "~Base2()" << std::endl; }
+};
+struct Base3 {
+    Base3() { std::cout << "Base3()" << std::endl; }
+    ~Base3() { std::cout << "~Base3()" << std::endl; }
+};
+
+struct Derived : public Base1, public Base2, public Base3 {};
+
+int main(int argc, char *argv[]) {
+    // Base1()
+    // Base2()
+    // Base3()
+    Derived *p = new Derived;
+    // ~Base3()
+    // ~Base2()
+    // ~Base1()
+    delete p;
+    return 0;
+}
+```
+
+在多继承关系中，一个类可能多次成为派生类的间接基类，如此会使得派生类中包含多次该基类数据成员的副本，造成空间浪费，并且要求在访问基类成员时都必须指定所需的基类成员副本。可以使用`virtual`关键字修饰所继承的基类，使之称为虚基类，能够多次作为间接基类而不会复制其数据成员，虚基类的数据成员的单个副本由将其用作虚基类的所有派生类共享。一个类可以同时具有一个给定类型的虚拟基类和非虚拟基类。
+
+<img src="现代C++编程.assets/多继承中的虚基类.png" style="zoom: 33%;" />
+
+上图中间展示不使用虚继承时，多次出现的基类在概念上的内存布局（实际物理内存布局可能会进行优化），右侧为虚继承时的内存布局（仅保留一个副本）。
+
+```c++
+class Queue {};
+class CashierQueue : virtual public Queue {};
+class LunchQueue   : virtual public Queue {};
+class LunchCashierQueue : public CashierQueue, public LunchQueue {};
+```
+
+与非虚拟继承相比较，虚拟继承提供了显著的内存大小优势，但是，它可能会引入额外的处理开销。不使用虚基类会导致歧义问题，使用虚基类则无该问题。
+
+```c++
+class Base {};
+class SubBase1 : public Base {};
+class SubBase2 : public Base {};
+class VSubBase1 : virtual public Base {};
+class VSubBase2 : virtual public Base {};
+class Derived1 : public SubBase1, public SubBase2 {};
+class Derived2 : public VSubBase1, public VSubBase2 {};
+
+int main(int argc, char *argv[]) {
+    Derived1 *d1 = new Derived1;
+    Derived2 *d2 = new Derived2;
+    Base *pb11 = (Base*)(SubBase1*)(d1);  // ok
+    Base *pb12 = (Base*)(SubBase2*)(d1);  // ok
+    // Base *pb1 = (Base*)(d1);  // error, Base is not determined
+    Base *pb2 = (Base*)(d2);     // ok
+    return 0;
+}
+```
+
+## 编译时的pimpl封装
+
+术语pimpl是一种新式C++技术，用于隐藏实现、分离接口、最小化耦合、最小化编译依赖、提高可移植性，术语pimpl是短语pointer to implementation的缩写，意为指向实现的指针。这个概念在其它技术描述中，可能存在其它名称，例如Cheshire Cat或Compiler Firewall等术语。
+
+在接口头文件中，可以定义API如下。
+
+```c++
+// my_calss.h
+#include <unique.h>
+
+class my_class {
+    //  all public and protected stuff goes here
+private:
+    // opaque type here
+    class impl;
+    std::unique_ptr<impl> pimpl;
+};
+```
+
+在实现文件中，定义具体实现细节如下，并将实现编译为动态库或共享库提供。
+
+```c++
+// my_class.cpp
+#include "my_class.h"
+
+// defined privately here
+class my_class::impl {
+    // all private data and functions, and
+    // can now change without recompiling callers
+};
+
+// constructor of my_class
+my_class::my_class() : pimpl(new impl) {
+    // set impl values
+}
+```
+
+## 位域
+
+类和结构体可以持有比整型类型占用更少存储空间的成员，这些成员被指定为位域（bit field）。在声明时必须将位域的类型指定为整数类型（包括枚举类型）。
+
+```c++
+![位域强制对齐的内存示意图](位域强制对齐的内存示意图.png)struct Date {
+    unsigned short nWeekDay  : 3;  // 0..7   (3 bits)
+    unsigned short nMonthDay : 6;  // 0..31  (6 bits)
+    unsigned short nMonth    : 5;  // 0..12  (5 bits)
+    unsigned short nYear     : 8;  // 0..100 (8 bits)
+};
+```
+
+自定义类型Date的实例对象在概念上的内存布局示意图如下所示。
+
+![](现代C++编程.assets/位域的内存示意图.png)
+
+可以看到，nYear长度为8位，这会溢出上一个unsigned short的边界，因此，它始于新的unsigned short开头，根据声明中请求的位数来分配新的存储单元。并且，声明为位域的数据从低位到高位进行排序。
+
+如果声明一个长度为0的未命位域，则会强制将下一个位域与下一个类型边界对齐，如下所示。
+
+```c++
+struct Date {
+    unsigned nWeekDay  : 3;  // 0..7   (3 bits)
+    unsigned nMonthDay : 6;  // 0..31  (6 bits)
+    unsigned           : 0;  // Force alignment to next boundary.
+    unsigned nMonth    : 5;  // 0..12  (5 bits)
+    unsigned nYear     : 8;  // 0..100 (8 bits)
+};
+```
+
+![](现代C++编程.assets/位域强制对齐的内存示意图.png)
+
+需要注意的是，无法获取位域成员的地址，无法使用位域初始化非const的引用。
 
 # 模板
 
