@@ -24,7 +24,7 @@ CUDA（Compute Unified Device Architecture）是显卡厂商NVIDIA推出的运�
 
 每一款GPU都有一个用以表示其**计算能力（Compute Capability，CC）**的版本号，可以写为形如X.Y的形式，其中，X表示主版本号，Y表示次版本号。版本号决定了GPU硬件所支持的功能，可为应用程序在运行时判断硬件特征提供依据。CC版本号越大的GPU架构（architecture）越新，主版本号与GPU的核心架构相关。在主版本号相同时，具有较大次版本号的GPU的架构稍有更新。
 
-可在https://developer.nvidia.com/cuda-gpus网站查询任何一款支持CUDA的GPU的信息。具体一个架构示例为https://images.nvidia.com/aem-dam/Solutions/design-visualization/technologies/turing-architecture/NVIDIA-Turing-Architecture-Whitepaper.pdf文档。
+可在https://developer.nvidia.com/cuda-gpus网站查询任何一款支持CUDA的GPU的信息。具体一个架构示例为https://images.nvidia.com/aem-dam/Solutions/design-visualization/technologies/turing-architecture/NVIDIA-Turing-Architecture-Whitepaper.pdf文档，其它架构可以查阅NVIDIA公司公布的各GPU架构的白皮书。
 
 下表列出了各个GPU主计算能力的架构代号与名称。
 
