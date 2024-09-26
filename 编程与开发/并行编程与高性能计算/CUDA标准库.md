@@ -1835,9 +1835,7 @@ cuFFT库位于cufft.h头文件中，仿照FFTW接口构建，提供名为计划�
 
 在主机多线程情况的下，只要每个主机线程使用不同的计划句柄，且每个变换的输出内存空间不重叠，则cuFFT库可以保证API函数是线程安全的。
 
-离散傅里叶变换DFT可以使⽤矩阵向量乘法实现，需要O(N^2^)的时间复杂度。不过，cuFFT库采⽤[Cooley-Tukey](http://en.wikipedia.org/wiki/Cooley-Tukey_FFT_algorithm)实现算法来减少所需操作的数量，能够取得针对任意输入规模的O(NlogN)时间复杂度，并对特定规模下的变换提供特定性能优化。
-
-Cooley-Tukey算法将DFT矩阵表⽰为稀疏构建块（sparse building block）矩阵的乘积，cuFFT实现以2、3、5、7为基数的构建块，因此，任何能够分解为$2^a\times3^b\times5^c\times7^d$形式的输⼊规模都由cuFFT库提供了优化（其中a、b、c、d为⾮负整数）。此外，对于所有采⽤[2,128)之间质数的构建块，也有特定优化，当⻓度⽆法分解为[2,128)之间质数幂的倍数时，使⽤[Bluestein](http://en.wikipedia.org/wiki/Bluestein's_FFT_algorithm)算法。由于Bluestein实现对每个输出点的计算⽐Cooley-Tukey实现更多，因此Cooley-Tukey算法的准确性更好，纯Cooley-Tukey算法的相对误差按log~2~(N)的⽐例增⻓，其中N为参与变换的元素数⽬。
+离散傅里叶变换DFT可以使⽤矩阵向量乘法实现，需要O(N^2^)的时间复杂度。不过，cuFFT库采⽤[Cooley-Tukey](http://en.wikipedia.org/wiki/Cooley-Tukey_FFT_algorithm)实现算法来减少所需操作的数量，能够取得针对任意输入规模的O(NlogN)时间复杂度，并对特定规模下的变换提供特定性能优化。Cooley-Tukey算法将DFT矩阵表⽰为稀疏构建块（sparse building block）矩阵的乘积，cuFFT实现以2、3、5、7为基数的构建块，因此，任何能够分解为$2^a\times3^b\times5^c\times7^d$形式的输⼊规模都由cuFFT库提供了优化（其中a、b、c、d为⾮负整数）。此外，对于所有采⽤[2,128)之间质数的构建块，也有特定优化，当⻓度⽆法分解为[2,128)之间质数幂的倍数时，使⽤[Bluestein](http://en.wikipedia.org/wiki/Bluestein's_FFT_algorithm)算法。由于Bluestein实现对每个输出点的计算⽐Cooley-Tukey实现更多，因此Cooley-Tukey算法的准确性更好，纯Cooley-Tukey算法的相对误差按log~2~(N)的⽐例增⻓，其中N为参与变换的元素数⽬。
 
 ## cuFFT Type Reference
 
