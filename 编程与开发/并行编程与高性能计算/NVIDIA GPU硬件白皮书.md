@@ -130,7 +130,15 @@ GeForce 8800 GPU架构的互联网络（Interconnection Network）拥有一个�
 
 所有计算处理引擎使用的都是虚拟空间中的虚拟地址，内存管理单元（Memory Management Unit）负责执行虚拟地址到物理地址的转换。在采用页式管理的存储系统当中，需要维护一个虚拟地址到物理地址的页表。为提高页表访问的速度，通常会包含转换后援缓冲器（Translation Lookaside Buffer，TLB）来实现快速的虚实地址转换，TLB分布在渲染引擎之间。当页表缓存缺失时，需要从局部内存中读取页表，以进行替换。
 
-## CUDA并行编程模型
+## Cooperative Thread Array
+
+在图形学编程模型中，着色器的并行线程会独立执行，而在CUDA并行编程模型中，并行线程通常会进行同步、通信、共享数据、协作计算等。为管理大量可以协作的并发线程，Tesla架构引入了协作线程阵列（cooperative thread array，CTA）的概念，在CUDA术语中称为线程块（Thread Block）。CTA是一组执行相同程序代码的并发线程，它们可以协作计算结果，每个线程有一个唯一的线程ID编号。CTA的线程可以在全局或共享内存中共享数据，并且可以使用栅障指令进行同步。
+
+> 在Tesla架构中，一个CTA可以拥有1到512个线程；而在Fermi及其之后的架构中，一个CTA可以拥有1到1024个线程。
+
+一个SM最多可以同时执行8个CTA，具体取决于CTA对硬件资源的需求，由程序员或编译器声明CTA所需的线程、寄存器、共享内存，以及栅障的数量。当一个SM有足够的可用资源时，SMC会创建CTA并为每个线程分配TID编号。SM按照32个线程为一个Warp的粒度，SIMT地调度执行CTA的线程。
+
+为实现粗粒度分解，一个CTA通用具有一个唯一的ID编号，并由所有的CTA组成一个计算网格。为使编译好的二进制程序能够在具有任意SM数量的GPU上兼容的运行，CTA是独立执行的，即独立于同一网格中的其它CTA块。Compute Work Distribution会将CTA动态分派到SM上执行，以均衡GPU工作负载。
 
 ## Tesla Architecture in GeForce 280
 
