@@ -50,13 +50,13 @@ NVIDIA于1999年推出GeForce 256芯片，第一次在芯片中集成了包括�
 
 2006年，NVIDIA推出了Tesla一代架构，应用到显卡G80系列上面。2008年，NVIDIA推出了改进的Tesla二代架构，应用到显卡GeForce 200系列上面，在该系列中有图形学架构和计算架构两个版本，并逐步确定了后续的Tesla通用科学计算卡。2010年，NVIDIA推出了Fermi架构，这是NVIDIA基于CUDA研发的GPU架构，它引入了统一的计算架构，使得GPU不仅可以处理图形学任务，还可以处理通用计算任务。2012年，NVIDIA发布了Kepler架构，它采用28nm制程，是首个支持超级计算和双精度计算的GPU架构，进一步提高了能效比和GPU性能，并引入了动态并行处理技术。2014年，NVIDIA发布了Maxwell架构，同样采用28nm制程，但在能效比和计算密度上有了进一步的提升。2016年，NVIDIA推出了Pascal架构，它采用16nm FinFET Plus制程，显著增强了GPU的能效比和计算密度。Pascal架构使GPU可以进入更广泛的人工智能、汽车等新兴应用市场。2017年，NVIDIA发布了Volta架构，采用12nm制程，进一步提升了GPU的性能和能效比。Volta架构在深度学习、高性能计算等领域有着广泛的应用。2018年，NVIDIA推出了Turing架构，它引入了光线追踪和深度学习超采样（DLSS）技术，使得GPU在游戏和图形学渲染领域的性能得到了显著提升。2020年，NVIDIA发布了Ampere架构，它在性能、能效比和AI加速能力上都有着显著的提升。Ampere架构的GPU产品广泛应用于数据中心、游戏、图形学渲染等领域。
 
-# Tesla Architecture in GeForce 8800
+# Tesla Architecture in GeForce 8 Series
 
 NVIDIA在2006年发布的GeForce 8800 GPU中引入了统一处理器设计（unified processor design）的Tesla架构，能够统一执行顶点着色器程序的线程、像素片元着色器程序的线程，以及使用并行编程模型CUDA编写的通用计算程序的线程。之后的讨论中，线程概念指的是着色器线程和通用计算线程。
 
 ## 硬件的设计架构
 
-NVIDIA在论文[NVIDIA Tesla: A Unified Graphics and Computing Architecture](https://doi.org/10.1109/MM.2008.31)中描述了第一代Tesla的设计架构，下图是GeForce 8800的示意图。
+NVIDIA在论文[NVIDIA Tesla: A Unified Graphics and Computing Architecture](https://doi.org/10.1109/MM.2008.31)中描述了Tesla的设计架构，称为第一代图形学和计算统一架构（first-generation unified graphics and computing architecture）。下图是GeForce 8800 GPU的示意图。
 
 <img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GeForce 8800架构.png" style="zoom: 33%;" />
 
@@ -140,7 +140,13 @@ GeForce 8800 GPU架构的互联网络（Interconnection Network）拥有一个�
 
 为实现粗粒度分解，一个CTA通用具有一个唯一的ID编号，并由所有的CTA组成一个计算网格。为使编译好的二进制程序能够在具有任意SM数量的GPU上兼容的运行，CTA是独立执行的，即独立于同一网格中的其它CTA块。Compute Work Distribution会将CTA动态分派到SM上执行，以均衡GPU工作负载。
 
-## Tesla Architecture in GeForce 280
+## Tesla Architecture in GeForce 200 Series
+
+NVIDIA在2008年发布的GeForce 200 GPU系列中改进了Tesla架构设计，称为第二代图形学和计算统一架构（second-generation unified graphics and computing architecture），并在[技术文档](https://www.nvidia.com/docs/io/55506/geforce_gtx_200_gpu_technical_brief.pdf)中进行简述。
+
+
+
+
 
 # Fermi Architecture
 
