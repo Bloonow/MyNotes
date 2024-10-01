@@ -54,33 +54,31 @@ NVIDIA于1999年推出GeForce 256芯片，第一次在芯片中集成了包括�
 
 NVIDIA在2006年发布的GeForce 8800 GPU中引入了统一处理器设计（unified processor design）的Tesla架构，能够统一执行顶点着色器程序的线程、像素片元着色器程序的线程，以及使用并行编程模型CUDA编写的通用计算程序的线程。之后的讨论中，线程概念指的是着色器线程和通用计算线程。
 
-## 硬件的设计架构
+NVIDIA在论文[NVIDIA Tesla: A Unified Graphics and Computing Architecture](https://doi.org/10.1109/MM.2008.31)中描述了Tesla的设计架构，称为第一代图形学和计算统一架构（first-generation unified graphics and computing architecture）。下图是NVIDIA GeForce 8800 GPU的示意图。
 
-NVIDIA在论文[NVIDIA Tesla: A Unified Graphics and Computing Architecture](https://doi.org/10.1109/MM.2008.31)中描述了Tesla的设计架构，称为第一代图形学和计算统一架构（first-generation unified graphics and computing architecture）。下图是GeForce 8800 GPU的示意图。
-
-<img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GeForce 8800架构.png" style="zoom: 33%;" />
+<img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GeForce 8800 GPU架构.png" style="zoom: 33%;" />
 
 为控制图形学管线的各种着色器程序以及通用计算程序的正确执行，GeForce 8800 GPU设计了若干控制硬件。Host Interface通过PCIE总线与主机CPU进行通信，负责从CPU接收命令、检查命令一致性、执行上下文切换、从系统内存中获取数据。Input Assembler按照指令顺序，收集顶点及其属性数据，以及几何图元（点、线、三角形）数据等。Viewport/Clip/Setup/Raster/Zcull负责执行光栅化之前的视窗变换、裁剪等操作。Vertex Work Distribution和Pixel Work Distribution负责将相关图形学管线的输出分配到处理器阵列上，以执行相对应的顶点着色器、几何着色器、像素片元着色器的线程。Compute Work Distribution负责将通用计算程序的线程分配到处理器阵列上执行。
 
-除负责控制与数据传输的硬件之外，GeForce 8800 GPU中负责计算的主体部分称为可扩展流处理器阵列（Streaming Processor Array，SPA），SPA由若干纹理处理器簇（Texture Processor Cluster，TPC）构成，不同型号的GPU拥有不同的TPC数目，以提供不同的计算性能。在GeForce 8800 GPU中，一个SPA拥有8个相互独立的TPC组成。
+除负责控制与数据传输的硬件之外，GeForce 8800 GPU中负责计算的主体部分称为可扩展流处理器阵列（Streaming Processor Array，SPA），SPA由若干纹理处理器簇（Texture Processor Cluster，TPC）构成，不同型号的GPU拥有不同的TPC数目，以提供不同的计算性能。
 
-> 在之后的GPU架构中，TPC的名称改为图形处理器簇（Graphics Processor Cluster，GPC）。
+> 在之后的架构中，TPC的名称改为线程处理器簇（Thread Processor Cluster, TPC），或又称为图形处理器簇（Graphics Processor Cluster，GPC）。
 
-一个TPC拥有1个几何控制器（Geometry Controller）、1个流多处理器控制器（SM Controller，SMC）、2个流多处理器（Streaming Multiprocessor，SM）、1个纹理单元（Texture Unit）。
+在GeForce 8800 GPU中，一个SPA拥有8个相互独立的TPC组成。一个TPC拥有1个几何控制器（Geometry Controller）、1个流多处理器控制器（SM Controller，SMC）、2个流多处理器（Streaming Multiprocessor，SM）、1个纹理单元（Texture Unit）。
 
-一个SM拥有8个流处理器（Streaming Processor，SP）、2个特殊函数单元（Special Function Unit，SFU）、1个多线程指令取指和发射单元（Multithreaded Instruction Fetch and Issue Unit，MT Issue）、1个指令缓存（Instruction Cache，I-Cache）、1个只读的常量缓存（Constant Cache，C-Cache）、1个16KB的可读可写的共享内存（Shared Memory）。SM中的SP和共享内存存储体（Bank）之间使用低延迟互联网络，以提供对共享内存的访问。
+一个SM拥有1个指令缓存（Instruction Cache，I-Cache）、1个多线程指令取指和发射单元（Multithreaded Instruction Fetch and Issue Unit，MT Issue）、1个只读的常量缓存（Constant Cache，C-Cache）、8个流处理器（Streaming Processor，SP）、2个特殊函数单元（Special Function Unit，SFU）、1个16KB的可读可写的共享内存（Shared Memory）。SM中的SP和共享内存存储体（Bank）之间使用低延迟互联网络，以提供对共享内存的访问。
 
-SMC控制多个SM，仲裁在SM之间共享的Texture Unit纹理单元、加载/存储路径、I/O路径。SMC同时为顶点、几何、像素三种着色器程序服务，它将这些类型的输入打包到一个Warp线程束中，初始化着色器处理，然后解包计算结果。每种着色器类型的线程都有独立的I/O路径，但SMC负责它们之间的负载均衡。基于驱动推荐分配、当前分配、难以分配的额外资源等，SMC支持静态或动态的负载均衡。
+SMC控制多个SM，仲裁在SM之间共享的Texture Unit、加载/存储路径、I/O路径。SMC同时为顶点、几何、像素三种着色器程序服务，它将这些类型的输入打包到一个Warp线程束中，初始化着色器处理，然后解包计算结果。每种着色器类型的线程都有独立的I/O路径，但SMC负责它们之间的负载均衡。基于驱动推荐分配、当前分配、难以分配的额外资源等，SMC支持静态或动态的负载均衡。
 
-一个SP拥有1个乘加单元（Multiply Add Unit，MAD）。一个SFU拥有4个浮点数乘法器，提供超越函数（transcendental function）的计算和像素片元的插值计算。超越函数指的是变量之间的关系不能用有限次加、减、乘、除、乘方、开方运算表示的函数，例如三角函数、反三角函数、指数函数、对数函数等。除SP和SFU单元之外，SM使用Texture Unit作为第三个计算单元，为平衡数学操作和纹理操作的比例，一个Texture Unit为两个SM提供服务。
+一个SP拥有1个乘加单元（Multiply Add Unit，MAD）。一个SFU拥有4个浮点数乘法器，提供超越函数（transcendental function）的计算和像素片元的插值计算。超越函数指的是变量之间的关系不能用有限次加、减、乘、除、乘方、开方运算表示的函数，例如三角函数、反三角函数、指数函数、对数函数等。除SP和SFU之外，SM使用Texture Unit作为第三个计算单元，为平衡数学操作和纹理操作的比例，一个Texture Unit为两个SM提供服务。
 
-SP核心是SM中主要的线程处理器，由它负责执行基本的浮点运算、各种整型运算、比较操作、类型转换操作等。浮点数的加法和乘法操作能够兼容用于单精度浮点数的IEEE 754标准，包括非数值（Not a Number，NaN）和无穷值。SP核心中的浮点单元的计算流程是完全流水线化的，并对延迟进行了优化，以平衡时延和物理期间的占用面积。
+SP核心是SM中主要的线程处理器，由它负责执行基本的浮点运算、各种整型运算、比较操作、类型转换操作等。浮点数的加法和乘法操作能够兼容用于单精度浮点数的IEEE 754标准，包括非数值（Not a Number，NaN）和无穷值。SP核心中的浮点部件的计算流程是完全流水线化的，并对延迟进行了优化，以平衡时延和物理期间的占用面积。
 
 SFU单元既支持超越函数的计算，也支持平面属性插值（planar attribute interpolation），根据图元顶点上的属性值，计算在(X,Y)像素位置上的属性值。SFU单元每个时钟周期可以计算获得一个32位的浮点数。SFU单元中的属性插值硬件是完全流水线化的，一个时钟周期能计算4个数据点的插值。
 
-GeForce 8800 Ultra GPU中SP单元和SFU单元的时钟频率为1.5GHz，在一个时钟周期下，一个SP执行1次乘加操作（2次浮点操作），一个SFU执行4次浮点操作，于是峰值性能为$(8\times2+2\times4)\times1.5\text{GHz}=36\text{Gflops}$。为优化功耗和单位面积能效，未处理数据的SM单元可以在一半时钟周期的频率下运行。
+GeForce 8800 Ultra GPU中SP和SFU的时钟频率为1.5GHz，在一个时钟周期下，一个SP执行1次乘加操作（2次浮点操作），一个SFU执行4次浮点操作，于是峰值性能为$(8\times2+2\times4)\times1.5\text{GHz}=36\text{Gflops}$。为优化功耗和单位面积能效，未处理数据的SM可以在一半时钟周期的频率下运行。
 
-## SM的SIMT线程调度
+## SM的线程调度
 
 无论是图形学管线的各种着色器程序，还是通用计算程序，在SM上执行时，都会实例化许多并行的线程，来执行复杂图像的渲染和大量矩阵的计算。为高效地并行执行数百个线程，同时运行几个不同的程序，SM是硬件多线程的，它在硬件上管理和执行多达768个并发线程，而无需任何调度开销。
 
@@ -94,7 +92,7 @@ GeForce 8800 Ultra GPU中SP单元和SFU单元的时钟频率为1.5GHz，在一�
 
 SM将Warp的线程映射到SP核心，每个线程使用自己的指令地址和寄存器状态独立执行。当Warp中所有32个线程都执行相同的代码路径时，SIMT处理器将取得完全的效率和性能。如果Warp的线程因数据依赖的条件分支而发散，则Warp会连续执行每个分支路径，同时禁用不在该路径上的线程，当所有路径完成时，线程会重新收敛到原始执行路径。SM使用分支同步栈（Branch Synchronization Stack）来管理发散和收敛的独立线程。分支发散只发生在一个Warp内，不同的Warp会独立执行，不管它们执行的是共同的还是不相交的代码路径。因此，与前一代GPU相比，Tesla架构在分支代码上的效率和灵活性显著提高，因为其32线程的Warp比前一代GPU的SIMD宽度要窄得多。
 
-SIMT架构与单指令多数据（Single-Instruction, Multiple-Data，SIMD）设计有一定相似之处，其中SIMD将一条指令应用于多个数据路。区别在于SIMT将一条指令并行地应用于多个独立线程，而不仅仅是多个数据路。SIMD指令控制多个数据路的向量化执行，并向程序公开向量的宽度，而SIMT指令控制一个线程的执行和分支行为。另一方面，SIMD向量架构则要求，代码需要手动将访存加载合并为向量化执行，并手动管理发散。
+SIMT架构与单指令多数据（Single-Instruction, Multiple-Data，SIMD）设计有一定相似之处，其中SIMD将一条指令应用于多个数据路。区别在于SIMT将一条指令并行地应用于多个独立线程，而不仅仅是多个数据路。SIMD指令控制多个数据路的向量化执行，并向程序公开向量的宽度，而SIMT指令控制一个线程的执行和分支行为。另一方面，SIMD向量架构则要求，代码需要手动将访存加载合并为向量化执行，并手动管理发散。SIMT在性能和可编程性方面都优于纯SIMD设计，作为标量指令的SIMT没有固定的向量宽度，因此无论向量大小如何都可以全速执行；而对于SIMD而言，如果输入小于SIMD的向量宽度，则SIMD机器的运行效率就会降低。SIMT可以确保处理核心在任何时候都得到充分利用。从编程的角度来看，SIMT还允许每个线程采用自己的路径，因为分支是由硬件处理的，所以不需要手动管理向量宽度内的分支。
 
 与以往复杂GPU架构的调度相比，独立Warp的SIMT调度方法更为简单，一个Warp由32个相同类型的线程组成，顶点着色器、几何着色器、像素片元着色器，或通用计算线程。例如，像素片元着色器处理的基本单元是2×2的像素四边形，SMC控制器将8个像素四边形组织成32个线程；类似地，SMC控制器将顶点和图元分组到Warp中，并将32个计算线程打包到一个Warp中。SIMT的设计能够使得32个线程有效地共享SM的指令取指和发射单元MT Issue（Multithreaded Instruction Fetch and Issue Unit），但为达到完全的性能，需要Warp的全部线程都处于相同的活动状态（即不存在分支）。
 
@@ -102,7 +100,7 @@ SM的Warp调度器（Warp Scheduler）的工作频率是1.5GHz处理器时钟频
 
 为动态混合不同类型的Warp程序实现零开销的Warp调度是一个具有挑战性的设计问题。在每个周期，计分板（Scoreboard）会对每个Warp是否发射进行资格判定，指令调度器会优先考虑所有已就绪Warp的优先级，并选择优先级最高的Warp发射。优先级会考虑Warp类型、指令类型，以及对在SM中执行的所有Warp的“公平性”。
 
-## SM的ISA指令集架构
+## SM的指令集
 
 与以往执行向量化指令的GPU不同，Tesla SM执行标量指令，提供标量的指令集架构（Instruction Set Architecture，ISA）。这是因为着色器程序的指令越来越标量化，甚至很难完全占据之前的四组件向量架构结构中的两个组件；而且以前的向量化体系结构使用向量打包（将工作负载的子向量组合起来以提高效率）方式，但这会使得调度硬件和编译器变得复杂。而标量指令更简单且对编译器友好。不过，纹理指令仍然是向量化的，接受一个源坐标向量并返回一个过滤后的颜色向量。
 
@@ -114,7 +112,7 @@ Tesla SM有一个基于寄存器的指令集，包括浮点、整数、位、转
 
 > 陷阱指令（trap）是处理陷阱的指令。陷阱是指计算机系统在运行中的一种意外事故，例如电源电压不稳、存储器检验出错、存储器校验出错、输入输出设备出现故障、用户使用了未定义的指令或特权指令等意外情况，使得计算机系统不能正常工作。一旦出现陷阱，计算机应当能够暂停当前程序的执行，及时转入故障处理程序进行相应的处理。在一般的计算机中，陷阱指令作为隐含指令不提供给用户使用，只有在出现故障时，才由CPU自动产生并执行。
 
-## SM的内存访问
+## SM的存储访问
 
 对于使用CUDA编写的计算程序，可以访问三个内存空间：局部内存（local memory），每个线程私有访问的内存空间，物理上由DRAM提供；全局内存（global memory），所有线程都可以公开访问的内存空间，物理上由DRAM提供；共享内存（shared memory），一个SM当中的一个线程协作组（Cooperative Thread Array，CTA）可以共享访问的，低延迟内存空间，物理上由SM芯片当中的高速共享存储器提供。
 
@@ -124,13 +122,13 @@ Tesla SM提供负责内存加载/存储的load/store指令来访问存储。内�
 
 Tesla GPU架构提供高效的原子内存操作，包括整型相加、最小值、最大值、逻辑运算符、交换操作符、比较交换操作。
 
-DRAM内存的数据总线宽度为384个引脚，划分为6个独立的分区，每个分区64个引脚；每个分区拥有物理地址空间的六分之一。内存分区单元（Memory Partition Unit）会将访存请求直接加入队列，这些分区单元负责对来自图形和计算流水线的并行阶段的数百个正在处理的请求进行仲裁，以最大化DRAM的总传输效率。这意味着内存分区单元会根据所访问DRAM内存的Bank存储体以及读写方向，对请求进行分组，同时尽可能减少延迟。内存控制器（Memory Controller）支持DRAM的各种时钟速率、协议、设备密度、数据总线宽度的规格。
+DRAM内存的数据总线宽度为384个引脚，划分为6个独立的分区，每个分区64个引脚，每个分区拥有物理地址空间的六分之一。内存分区单元（Memory Partition Unit）会将访存请求直接加入队列，这些分区单元负责对来自图形和计算流水线的并行阶段的数百个正在处理的请求进行仲裁，以最大化DRAM的总传输效率。这意味着内存分区单元会根据所访问DRAM内存的Bank存储体以及读写方向，对请求进行分组，同时尽可能减少延迟。内存控制器（Memory Controller）支持DRAM的各种时钟速率、协议、设备密度、数据总线宽度的规格。
 
-GeForce 8800 GPU架构的互联网络（Interconnection Network）拥有一个集线器单元（Hub Unit），会将来自非并行的请求（PCIE、主机和命令前端、Input Assembler单元、显示）路由到合适的内存分区。每个内存分区都有自己ROP单元，因此ROP对内存的访问流量都产生于局部内存分区。然而，纹理单元和内存的加载/存储指令请求，可以发生在任何TPC和任何内存分区之间，因此需要通过互连网络来路由请求和响应。
+GeForce 8800 GPU架构的互联网络（Interconnection Network）拥有一个集线器单元（Hub Unit），会将来自非并行的请求（PCIE、主机和命令前端、Input Assembler、显示）路由到合适的内存分区。每个内存分区都有自己ROP，因此ROP对内存的访问流量都产生于局部内存分区。然而，纹理单元和内存的加载/存储指令请求，可以发生在任何TPC和任何内存分区之间，因此需要通过互连网络来路由请求和响应。
 
 所有计算处理引擎使用的都是虚拟空间中的虚拟地址，内存管理单元（Memory Management Unit）负责执行虚拟地址到物理地址的转换。在采用页式管理的存储系统当中，需要维护一个虚拟地址到物理地址的页表。为提高页表访问的速度，通常会包含转换后援缓冲器（Translation Lookaside Buffer，TLB）来实现快速的虚实地址转换，TLB分布在渲染引擎之间。当页表缓存缺失时，需要从局部内存中读取页表，以进行替换。
 
-## Cooperative Thread Array
+## 协作线程阵列CTA
 
 在图形学编程模型中，着色器的并行线程会独立执行，而在CUDA并行编程模型中，并行线程通常会进行同步、通信、共享数据、协作计算等。为管理大量可以协作的并发线程，Tesla架构引入了协作线程阵列（cooperative thread array，CTA）的概念，在CUDA术语中称为线程块（Thread Block）。CTA是一组执行相同程序代码的并发线程，它们可以协作计算结果，每个线程有一个唯一的线程ID编号。CTA的线程可以在全局或共享内存中共享数据，并且可以使用栅障指令进行同步。
 
@@ -140,13 +138,49 @@ GeForce 8800 GPU架构的互联网络（Interconnection Network）拥有一个�
 
 为实现粗粒度分解，一个CTA通用具有一个唯一的ID编号，并由所有的CTA组成一个计算网格。为使编译好的二进制程序能够在具有任意SM数量的GPU上兼容的运行，CTA是独立执行的，即独立于同一网格中的其它CTA块。Compute Work Distribution会将CTA动态分派到SM上执行，以均衡GPU工作负载。
 
-## Tesla Architecture in GeForce 200 Series
+## Tesla Architecture in GeForce GTX 200 Series
 
-NVIDIA在2008年发布的GeForce 200 GPU系列中改进了Tesla架构设计，称为第二代图形学和计算统一架构（second-generation unified graphics and computing architecture），并在[技术文档](https://www.nvidia.com/docs/io/55506/geforce_gtx_200_gpu_technical_brief.pdf)中进行简述。
+NVIDIA在2008年发布的GeForce 200 GPU系列中改进了Tesla架构设计，称为第二代图形学和计算统一架构（second-generation unified graphics and computing architecture），并在[NVIDIA GeForce GTX 200 GPU Architectural Overview](https://www.nvidia.com/docs/io/55506/geforce_gtx_200_gpu_technical_brief.pdf)一文中进行简述。下图是NVIDIA GeForce 280 GPU的示意图，其中省略了与图形学管线相关的部件。
 
+<img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GeForce 280 GPU架构.png" style="zoom: 50%;" />
 
+基于硬件的Thread Scheduler负载并行计算线程的调度。原子Atomic硬件允许对内存执行读改写（read-modify-write）的原子访问。
 
+与前一代GPU相比，GeForce 280 GPU的SPA性能更高，拥有更多的硬件资源。
 
+| Chip            | TPC  | SM per TPC | SP per SM | Total SP | Thread per SM | Total Thread |
+| --------------- | ---- | ---------- | --------- | -------- | ------------- | ------------ |
+| GeForce 8800    | 8    | 2          | 8         | 128      | 768           | 12888        |
+| GeForce GTX 280 | 10   | 3          | 8         | 240      | 1024          | 30720        |
+
+在GeForce 200 GPU中，一个SM管理一个包含32个Warp的线程池，一共1024个线程。GPU架构是延迟容忍的，如果一个Warp中的线程由于正在等待访存或其它原因（缓存缺失、流水线忙、同步、执行依赖等）而延迟时，则GPU可以执行零成本的基于硬件的上下文切换，切换到其它可执行的Warp线程束继续执行。这种切换策略有助于隐藏内存访问延迟，使得GPU核心不会因为等待内存访问而空闲下来，从而提高整体的处理效率。
+
+与GeForce 8 GPU相比，在GeForce GTX 200 GPU中，一个SM的局部寄存器文件（Register File）大小增大了一倍。旧的GPU遇到很长的着色器程序时，可能会导致寄存器耗尽，这会产生将数据交换到内存的需要。更大的寄存器文件允许更大更复杂的计算程序。
+
+GeForce GTX 200 GPU的单个流处理SP核心可以使用MAD单元，在一个时钟周期内完成MAD和MUL的双发射（dual-issue）的几乎全速的执行，取得3Flops的计算速率；同时SFU单元可以在一个时钟周期内完成另一个MUL的执行。这能取得$(8\times3+2\times4)\times3\times10=960\text{GFlops}$的浮点计算性能。
+
+GeForce GTX 200 GPU的一个非常重要的新添加是双精度，即支持64位浮点计算。一个SM包含一个双精度64位浮点数学单元（Floating Math Unit），一共有30个双精度64位处理核心。双精度单元执行融合的MAD乘加操作，这是MAD指令的高精度实现，也完全符合IEEE 754R浮点规范。
+
+此外，与上一代GPU的384位最大内存接口宽度相比，GeForce GTX 200 GPU采用512位的最大内存接口宽度，使用8个64位宽的帧缓冲接口单元（Frame Buffer Interface Unit），内存带宽显著增加。也就是说，DRAM内存的数据总线宽度为512个引脚，划分为8个独立的分区，每个分区64个引脚，每个分区拥有物理地址空间的八分之一。
 
 # Fermi Architecture
 
+NVIDIA在2010年发布的GF100 GPU中引入了Fermi架构，首次展示了CUDA功能，并在[Fermi GF100 GPU Architecture](https://doi.org/10.1109/MM.2011.24)一文中进行了描述。下图是NVIDIA GF100 GPU的架构示意图。
+
+<img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GF100 GPU架构.png" style="zoom: 33%;" />
+
+一个GF100 GPU拥有1个主机接口（Host Interface）、1个GigaThread引擎、4个相互独立的图形处理器簇（Graphics Processor Cluster，GPC）、6个围绕外部的内存控制器（Memory Controller）、1个片上共享的L2读写缓存。一个GPC拥有1个光栅化引擎（Raster Engine）、4个流多处理器（Streaming Multiprocessor，SM）。
+
+一个SM拥有1个指令缓存（Instruction Cache）、2个线程束调度器（Warp Scheduler）、2个分派单元（Dispatch Unit）、1个包含32768个32位寄存器的寄存器文件（Register File）、32个计算核心（CUDA Core）、4个特殊函数单元（Special Function Unit）、16个加载/存储单元（LD/ST Unit）、1个总共64KB的可配置的高速存储器、1个统一缓存（Uniform Cache）、1个纹理缓存（Texture Cache）、4个纹理单元（Texture Unit）、一个变形引擎（PolyMorph Engine）。SM中的64KB的高速存储器可以进行配置，采用48KB共享内存与16KB一级缓存，或者，采用16KB共享内存与48KB一级缓存。
+
+---
+
+在GF100 GPU的指令集架构（Instruction Set Architecture，ISA）中，支持32位的整数运算和融合的乘加（Fused Multiply Add，FMA）浮点运算。每个CUDA核心都有整数和浮点数逻辑，可以并行执行来自共享的指令发射单元（shared instruction issue unit）的指令，处理共享的寄存器文件中的操作数。
+
+---
+
+内存系统包含多个内存控制器（Memory Controller），图中显示了内存控制器和统一的L2缓存。GF100 GPU支持分页内存，支持多种页面大小，以支持高效的图形处理。并且有一个支持大帧缓冲区的40位地址空间，使用大小不同的页面大小，通过在系统内存之间共享和迁移数据来改进异构计算。
+
+内存控制器、L2缓存和ROP单元紧密耦合，以便在整个产品系列中扩展。由于L2缓存是统一的，所有程序代码都将其用作可读写缓存，因此多个引擎（如Texture引擎和PolyMorph引擎）之间可以共享对L2缓存的请求。为了有效地支持镶嵌，PolyMorph引擎的数据保留在片上缓存中，而通常，纹理贴图足够大，它们必须从芯片外获取并通过缓存流式传输。缓存自然会通过替换旧数据来实现这一点。
+
+GF100 GPU的Cache缓存有多个层次结构。L1数据缓存可用于寄存器溢出（register spilling）、堆栈操作、以及提高全局加载/存储操作的效率，L1缓存由共享的L2缓存备份。L2缓存是具有回写替换（write-back replacement）策略的可读写缓存，总共768KB的空间。对于图形学管线，L2缓存为顶点数据、顶点属性（位置、颜色等）、光栅化像素提供片上存储；对于CUDA计算程序，L2缓存为全局加载/存储提供了更多的片上存储。
