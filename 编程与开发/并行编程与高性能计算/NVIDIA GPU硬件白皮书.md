@@ -269,6 +269,8 @@ Kepler架构的内存层次结构与Fermi相似，此外，Kepler GK110还支持
 
 除L1缓存之外，Kepler架构还引入了一个48KB的缓存，用于存储在函数运行期间已知为只读的数据。在Fermi架构中，这个缓存只能由Texture单元访问，专业程序员发现，通过将数据映射为纹理来显式地通过此路径加载数据是有利的，但这种方法有许多限制。在Kepler架构中，NVIDIA决定让SM能够直接访问该只读缓存以进行一般的加载操作。使用只读路径是有益的，因为它减少了共享内存/L1缓存路径的负载和占用。只读路径的使用可以由编译器自动管理，也可以由程序员显式管理，可以通过\_\_ldg()内部函数显式地使用此路径。
 
+在Kepler GK110/GK210 GPU中，还引入了GPUDirect技术，以支持远程直接内存访问（Remote Direct Memory Access，RDMA），并允许第三方设备，例如无限带宽（InfiniBand，IB）适配器、网卡（Network Interface Card，NIC），以及直接访问同一个系统内多个GPU设备上的内存。该技术可以消除不必要的内存副本，显著降低CPU开销，并显著减少MPI发送和接收消息到GPU内存的延迟。它还减少了对系统内存带宽的需求，并释放GPU的DMA引擎以供其他CUDA任务使用。
+
 ## 动态并行暨内核嵌套
 
 在CPU和GPU的异构计算系统中，使应用程序中的大量并行代码能够有效地完全在GPU内运行，可以提高可扩展性和性能。GK110和GK210引入了动态并行，允许GPU自己生成新的工作负载、同步结果、通过专用硬件控制调度，所有这些都无需CPU参与。也就是说，在GK110和GK210中，任何核函数都可以启动另一个核函数，并且可以创建必要的流或事件，并管理处理额外工作所需的依赖关系，而无需与主机CPU交互。
@@ -299,7 +301,7 @@ NVIDIA在2014年发布的GM204 GPU芯片中引入了Maxwell架构，并在[NVIDI
 
 一个GPC拥有1个光栅化引擎（Raster Engine）、4个流多处理器（Streaming Multiprocessor，SMX）。一个SMM拥有128个CUDA计算核心，一个GeForce GTX 980 GPU总共拥有2048个CUDA计算核心。
 
-在Maxwell架构中，一个SMM拥有128个CUDA计算核心，被划分为4个不同的包含32个CUDA核心的处理块，每个处理块都有自己的专用资源用于指令缓冲和调度。一个SMM包含4个线程束调度器（Warp Scheduler）、8个指令分派单元（Instruction Dispatch Unit），一个线程束调度器拥有2个指令分派单元。这允许一个SMM同时发射和执行4个Warp，并能够在一个时钟周期为一个Warp调度两条指令。
+在Maxwell架构中，一个SMM拥有1个指令缓存（Instruction Cache）、被划分为4个不同的包含32个CUDA核心的处理块（Processing Block），每个处理块都有自己的专用资源用于指令缓冲和调度。一个SMM包含4个线程束调度器（Warp Scheduler）、8个指令分派单元（Instruction Dispatch Unit）、128个CUDA计算核心。一个线程束调度器拥有2个指令分派单元，这允许一个SMM同时发射和执行4个Warp，并能够在一个时钟周期为一个Warp调度两条指令。
 
 在Maxwell架构中，一个SMM拥有96KB的专用的共享内存，而L1缓存功能则与纹理缓存功能共享同一个物理高速缓存。
 
@@ -309,22 +311,80 @@ NVIDIA在2016年发布的GP100芯片中引入了Pascal架构，专用于高性�
 
 ![](NVIDIA GPU硬件白皮书.assets/NVIDIA GP100 GPU架构.png)
 
-一个GP100 GPU拥有1个主机接口（Host Interface）、1个负责全局调度的GigaThread引擎、6个相互独立的图形处理器簇（Graphics Processor Cluster，GPC）、8个512位的内存控制器（Memory Controller）、4个高速带宽内存单元（High Bandwidth Memory，HBM2 DRAM）、1个片上共享的L2读写缓存。一个内存控制器绑定512KB的L2缓存，一个HBM2 DRMA单元由2个内存控制器进行控制；一个完整的GP100 GPU总共拥有4096位的内存接口，以及4096KB的L2缓存。
+一个GP100 GPU拥有1个主机接口（Host Interface）、1个负责全局调度的GigaThread引擎、6个相互独立的图形处理器簇（Graphics Processor Cluster，GPC）、8个512位的内存控制器（Memory Controller）、4个高速带宽内存（High Bandwidth Memory，HBM2 DRAM）堆栈单元、1个片上共享的L2读写缓存。一个内存控制器绑定512KB的L2缓存，一个HBM2 DRAM单元由2个内存控制器进行控制；一个完整的GP100 GPU总共拥有4096位的内存接口，以及4096KB的L2缓存。
 
 一个GPC拥有5个纹理处理器簇（Texture Processor Cluster，TPC），一个TPC拥有2个流多处理器（Streaming Multiprocessor，SM）。一个SM拥有64个CUDA单精度计算核心，一个GP100 GPU总共拥有3840个CUDA单精度计算核心。一个GP100拥有60个SM单元，而Tesla P100 GPU则拥有56个SM单元。
 
 <img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GP100 SM架构.png" style="zoom:50%;" />
 
-在Pascal架构中，一个SM拥有64个CUDA单精度计算核心（FP32）、
+在Pascal架构中，一个SM拥有1个指令缓存（Instruction Cache）、被划分为2个不同的包含32个CUDA核心的处理块（Processing Block），每个处理块都有自己的专用资源用于指令缓冲和调度。一个SM包含2个线程束调度器（Warp Scheduler）、4个指令分派单元（Instruction Dispatch Unit）、64个CUDA单精度计算核心。一个线程束调度器拥有2个指令分派单元，这允许一个SM同时发射和执行2个Warp，并能够在一个时钟周期为一个Warp调度两条指令。
+
+在GP100 GPU架构中，一个SM拥有32个CUDA双精度计算核心（FP64），是CUDA单精度计算核心（FP32）数量的一半。与以前的GPU架构一样，GP100支持完全符合IEEE 754 2008标准的单精度和双精度算法，包括支持FMA融合乘加操作和对非规范化值的全速支持。同时，CUDA单精度计算核心也支持处理16位的指令和数据，理论上FP16运算吞吐量是FP32运算吞吐量的两倍。
+
+在Pascal架构中，一个SM拥有64KB的专用的共享内存，一个SM上的线程块最大可使用32KB的共享内存。另外，L1缓存功能则与纹理缓存功能共享同一个物理高速缓存，用于充当内存访问的合并缓冲区，在将数据传递给Warp之前收集Warp线程所请求的数据。
+
+## 存储访问
+
+近年来，许多使用GPU加速的应用程序对数据的需求大大增加，需要更高的DRAM带宽需求，GP100 GPU是第一款使用第二版高速带宽内存（HBM2）的GPU加速卡。HBM2从根本上改变DRAM封装和连接到GPU的方式，能够显著提高DRAM带宽。
+
+与传统GDDR5 GPU板设计中需要围绕GPU的众多独立存储芯片不同，HBM2包含一个或多个内存芯片的垂直堆栈，内存芯片是通过微导线连接起来的，这些微导线由硅通孔和微凸点构成。然后使用无源硅中间层（passive silicon interposer）来连接内存堆栈和GPU芯片。HBM2堆栈、GPU芯片、无缘硅中间层的组合封装在一个55mm×55mm的BGA封装中。
+
+<img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GP100 GPU中的HBM2示意图.png" style="zoom: 40%;" />
+
+HBM2能够提供更高的内存容量和内存带宽，支持每个堆栈4个或8个DRAM芯片，每个DRAM芯片最多支持8GB。在GP100 GPU中，每个HBM2的每个堆栈的带宽为180GB/sec。一个GP100 GPU连接4个HBM2 DRAM堆栈，2个512位的内存控制器连接到一个HBM2堆栈，以获得有效的共计4096位宽的HBM2内存接口。在最初版本中，GP100 GPU配备4个4芯片的HBM2堆栈，总共有16GB的HBM2内存。
+
+在GP100 GPU中也支持GPUDirect技术，能够直接访问同一个系统内多个GPU设备上的内存，通过PCIE从源GPU内存读取数据并将数据写入目标网卡内存，从而使RDMA带宽增加一倍。将GPUDirect的带宽翻倍对于许多用例非常重要，尤其是深度学习。事实上，深度学习机器的GPU与CPU的比例很高，因此GPU与IO快速交互而不回到CPU进行数据传输是非常重要的。
+
+## NVLink高速互连
+
+高性能计算集群的节点通常使用多个GPU，如今，一个节点最多可使用8个GPU，在多处理系统中，强大的互连非常有价值。NVLink是NVIDIA为GPU加速计算而开发的新型高速互连技术，能够显著提高GPU到GPU通信性能，以及GPU访问主机内存的性能。使用NVLink连接的GPU，程序可以直接在所连接的另一个GPU内存上执行，也可以在本地内存上执行，并且内存操作保持正确。
+
+NVLink采用NVIDIA的新型高速信号互连（NVIDIA's new High-Speed Signaling Interconnect，NVHS）。一个连接（Link）用于连接两个处理器（GPU-GPU连接或者CPU-GPU连接），一个连接包含2条子连接（Sub-Link），用于负责2个方向的数据传输，一个子连接包含8条物理链路，每个物理链路以20Gb/sec的速率进行数据传输。于是，一个连接支持40GB/sec的双向带宽速率。
+
+一个处理器支持多个连接，多个连接能够组合成一个Gang连接，以实现处理器之间更高带宽的连接。NVIDIA GP100 GPU中的NVLink最多支持4个连接，能取得最大的聚合带宽为160GB/sec。
+
+<img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GP100 GPU中支持的NVLink的示意图.png" style="zoom:50%;" />
+
+在GP100 GPU的物理设计上，一个GP100包含2个400针脚的高速连接器（High Speed Connector），其中一个连接器用于打开/关闭模块的NVLink信号，另一连接器个用于供电、控制信号、PCIE读写。
+
+Tesla P100加速卡可以安装在更大的GPU载体板上，GPU载体板与其他P100加速器或PCIE控制器进行相应的连接。由于与传统GPU板相比，P100加速器的尺寸更小，因此可以轻松构建包含比以往更多GPU的服务器。通过NVLink提供的额外带宽，GPU与GPU之间的通信将不会受到PCIE带宽的限制，从而为GPU集群提供更高的聚合带宽。
+
+<img src="NVIDIA GPU硬件白皮书.assets/NVLink与GPU加速卡的连接示意图.png" style="zoom: 67%;" />
+
+在GPU架构接口层面，NVLink控制器通过另一个称为高速集线器（High-Speed Hub，HSHUB）的模块与GPU内部进行通信。HSHUB可以直接访问GPU之间的交叉连接（crossbar），以及其他的系统元素，例如高速复制引擎（High-Speed Copy Engine，HSCE）。HSCE可以用来在峰值NVLink速率下将数据移入和移出GPU设备。
+
+# Volta Architecture
+
+NVIDIA在2017年发布的GV100芯片中引入了Volta架构，专用于高性能科学计算，并在[NVIDIA Tesla V100 GPU](https://images.nvidia.com/content/volta-architecture/pdf/volta-architecture-whitepaper.pdf)一文中进行了描述。下图是NVIDIA GV100 GPU的架构示意图。
+
+![](NVIDIA GPU硬件白皮书.assets/NVIDIA GV100 GPU架构.png)
+
+一个GV100 GPU拥有1个主机接口（Host Interface）、1个负责全局调度的GigaThread引擎、6个相互独立的图形处理器簇（Graphics Processor Cluster，GPC）、8个512位的内存控制器（Memory Controller）、4个高速带宽内存（High Bandwidth Memory，HBM2 DRAM）堆栈单元、1个片上共享的L2读写缓存。一个内存控制器绑定768KB的L2缓存，一个HBM2 DRAM单元由2个内存控制器进行控制；一个完整的GV100 GPU总共拥4096位的内存接口，以及6144KB的L2缓存。
+
+一个GPC拥有7个纹理处理器簇（Texture Processor Cluster，TPC），一个TPC拥有2个流多处理器（Streaming Multiprocessor，SM）。一个GV100 GPU总共拥有5376个CUDA单精度计算核心、5376个CUDA整型计算核心、2688个CUDA双精度计算核心、672个Tensor Core计算核心。
+
+<img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GV100 SM架构.png" style="zoom:50%;" />
+
+在Volta架构中，一个SM拥有1个L1级指令缓存（L1 Instruction Cache）、被划分为4个不同的处理块分区（Processing Block Partition），每个处理块都有自己的专用资源用于指令缓冲和调度。一个处理块分区拥有1个新的L0级指令缓存（L0 Instruction Cache）、1个线程束调度器（Warp Scheduler）、1个指令分派单元（Instruction Dispatch Unit）、1个包含16384个32位寄存器的寄存器文件（Register File）、16个FP32核心、16个INT32核心、8个FP64核心、2个用于深度学习矩阵乘法的新型混合精度的张量核心（Tensor Core）。每个处理块分区都拥有新硬件L0指令缓存器，提供比之前GPU中指令缓存更高的效率。
+
+在Volta架构中，一个SM中的共享内存和L1数据缓存共用同一个物理高速缓存，并能配置最高96KB的共享内存容量。
+
+与之前Pascal等架构的GPU不同，Volta架构的GV100 GPU包含独立的FP32核心和INT32核心，这允许在全吞吐量下同时执行FP32操作和INT32操作，同时也增加了指令分派的吞吐量。许多应用程序都会执行指针运算（整数内存地址计算）和浮点计算的内部循环，这将受益于FP32和INT32指令的同时执行。流水线循环的每次迭代都可以更新地址（INT32核心进行指针运算）为下一次迭代加载数据，同时在FP32核心中处理当前迭代的单精度计算。
+
+相比与GP100 GPU，采用Volta架构的GV100 GPU还有一些其它方面的改进。
+
+例如，融合乘加FMA运算的指令发布延迟也减少了，在Volta上只需要4个时钟周期，而在Pascal上需要6个时钟周期。例如，第二代NVLink技术，提供更高的链路速率（25Gb/sec）、一个GPU支持更多的6条NVLink连接等。例如，高速带宽内存（HBM2）技术，一个HBM2堆栈使用4个内存芯片，一个GV100 GPU总共4个HBM2堆栈，最大16GPU的GPU内存，在4个堆栈上提供900GB/sec的峰值内存带宽。
+
+## Tensor Core
 
 ！！！
 
-GP100的SM集成了64个单精度(FP32) CUDA内核。相比之下，Maxwell和Kepler SMs分别拥有128和192个FP32 CUDA内核。GP100 SM被划分为两个处理块，每个处理块有32个单精度CUDA内核，一个指令缓冲区，一个warp调度器和两个调度单元。虽然GP100 SM的CUDA内核总数是Maxwell SM的一半，但它保持相同的寄存器文件大小，并支持类似的扭曲和线程块占用。GP100的SM具有与Maxwell GM200和Kepler GK110 SMs相同数量的寄存器，但整个GP100 GPU具有更多的SMs，因此总体上有更多的寄存器。这意味着GPU上的线程可以访问更多的寄存器，GP100支持更多的线程、扭曲和线程块。
+与上一代NVIDIA Maxwell和Kepler架构相比，Tesla P100在训练神经网络方面提供了更高的性能，但神经网络的复杂性和规模仍在持续增长。如前所述，具有数千层和数百万神经元的新网络需要更高的性能和更快的训练时间。
 
-由于SM数量的增加，GP100 GPU上的总体共享内存也增加了，并且聚合共享内存带宽有效地增加了一倍以上。GP100中每个SM的共享内存、寄存器和warp的比例更高，这使得SM能够更有效地执行代码。指令调度器可以选择更多的warp，可以启动更多的负载，共享内存的每个线程带宽也更多。
+新的Tensor Cores是Volta GV100 GPU架构提供训练大型神经网络所需性能的关键功能。
 
-图8显示了GP100 SM的最终框图。
+特斯拉V100 GPU包含640个张量核:每个SM 8个，每个SM内每个处理块(分区)2个。在Volta GV100中，每个Tensor Core每个时钟执行64个浮点FMA操作，而SM中的8个Tensor Core每个时钟执行512个FMA操作(或1024个单独的浮点操作)。
 
-与Kepler相比，Pascal的SM具有更简单的数据路径组织，需要更少的芯片面积和更少的功率来管理SM内的数据传输。Pascal还提供了优越的调度和重叠的加载/存储指令，以提高浮点利用率。GP100中的新SM调度器架构在Maxwell调度器的基础上进行了改进，并且更加智能，提供了更高的性能和更低的功耗。每个warp调度器(每个处理块一个)能够在每个时钟调度两个warp指令。
+特斯拉V100的张量内核为训练和推理应用提供高达125张量TFLOPS。与在P100上使用标准FP32操作相比，Tesla V100上的Tensor Cores可提供高达12倍的峰值TFLOPS，可应用于深度学习训练。对于深度学习推理，与P100上的标准FP16操作相比，V100张量内核提供高达6倍的峰值TFLOPS。
 
-GP100的FP32 CUDA内核增加了一项新功能，即处理16位和32位精度指令和数据的能力，如本文后面所述。FP16运算吞吐量是FP32运算吞吐量的两倍。
+矩阵-矩阵乘法(GEMM)运算是神经网络训练和推理的核心，用于在网络的连接层中对输入数据和权重的大矩阵进行乘法运算。对于使用单精度矩阵乘法的应用，图6显示，搭载CUDA 9的特斯拉V100的性能比搭载CUDA 8的特斯拉P100高1.8倍。对于具有半精度输入的用于训练和推理操作的矩阵乘法，图7显示，对于具有FP16输入和FP32积累的矩阵运算的情况，Volta的混合精度张量内核与P100相比提高了9倍以上的性能。
