@@ -48,7 +48,7 @@ NVIDIA于1999年推出GeForce 256芯片，第一次在芯片中集成了包括�
 
 伊恩·巴克（Ian Buck）在2004年SIGGRAPH会议上发表论文Brook for GPUs: Stream Computing on Graphics Hardware，在其中提到，商品化的图形硬件已经从一个固定功能的流水线快速发展为具有可编程顶点（vertex）和片元（fragment）的处理器，虽然这种新的可编程性是为实时着色而引入的，但根据观察，这些处理器的指令集足够通用，可以在渲染领域之外执行计算。毕业后，伊恩·巴克加入NVIDIA。2006年，基于伊恩·巴克的思想，NVIDIA推出CUDA（Compute Unified Device Architecture）并行编程模型。2007年，NVIDIA发布CUDA开发工具包（CUDA Toolkit），使开发者可以使用CUDA进行编程开发，利用GPU进行并行计算。
 
-2006年，NVIDIA推出了Tesla一代架构，应用到显卡G80系列上面。2008年，NVIDIA推出了改进的Tesla二代架构，应用到显卡GeForce 200系列上面，在该系列中有图形学架构和计算架构两个版本，并逐步确定了后续的Tesla通用科学计算卡。2010年，NVIDIA推出了Fermi架构，这是NVIDIA基于CUDA研发的GPU架构，它引入了统一的计算架构，使得GPU不仅可以处理图形学任务，还可以处理通用计算任务。2012年，NVIDIA发布了Kepler架构，它采用28nm制程，是首个支持超级计算和双精度计算的GPU架构，进一步提高了能效比和GPU性能，并引入了动态并行处理技术。2014年，NVIDIA发布了Maxwell架构，同样采用28nm制程，但在能效比和计算密度上有了进一步的提升。2016年，NVIDIA推出了Pascal架构，它采用16nm FinFET Plus制程，显著增强了GPU的能效比和计算密度。Pascal架构使GPU可以进入更广泛的人工智能、汽车等新兴应用市场。2017年，NVIDIA发布了Volta架构，采用12nm制程，进一步提升了GPU的性能和能效比。Volta架构在深度学习、高性能计算等领域有着广泛的应用。2018年，NVIDIA推出了Turing架构，它引入了光线追踪和深度学习超采样（DLSS）技术，使得GPU在游戏和图形学渲染领域的性能得到了显著提升。2020年，NVIDIA发布了Ampere架构，它在性能、能效比和AI加速能力上都有着显著的提升。Ampere架构的GPU产品广泛应用于数据中心、游戏、图形学渲染等领域。
+2006年，NVIDIA推出了Tesla一代架构，应用到显卡G80系列上面。2008年，NVIDIA推出了改进的Tesla二代架构，应用到显卡GeForce 200系列上面，在该系列中有图形学架构和计算架构两个版本，并逐步确定了后续的Tesla通用科学计算卡。2010年，NVIDIA推出了Fermi架构，这是NVIDIA基于CUDA研发的GPU架构，它引入了统一的计算架构，使得GPU不仅可以处理图形学任务，还可以处理通用计算任务。2012年，NVIDIA发布了Kepler架构，它采用28nm制程，是首个支持超级计算和双精度计算的GPU架构，进一步提高了能效比和GPU性能，并引入了动态并行处理技术。2014年，NVIDIA发布了Maxwell架构，同样采用28nm制程，但在能效比和计算密度上有了进一步的提升。2016年，NVIDIA推出了Pascal架构，它采用16nm FinFET Plus制程，显著增强了GPU的能效比和计算密度。Pascal架构使GPU可以进入更广泛的人工智能、汽车等新兴应用市场。2017年，NVIDIA发布了Volta架构，采用12nm制程，进一步提升了GPU的性能和能效比。Volta架构在深度学习、高性能计算等领域有着广泛的应用。2018年，NVIDIA推出了Turing架构，它引入了光线追踪和深度学习超采样（DLSS）技术，使得GPU在游戏和图形学渲染领域的性能得到了显著提升。2020年，NVIDIA发布了Ampere架构，它在性能、能效比和AI加速能力上都有着显著的提升。Ampere架构的GPU产品广泛应用于数据中心、游戏、图形学渲染等领域。2022年，NVIDIA发布了Hopper架构，在单个超级芯片中与高带宽和内存一致的NVLink Chip-2-Chip互连，并且支持新的NVLink切换系统，跨机之间通过PCIE5进行连接。2024年，NVIDIA发布了Blackwell架构，专门用于处理数据中心规模的生成式AI工作流，能效是Hopper的25倍。
 
 # Tesla Architecture
 
@@ -76,7 +76,7 @@ SP核心是SM中主要的线程处理器，由它负责执行基本的浮点运�
 
 SFU单元既支持超越函数的计算，也支持平面属性插值（planar attribute interpolation），根据图元顶点上的属性值，计算在(X,Y)像素位置上的属性值。SFU单元每个时钟周期可以计算获得一个32位的浮点数。SFU单元中的属性插值硬件是完全流水线化的，一个时钟周期能计算4个数据点的插值。
 
-GeForce 8800 Ultra GPU中SP和SFU的时钟频率为1.5GHz，在一个时钟周期下，一个SP执行1次乘加操作（2次浮点操作），一个SFU执行4次浮点操作，于是峰值性能为$(8\times2+2\times4)\times1.5\text{GHz}=36\text{Gflops}$。为优化功耗和单位面积能效，未处理数据的SM可以在一半时钟周期的频率下运行。
+GeForce 8800 Ultra GPU中SP和SFU的时钟频率为1.5GHz，在一个时钟周期下，一个SP执行1次乘加操作（2次浮点操作），一个SFU执行4次浮点操作，于是峰值性能为(8×2＋2×4)×1.5GHz＝36GFlops。为优化功耗和单位面积能效，未处理数据的SM可以在一半时钟周期的频率下运行。
 
 ## 线程调度
 
@@ -157,7 +157,7 @@ NVIDIA在2008年发布的GeForce 200 GPU系列中改进了Tesla架构设计，�
 
 与GeForce 8 GPU相比，在GeForce GTX 200 GPU中，一个SM的局部寄存器文件（Register File）大小增大了一倍。旧的GPU遇到很长的着色器程序时，可能会导致寄存器耗尽，这会产生将数据交换到内存的需要。更大的寄存器文件允许更大更复杂的计算程序。
 
-GeForce GTX 200 GPU的单个流处理SP核心可以使用MAD单元，在一个时钟周期内完成MAD和MUL的双发射（dual-issue）的几乎全速的执行，取得3Flops的计算速率；同时SFU单元可以在一个时钟周期内完成另一个MUL的执行。这能取得$(8\times3+2\times4)\times3\times10=960\text{GFlops}$的浮点计算性能。
+GeForce GTX 200 GPU的单个流处理SP核心可以使用MAD单元，在一个时钟周期内完成MAD和MUL的双发射（dual-issue）的几乎全速的执行，取得3Flops的计算速率；同时SFU单元可以在一个时钟周期内完成另一个MUL的执行。这能取得(8×3＋2×4)×3×10＝960Flops的浮点计算性能。
 
 GeForce GTX 200 GPU的一个非常重要的新添加是双精度，即支持64位浮点计算。一个SM包含一个双精度64位浮点数学单元（Floating Math Unit），一共有30个双精度64位处理核心。双精度单元执行融合的MAD乘加操作，这是MAD指令的高精度实现，也完全符合IEEE 754R浮点规范。
 
@@ -359,9 +359,9 @@ NVIDIA在2017年发布的GV100芯片中引入了Volta架构，专用于高性能
 
 ![](NVIDIA GPU硬件白皮书.assets/NVIDIA GV100 GPU架构.png)
 
-一个GV100 GPU拥有1个主机接口（Host Interface）、1个负责全局调度的GigaThread引擎、6个相互独立的图形处理器簇（Graphics Processor Cluster，GPC）、8个512位的内存控制器（Memory Controller）、4个高速带宽内存（High Bandwidth Memory，HBM2 DRAM）堆栈单元、1个片上共享的L2读写缓存。一个内存控制器绑定768KB的L2缓存，一个HBM2 DRAM单元由2个内存控制器进行控制；一个完整的GV100 GPU总共拥4096位的内存接口，以及6144KB的L2缓存。
+一个GV100 GPU拥有1个主机接口（Host Interface）、1个负责全局调度的GigaThread引擎、6个相互独立的图形处理器簇（Graphics Processor Cluster，GPC）、8个512位的内存控制器（Memory Controller）、4个高速带宽内存（High Bandwidth Memory，HBM2 DRAM）堆栈单元、1个片上共享的L2读写缓存。一个内存控制器绑定768KB的L2缓存，一个HBM2 DRAM单元由2个内存控制器进行控制；一个完整的GV100 GPU总共拥有4096位的内存接口，以及6144KB的L2缓存。
 
-一个GPC拥有7个纹理处理器簇（Texture Processor Cluster，TPC），一个TPC拥有2个流多处理器（Streaming Multiprocessor，SM）。一个GV100 GPU总共拥有5376个CUDA单精度计算核心、5376个CUDA整型计算核心、2688个CUDA双精度计算核心、672个Tensor Core计算核心。
+一个GPC拥有7个纹理处理器簇（Texture Processor Cluster，TPC），一个TPC拥有2个流多处理器（Streaming Multiprocessor，SM）。一个GV100 GPU总共拥有5376个CUDA单精度计算核心、5376个CUDA整型计算核心、2688个CUDA双精度计算核心、672个Tensor Core张量核心。
 
 <img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GV100 SM架构.png" style="zoom:50%;" />
 
@@ -375,16 +375,78 @@ NVIDIA在2017年发布的GV100芯片中引入了Volta架构，专用于高性能
 
 例如，融合乘加FMA运算的指令发布延迟也减少了，在Volta上只需要4个时钟周期，而在Pascal上需要6个时钟周期。例如，第二代NVLink技术，提供更高的链路速率（25Gb/sec）、一个GPU支持更多的6条NVLink连接等。例如，高速带宽内存（HBM2）技术，一个HBM2堆栈使用4个内存芯片，一个GV100 GPU总共4个HBM2堆栈，最大16GPU的GPU内存，在4个堆栈上提供900GB/sec的峰值内存带宽。
 
+## 线程调度
+
+Volta架构的GV100是首款支持线程独立调度的GPU，即调度的粒度下降到一个线程级别，而不只是一个Warp线程束级别的粒度，从而可以实现程序中并行线程之间的细粒度同步和协作。
+
+Pascal等早期架构以SIMT方式执行由32个线程组成的Warp线程束。一个Warp的32个线程之间共享一个程序计数器，并使用一个活动掩码（active mask）来指定该Warp的哪些线程在给定时间内是活动的，而另一些线程则是非活动状态的。这意味着不同的执行路径会使一些线程处于非活动状态，从而将Warp不同代码部分的执行给串行化，这时会将当前的活动掩码保存，直到Warp重新收敛，通常在发散部分的末端，恢复所保存的活动掩码，线程再次运行在一起。
+
+<img src="NVIDIA GPU硬件白皮书.assets/Pascal等早期架构的线程调度.png" style="zoom: 33%;" />
+
+Pascal等早期架构的SIMT执行模型，通过减少跟踪线程状态所需的资源数量和积极地重新聚合线程，以最大化并行性和效率。然而，这会导致一个Warp内线程执行的发散和收敛，不同代码路径串行执行，导致同一个Warp中的不同路径的线程不能相互发送信号或交换数据，并且更细粒度的使用锁或互斥锁的算法很容易导致死锁，这取决于竞争来自于哪个Warp线程束。
+
+Volta架构在所有线程之间实现相等的并发性，它通过维护每个线程的调度资源和执行状态（包括程序计数器PC和调用堆栈S）来实现这一点，而Pascal等早期架构仅由每个Warp维护这些资源，如下图所示。
+
+<img src="NVIDIA GPU硬件白皮书.assets/Volta架构的线程独立调度.png" style="zoom: 50%;" />
+
+Volta架构的独立线程调度允许GPU放弃任何线程的执行，或者是更好地利用执行资源，或者是允许一个线程等待另一个线程产生的数据。为最大限度地提高并行效率，Volta架构包括一个调度优化器（Scheduler Optimizer），它决定如何将来自同一个Warp的活动线程分组到SIMT单元中。这具有更大的灵活性，可以允许线程在低于Warp的粒度上（即协作组）发散和重新收敛，而且收敛优化器（Convergence Optimizer）仍然会将执行相同代码的线程分组在一起并行运行，以获得最大效率。需要注意的是，执行仍然是SIMT模式，即在任何给定的时钟周期，CUDA核心对所有活动线程执行相同的指令。
+
+<img src="NVIDIA GPU硬件白皮书.assets/Volta架构的线程调度.png" style="zoom:33%;" />
+
+Volta架构的独立线程调度允许来自不同分支的语句交错执行，这允许执行细粒度并行算法，其中Warp内的线程可以同步和通信，例如使用\_\_sync_warp()函数使得同一个Warp中的线程进行同步。
+
+此外，Volta架构提出多进程服务（Multi-Process Service，MPS）功能，可为共享GPU的多个应用程序提供更高的性能和隔离。典型的多应用程序共享GPU的执行是通过时间切片实现的，即每个应用程序在授予另一个应用程序访问权限之前获得一段时间的独占访问权限。而Volta架构的MPS通过允许多个应用程序同时共享GPU执行资源来提高GPU的总体利用率，使得多进程服务可以更好的适配到云厂商进行多用户租赁。
+
 ## Tensor Core
+
+在使用Volta架构的GV100 GPU中，NVIDIA设计了新的专用于矩阵乘法计算的张量核心（Tensor Core），用于深度学习任务中提供训练大型神经网络。张量核心的计算硬件，以及它的数据路径都是定制设计的，可以显著提高浮点计算的吞吐量。
+
+每个张量核心执行4×4矩阵的D＝A×B＋C乘加操作，其中输入矩阵A和B都是FP16精度的矩阵，中间乘积结果为全精度结果，累加矩阵C和D是FP16或FP32精度的矩阵。这些操作包含4×4×4＝64次乘法，以及16×4＝64次加法，故在一个时钟周期内，一个Tensor Core能够执行64个浮点FMA操作，或者执行128个单独的浮点操作。
+
+<img src="NVIDIA GPU硬件白皮书.assets/Tensor Core所执行的计算的示意图.png" style="zoom:50%;" />
+
+一个Tensor Core在一个时钟周期能够执行64个浮点FMA操作，或者执行128个单独的浮点操作；一个SM拥有8个Tensor Core张量核心，所以一个SM在一个时钟周期能够执行512个FMA浮点操作，或者执行1024个单独的浮点操作。
+
+于是，在一个NVIDIA GV100 GPU中，其Tensor Core张量核心能够提供大约1024×2×7×6×1530MHz÷1T≈125TFlops的浮点计算峰值性能。与Tesla P100上使用标准FP32操作所取得的10.6TFlops计算性能相比，Tesla V100上的Tensor Cores可提供高达12倍的浮点数计算峰值性能。
+
+<img src="NVIDIA GPU硬件白皮书.assets/Volta架构的张量核心与Pascal架构CUDA核心计算效率比较.png" style="zoom:40%;" />
+
+Volta架构的张量核心可以在CUDA 9.0及更高的版本中访问，其暴露为线程束级别的矩阵操作（Warp-Level Matrix Operation）的API接口，该API提供专用的矩阵加载（matrix load）、矩阵乘法（matrix multiply）、累加（accumulate）、矩阵存储（matrix store）操作。在CUDA层面提供的Warp线程束接口中，会假定M×N×K＝16×16×8的矩阵数据由一个线程束的所有32个线程持有。
+
+# Turing Architecture
+
+NVIDIA在2018年发布的TU102芯片和TU104芯片中引入了Turing架构，并在[NVIDIA Turing GPU Architecture](https://images.nvidia.com/aem-dam/en-zz/Solutions/design-visualization/technologies/turing-architecture/NVIDIA-Turing-Architecture-Whitepaper.pdf)一文中进行了描述。下图是NVIDIA TU102 GPU的架构示意图。
+
+![](NVIDIA GPU硬件白皮书.assets/NVIDIA TU102 GPU架构.png)
+
+一个TU102 GPU拥有1个主机接口（Host Interface）、1个负责全局调度的GigaThread引擎、6个相互独立的图形处理器簇（Graphics Processor Cluster，GPC）、12个512位的内存控制器（Memory Controller）、1个片上共享的L2读写缓存。一个内存控制器绑定512KB的L2缓存，一个完整的TU102 GPU总共拥有6144位的内存接口，以及6144KB的L2缓存。
+
+一个GPC拥有6个纹理处理器簇（Texture Processor Cluster，TPC），一个TPC拥有2个流多处理器（Streaming Multiprocessor，SM）。一个TU102 GPU总共拥有4608个CUDA单精度计算核心、4608个CUDA整型计算核心、576个Tensor Core张量核心。
+
+<img src="NVIDIA GPU硬件白皮书.assets/NVIDIA TU102 SM架构.png" style="zoom: 33%;" />
+
+在Turing架构中，一个SM拥有1个光线追踪核心（Ray Tracing Core，RT Core）、2个FP64核心（图中未显示）、被划分为4个不同的处理块分区（Processing Block Partition），每个处理块都有自己的专用资源用于指令缓存和调度。一个处理块分区拥有1个新的L0级指令缓存（L0 Instruction Cache）、1个线程束调度器（Warp Scheduler）、1个指令分派单元（Instruction Dispatch Unit）、1个包含16384个32位寄存器的寄存器文件（Register File）、16个FP32核心、16个INT32核心、2个用于深度学习矩阵乘法的新型混合精度的张量核心（Tensor Core）。
+
+在Turing架构中，一个SM中的共享内存和L1数据缓存共用同一个物理高速缓存，并能配置最高64KB的共享内存容量。
+
+在Turing架构中，Tensor Core张量核心增加了对INT8和INT4精度的支持。
+
+# Ampere Architecture
+
+NVIDIA在2020年发布的GA100芯片中引入了Ampere架构，专用于高性能科学计算，并在[NVIDIA A100 Tensor Core GPU Architecture](https://images.nvidia.com/aem-dam/en-zz/Solutions/data-center/nvidia-ampere-architecture-whitepaper.pdf)一文中进行了描述；之后又发布了GA102芯片，用于图形学渲染和游戏行业，并在[NVIDIA Ampere GA102 GPU Architecture](https://www.nvidia.com/content/PDF/nvidia-ampere-ga-102-gpu-architecture-whitepaper-v2.pdf)一文中进行了描述。下图是NVIDIA GA100 GPU的架构示意图。
+
+![](NVIDIA GPU硬件白皮书.assets/NVIDIA GA100 GPU架构.png)
+
+一个GA100 GPU拥有1个主机接口（Host Interface）、1个负责全局调度的GigaThread引擎、8个相互独立的图形处理器簇（Graphics Processor Cluster，GPC）、12个512位的内存控制器（Memory Controller）、6个高速带宽内存（High Bandwidth Memory，HBM2 DRAM）堆栈单元、2个片上共享的L2读写缓存。一个GPC拥有8个纹理处理器簇（Texture Processor Cluster，TPC），一个TPC拥有2个流多处理器（Streaming Multiprocessor，SM）。
+
+<img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GA100 SM架构.png" style="zoom: 33%;" />
+
+在Ampere架构中，
 
 ！！！
 
-与上一代NVIDIA Maxwell和Kepler架构相比，Tesla P100在训练神经网络方面提供了更高的性能，但神经网络的复杂性和规模仍在持续增长。如前所述，具有数千层和数百万神经元的新网络需要更高的性能和更快的训练时间。
+一个SM拥有1个光线追踪核心（Ray Tracing Core，RT Core）、2个FP64核心（图中未显示）、被划分为4个不同的处理块分区（Processing Block Partition），每个处理块都有自己的专用资源用于指令缓存和调度。一个处理块分区拥有1个新的L0级指令缓存（L0 Instruction Cache）、1个线程束调度器（Warp Scheduler）、1个指令分派单元（Instruction Dispatch Unit）、1个包含16384个32位寄存器的寄存器文件（Register File）、16个FP32核心、16个INT32核心、2个用于深度学习矩阵乘法的新型混合精度的张量核心（Tensor Core）。
 
-新的Tensor Cores是Volta GV100 GPU架构提供训练大型神经网络所需性能的关键功能。
+在Turing架构中，一个SM中的共享内存和L1数据缓存共用同一个物理高速缓存，并能配置最高64KB的共享内存容量。
 
-特斯拉V100 GPU包含640个张量核:每个SM 8个，每个SM内每个处理块(分区)2个。在Volta GV100中，每个Tensor Core每个时钟执行64个浮点FMA操作，而SM中的8个Tensor Core每个时钟执行512个FMA操作(或1024个单独的浮点操作)。
-
-特斯拉V100的张量内核为训练和推理应用提供高达125张量TFLOPS。与在P100上使用标准FP32操作相比，Tesla V100上的Tensor Cores可提供高达12倍的峰值TFLOPS，可应用于深度学习训练。对于深度学习推理，与P100上的标准FP16操作相比，V100张量内核提供高达6倍的峰值TFLOPS。
-
-矩阵-矩阵乘法(GEMM)运算是神经网络训练和推理的核心，用于在网络的连接层中对输入数据和权重的大矩阵进行乘法运算。对于使用单精度矩阵乘法的应用，图6显示，搭载CUDA 9的特斯拉V100的性能比搭载CUDA 8的特斯拉P100高1.8倍。对于具有半精度输入的用于训练和推理操作的矩阵乘法，图7显示，对于具有FP16输入和FP32积累的矩阵运算的情况，Volta的混合精度张量内核与P100相比提高了9倍以上的性能。
+在Turing架构中，Tensor Core张量核心增加了对INT8和INT4精度的支持。
