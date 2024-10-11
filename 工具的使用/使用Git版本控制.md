@@ -336,13 +336,13 @@ git branch --set-upstream-to=<upstream> branch_name
 在为一个本地分支branch_name设置上游远程跟踪分支remote_name/remote_branch时，会将本地分支的branch.branch_name.merge配置赋值为refs/heads/remote_branch，表示上游远程跟踪分支，将将本地分支的branch.branch_name.remote配置赋值为remote_name，表示远程存储仓库名称。
 
 ```shell
-git [-m|M|c|C] [old_branch] new_branch
+git branch [-m|M|c|C] [old_branch] new_branch
 ```
 
 使用-m或-M选项将旧分支old_branch移动（重命名）为新分支new_branch；使用-c或-C选项将旧分支复制为新分支new_branch。当未指定old_branch分支时，默认使用HEAD头所指向的当前分支。
 
 ```shell
-git [-d|D] [-r] branch_name
+git branch [-d|D] [-r] branch_name
 ```
 
 使用-d或-D选项删除一个分支branch_name，同时使用-r选项删除远程跟踪的分支，只有当远程分支不再存在于远程仓库或设置git fetch不再获取它们时，删除远程分支才有意义。

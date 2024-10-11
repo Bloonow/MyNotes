@@ -74,9 +74,9 @@ SMC控制多个SM，仲裁在SM之间共享的Texture Unit、加载/存储路径
 
 SP核心是SM中主要的线程处理器，由它负责执行基本的浮点运算、各种整型运算、比较操作、类型转换操作等。浮点数的加法和乘法操作能够兼容用于单精度浮点数的IEEE 754标准，包括非数值（Not a Number，NaN）和无穷值。SP核心中的浮点部件的计算流程是完全流水线化的，并对延迟进行了优化，以平衡时延和物理期间的占用面积。
 
-SFU单元既支持超越函数的计算，也支持平面属性插值（planar attribute interpolation），根据图元顶点上的属性值，计算在(X,Y)像素位置上的属性值。SFU单元每个时钟周期可以计算获得一个32位的浮点数。SFU单元中的属性插值硬件是完全流水线化的，一个时钟周期能计算4个数据点的插值。
+SFU单元既支持超越函数的计算，也支持平面属性插值（planar attribute interpolation），根据图元顶点上的属性值，计算在(X,Y)像素位置上的属性值。SFU单元每个时钟可以计算获得一个32位的浮点数。SFU单元中的属性插值硬件是完全流水线化的，一个时钟能计算4个数据点的插值。
 
-GeForce 8800 Ultra GPU中SP和SFU的时钟频率为1.5GHz，在一个时钟周期下，一个SP执行1次乘加操作（2次浮点操作），一个SFU执行4次浮点操作，于是峰值性能为(8×2＋2×4)×1.5GHz＝36GFlops。为优化功耗和单位面积能效，未处理数据的SM可以在一半时钟周期的频率下运行。
+GeForce 8800 Ultra GPU中SP和SFU的时钟频率为1.5GHz，在一个时钟下，一个SP执行1次乘加操作（2次浮点操作），一个SFU执行4次浮点操作，于是峰值性能为(8×2＋2×4)×1.5GHz＝36GFlops。为优化功耗和单位面积能效，未处理数据的SM可以在一半时钟的频率下运行。
 
 ## 线程调度
 
@@ -105,6 +105,8 @@ SM的Warp调度器（Warp Scheduler）的工作频率是1.5GHz处理器时钟频
 与以往执行向量化指令的GPU不同，Tesla SM执行标量指令，提供标量的指令集架构（Instruction Set Architecture，ISA）。这是因为着色器程序的指令越来越标量化，甚至很难完全占据之前的四组件向量架构结构中的两个组件；而且以前的向量化体系结构使用向量打包（将工作负载的子向量组合起来以提高效率）方式，但这会使得调度硬件和编译器变得复杂。而标量指令更简单且对编译器友好。不过，纹理指令仍然是向量化的，接受一个源坐标向量并返回一个过滤后的颜色向量。
 
 高抽象层级的图形语言或编程语言的编译器会生成中间指令，例如DX10向量指令或PTX标量指令，然后对其进行优化并将其转换为二进制的GPU指令。PTX为编译器提供了一个稳定的目标指令集，并提供了对几代GPU的兼容性。优化器很容易将DX10向量指令展开为多个Tesla SM标量指令；而PTX标量指令优化到Tesla SM标量指令大约是一一对应的。由于中间语言使用虚拟寄存器，优化器需要分析数据依赖关系并分配真实寄存器。它消除了死代码，可行时将指令折叠在一起，并优化了SIMT分支发散和收敛点。
+
+对于设备代码，nvcc先将设备代码编译为虚拟的**PTX（Parallel Thread Execution）伪汇编代码**，它是一种中间表示；再将PTX代码编译为二进制的cubin目标代码，可以由机器直接执行的二进制目标代码对应的汇编称为**SASS（Streaming Assembly）流汇编代码**，它是基于特定GPU架构的。
 
 Tesla SM有一个基于寄存器的指令集，包括浮点、整数、位、转换、超越、流程控制、内存加载/存储、纹理操作。
 
@@ -157,7 +159,7 @@ NVIDIA在2008年发布的GeForce 200 GPU系列中改进了Tesla架构设计，�
 
 与GeForce 8 GPU相比，在GeForce GTX 200 GPU中，一个SM的局部寄存器文件（Register File）大小增大了一倍。旧的GPU遇到很长的着色器程序时，可能会导致寄存器耗尽，这会产生将数据交换到内存的需要。更大的寄存器文件允许更大更复杂的计算程序。
 
-GeForce GTX 200 GPU的单个流处理SP核心可以使用MAD单元，在一个时钟周期内完成MAD和MUL的双发射（dual-issue）的几乎全速的执行，取得3Flops的计算速率；同时SFU单元可以在一个时钟周期内完成另一个MUL的执行。这能取得(8×3＋2×4)×3×10＝960Flops的浮点计算性能。
+GeForce GTX 200 GPU的单个流处理SP核心可以使用MAD单元，在一个时钟内完成MAD和MUL的双发射（dual-issue）的几乎全速的执行，取得3Flops的计算速率；同时SFU单元可以在一个时钟内完成另一个MUL的执行。这能取得(8×3＋2×4)×3×10＝960Flops的浮点计算性能。
 
 GeForce GTX 200 GPU的一个非常重要的新添加是双精度，即支持64位浮点计算。一个SM包含一个双精度64位浮点数学单元（Floating Math Unit），一共有30个双精度64位处理核心。双精度单元执行融合的MAD乘加操作，这是MAD指令的高精度实现，也完全符合IEEE 754R浮点规范。
 
@@ -175,9 +177,9 @@ NVIDIA在2010年发布的GF100 GPU中引入了Fermi架构，首次展示了CUDA�
 
 一个SM拥有1个指令缓存（Instruction Cache）、2个线程束调度器（Warp Scheduler）、2个指令分派单元（Instruction Dispatch Unit）、1个包含32768个32位寄存器的寄存器文件（Register File）、32个计算核心（CUDA Core）、4个特殊函数单元（Special Function Unit）、16个加载/存储单元（LD/ST Unit）、1个总共64KB的可配置的SRAM高速存储器、1个统一缓存（Uniform Cache）、1个纹理缓存（Texture Cache）、4个纹理单元（Texture Unit）、一个变形引擎（PolyMorph Engine）。
 
-特殊函数单元SFU执行超越指令，如正弦、余弦、倒数、平方根等。一个SFU一个时钟周期能够执行一个线程的一条指令，一个SM中的4个SFU需要花费8个时钟周期执行一个Warp的指令。SFU流水线与分派单元是解耦的，允许分派单元在SFU被占用时向其他执行单元发出命令。
+特殊函数单元SFU执行超越指令，如正弦、余弦、倒数、平方根等。一个SFU一个时钟能够执行一个线程的一条指令，一个SM中的4个SFU需要花费8个时钟执行一个Warp的指令。SFU流水线与分派单元是解耦的，允许分派单元在SFU被占用时向其他执行单元发出命令。
 
-在Fermi架构中，一个SM有16个加载/存储单元（LD/ST Unit），一个时钟周期内可以为16个线程计算源地址和目标地址，并支持将每个地址的数据加载和存储到缓存或DRAM中。每个SM都有64KB的片上高速存储器，可配置为48KB的共享内存和16KB的L1缓存，或者，也可配置为16KB的共享内存和48KB的L1缓存。
+在Fermi架构中，一个SM有16个加载/存储单元（LD/ST Unit），一个时钟内可以为16个线程计算源地址和目标地址，并支持将每个地址的数据加载和存储到缓存或DRAM中。每个SM都有64KB的片上高速存储器，可配置为48KB的共享内存和16KB的L1缓存，或者，也可配置为16KB的共享内存和48KB的L1缓存。
 
 ## 线程调度
 
@@ -197,7 +199,7 @@ SM以32个并行线程为一组进行线程调度，称为一个Warp线程束。
 
 每个CUDA核心都有一个完全流水线的整数算术逻辑单元（Arithmetic Logic Unit，ALU）和浮点单元（Float Point Unit，FPU），可以并行执行来自共享的指令发射单元（shared instruction issue unit）的指令，处理共享的寄存器文件中的操作数。
 
-Fermi架构对整数ALU进行了优化，以有效地支持64位和扩展精度操作，支持包括布尔值、移位、移动、比较、转换、位字段提取、位反向插入、统计计数等各种指令。Fermi架构实现了新的IEEE 754-2008浮点标准，为单精度和双精度提供了融合乘加（Fused Multiply Add，FMA）指令。FMA是对乘加（MAD）指令的改进，能够通过最后一个舍入步骤进行乘法和加法运算，而不会损失加法的精度。FMA比单独执行操作更准确。每个计算核心可以在一个时钟周期内进行一次单精度融合乘加运算，在两个时钟周期内进行一次双精度融合乘加运算。
+Fermi架构对整数ALU进行了优化，以有效地支持64位和扩展精度操作，支持包括布尔值、移位、移动、比较、转换、位字段提取、位反向插入、统计计数等各种指令。Fermi架构实现了新的IEEE 754-2008浮点标准，为单精度和双精度提供了融合乘加（Fused Multiply Add，FMA）指令。FMA是对乘加（MAD）指令的改进，能够通过最后一个舍入步骤进行乘法和加法运算，而不会损失加法的精度。FMA比单独执行操作更准确。每个计算核心可以在一个时钟内进行一次单精度融合乘加运算，在两个时钟内进行一次双精度融合乘加运算。
 
 上一代GPU的乘加指令MAD允许在单个时钟中执行乘法与加法两个操作，MAD指令执行一个带有截断的乘法，后跟一个采用就近舍入到偶数（Round to Nearest Even）的加法。Fermi架构为32位单精度和64位双精度浮点数实现了新的融合乘加指令FMA，通过在中间阶段保留完全精度来改进乘法加。
 
@@ -245,7 +247,7 @@ GK110或GK210旨在提供快速的双精度计算性能，以加速专业HPC计�
 
 Kepler架构的非凡性能的关键之一是下一代SM设计，称为SMX，其包含几个重要的架构变化。SMX以32个并行线程为一组调度线程，称为一个Warp。一个SMX管理一个包含64个Warp的线程池，一共2048个线程。
 
-一个SMX包含4个线程束调度器（Warp Scheduler）、8个指令分派单元（Instruction Dispatch Unit），一个线程束调度器拥有2个指令分派单元。这允许一个SMX同时发射和执行4个Warp，并能够在一个时钟周期为一个Warp调度两条指令。与Fermi架构中不允许双精度指令与其他指令配对不同，GK110或GK210允许双精度指令与其他指令配对。同时，因为硬件计算核心数目的增多，调度可以将一条指令发射到192个单精度计算核心上、64个双精度计算核心上、32个加载/存储单元上、或者32个SFU单元上。于是，几乎所有指令在硬件资源不被其它指令占用的情况下，都可以在1个时钟周期内完成。
+一个SMX包含4个线程束调度器（Warp Scheduler）、8个指令分派单元（Instruction Dispatch Unit），一个线程束调度器拥有2个指令分派单元。这允许一个SMX同时发射和执行4个Warp，并能够在一个时钟为一个Warp调度两条指令。与Fermi架构中不允许双精度指令与其他指令配对不同，GK110或GK210允许双精度指令与其他指令配对。同时，因为硬件计算核心数目的增多，调度可以将一条指令发射到192个单精度计算核心上、64个双精度计算核心上、32个加载/存储单元上、或者32个SFU单元上。于是，几乎所有指令在硬件资源不被其它指令占用的情况下，都可以在1个时钟内完成。
 
 <img src="NVIDIA GPU硬件白皮书.assets/Kepler的线程束调度器.png" style="zoom: 50%;" />
 
@@ -301,7 +303,7 @@ NVIDIA在2014年发布的GM204 GPU芯片中引入了Maxwell架构，并在[NVIDI
 
 一个GPC拥有1个光栅化引擎（Raster Engine）、4个流多处理器（Streaming Multiprocessor，SMX）。一个SMM拥有128个CUDA计算核心，一个GeForce GTX 980 GPU总共拥有2048个CUDA计算核心。
 
-在Maxwell架构中，一个SMM拥有1个指令缓存（Instruction Cache）、被划分为4个不同的包含32个CUDA核心的处理块（Processing Block），每个处理块都有自己的专用资源用于指令缓冲和调度。一个SMM包含4个线程束调度器（Warp Scheduler）、8个指令分派单元（Instruction Dispatch Unit）、128个CUDA计算核心。一个线程束调度器拥有2个指令分派单元，这允许一个SMM同时发射和执行4个Warp，并能够在一个时钟周期为一个Warp调度两条指令。
+在Maxwell架构中，一个SMM拥有1个指令缓存（Instruction Cache）、被划分为4个不同的包含32个CUDA核心的处理块（Processing Block），每个处理块都有自己的专用资源用于指令缓冲和调度。一个SMM包含4个线程束调度器（Warp Scheduler）、8个指令分派单元（Instruction Dispatch Unit）、128个CUDA计算核心。一个线程束调度器拥有2个指令分派单元，这允许一个SMM同时发射和执行4个Warp，并能够在一个时钟为一个Warp调度两条指令。
 
 在Maxwell架构中，一个SMM拥有96KB的专用的共享内存，而L1缓存功能则与纹理缓存功能共享同一个物理高速缓存。
 
@@ -317,13 +319,13 @@ NVIDIA在2016年发布的GP100芯片中引入了Pascal架构，专用于高性�
 
 <img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GP100 SM架构.png" style="zoom:50%;" />
 
-在Pascal架构中，一个SM拥有1个指令缓存（Instruction Cache）、被划分为2个不同的包含32个CUDA核心的处理块（Processing Block），每个处理块都有自己的专用资源用于指令缓冲和调度。一个SM包含2个线程束调度器（Warp Scheduler）、4个指令分派单元（Instruction Dispatch Unit）、64个CUDA单精度计算核心。一个线程束调度器拥有2个指令分派单元，这允许一个SM同时发射和执行2个Warp，并能够在一个时钟周期为一个Warp调度两条指令。
+在Pascal架构中，一个SM拥有1个指令缓存（Instruction Cache）、被划分为2个不同的包含32个CUDA核心的处理块（Processing Block），每个处理块都有自己的专用资源用于指令缓冲和调度。一个SM包含2个线程束调度器（Warp Scheduler）、4个指令分派单元（Instruction Dispatch Unit）、64个CUDA单精度计算核心。一个线程束调度器拥有2个指令分派单元，这允许一个SM同时发射和执行2个Warp，并能够在一个时钟为一个Warp调度两条指令。
 
 在GP100 GPU架构中，一个SM拥有32个CUDA双精度计算核心（FP64），是CUDA单精度计算核心（FP32）数量的一半。与以前的GPU架构一样，GP100支持完全符合IEEE 754 2008标准的单精度和双精度算法，包括支持FMA融合乘加操作和对非规范化值的全速支持。同时，CUDA单精度计算核心也支持处理16位的指令和数据，理论上FP16运算吞吐量是FP32运算吞吐量的两倍。
 
 在Pascal架构中，一个SM拥有64KB的专用的共享内存，一个SM上的线程块最大可使用32KB的共享内存。另外，L1缓存功能则与纹理缓存功能共享同一个物理高速缓存，用于充当内存访问的合并缓冲区，在将数据传递给Warp之前收集Warp线程所请求的数据。
 
-## 存储访问
+## HBM2内存堆栈
 
 近年来，许多使用GPU加速的应用程序对数据的需求大大增加，需要更高的DRAM带宽需求，GP100 GPU是第一款使用第二版高速带宽内存（HBM2）的GPU加速卡。HBM2从根本上改变DRAM封装和连接到GPU的方式，能够显著提高DRAM带宽。
 
@@ -373,9 +375,9 @@ NVIDIA在2017年发布的GV100芯片中引入了Volta架构，专用于高性能
 
 相比与GP100 GPU，采用Volta架构的GV100 GPU还有一些其它方面的改进。
 
-例如，融合乘加FMA运算的指令发布延迟也减少了，在Volta上只需要4个时钟周期，而在Pascal上需要6个时钟周期。例如，第二代NVLink技术，提供更高的链路速率（25Gb/sec）、一个GPU支持更多的6条NVLink连接等。例如，高速带宽内存（HBM2）技术，一个HBM2堆栈使用4个内存芯片，一个GV100 GPU总共4个HBM2堆栈，最大16GPU的GPU内存，在4个堆栈上提供900GB/sec的峰值内存带宽。
+例如，融合乘加FMA运算的指令发布延迟也减少了，在Volta上只需要4个时钟，而在Pascal上需要6个时钟。例如，第二代NVLink技术，提供更高的链路速率（25Gb/sec）、一个GPU支持更多的6条NVLink连接等。例如，高速带宽内存（HBM2）技术，一个HBM2堆栈使用4个内存芯片，一个GV100 GPU总共4个HBM2堆栈，最大16GPU的GPU内存，在4个堆栈上提供900GB/sec的峰值内存带宽。
 
-## 线程调度
+## 独立线程调度
 
 Volta架构的GV100是首款支持线程独立调度的GPU，即调度的粒度下降到一个线程级别，而不只是一个Warp线程束级别的粒度，从而可以实现程序中并行线程之间的细粒度同步和协作。
 
@@ -389,7 +391,7 @@ Volta架构在所有线程之间实现相等的并发性，它通过维护每个
 
 <img src="NVIDIA GPU硬件白皮书.assets/Volta架构的线程独立调度.png" style="zoom: 50%;" />
 
-Volta架构的独立线程调度允许GPU放弃任何线程的执行，或者是更好地利用执行资源，或者是允许一个线程等待另一个线程产生的数据。为最大限度地提高并行效率，Volta架构包括一个调度优化器（Scheduler Optimizer），它决定如何将来自同一个Warp的活动线程分组到SIMT单元中。这具有更大的灵活性，可以允许线程在低于Warp的粒度上（即协作组）发散和重新收敛，而且收敛优化器（Convergence Optimizer）仍然会将执行相同代码的线程分组在一起并行运行，以获得最大效率。需要注意的是，执行仍然是SIMT模式，即在任何给定的时钟周期，CUDA核心对所有活动线程执行相同的指令。
+Volta架构的独立线程调度允许GPU放弃任何线程的执行，或者是更好地利用执行资源，或者是允许一个线程等待另一个线程产生的数据。为最大限度地提高并行效率，Volta架构包括一个调度优化器（Scheduler Optimizer），它决定如何将来自同一个Warp的活动线程分组到SIMT单元中。这具有更大的灵活性，可以允许线程在低于Warp的粒度上（即协作组）发散和重新收敛，而且收敛优化器（Convergence Optimizer）仍然会将执行相同代码的线程分组在一起并行运行，以获得最大效率。需要注意的是，执行仍然是SIMT模式，即在任何给定的时钟，CUDA核心对所有活动线程执行相同的指令。
 
 <img src="NVIDIA GPU硬件白皮书.assets/Volta架构的线程调度.png" style="zoom:33%;" />
 
@@ -401,11 +403,11 @@ Volta架构的独立线程调度允许来自不同分支的语句交错执行，
 
 在使用Volta架构的GV100 GPU中，NVIDIA设计了新的专用于矩阵乘法计算的张量核心（Tensor Core），用于深度学习任务中提供训练大型神经网络。张量核心的计算硬件，以及它的数据路径都是定制设计的，可以显著提高浮点计算的吞吐量。
 
-每个张量核心执行4×4矩阵的D＝A×B＋C乘加操作，其中输入矩阵A和B都是FP16精度的矩阵，中间乘积结果为全精度结果，累加矩阵C和D是FP16或FP32精度的矩阵。这些操作包含4×4×4＝64次乘法，以及16×4＝64次加法，故在一个时钟周期内，一个Tensor Core能够执行64个浮点FMA操作，或者执行128个单独的浮点操作。
+每个张量核心执行4×4矩阵的D＝A×B＋C乘加操作，其中输入矩阵A和B都是FP16精度的矩阵，中间乘积结果为全精度结果，累加矩阵C和D是FP16或FP32精度的矩阵。这些操作包含M×N×K＝4×4×4＝64次乘法，以及16×4＝64次加法，故在一个时钟内，一个Tensor Core能够执行64个混合精度的FP16/FP32的浮点FMA操作，或者执行128个单独的浮点操作。
 
 <img src="NVIDIA GPU硬件白皮书.assets/Tensor Core所执行的计算的示意图.png" style="zoom:50%;" />
 
-一个Tensor Core在一个时钟周期能够执行64个浮点FMA操作，或者执行128个单独的浮点操作；一个SM拥有8个Tensor Core张量核心，所以一个SM在一个时钟周期能够执行512个FMA浮点操作，或者执行1024个单独的浮点操作。
+一个Tensor Core在一个时钟能够执行64个混合精度的FP16/FP32的浮点FMA操作，或者执行128个单独的浮点操作；一个SM拥有8个Tensor Core张量核心，所以一个SM在一个时钟能够执行512个FMA浮点操作，或者执行1024个单独的浮点操作。
 
 于是，在一个NVIDIA GV100 GPU中，其Tensor Core张量核心能够提供大约1024×2×7×6×1530MHz÷1T≈125TFlops的浮点计算峰值性能。与Tesla P100上使用标准FP32操作所取得的10.6TFlops计算性能相比，Tesla V100上的Tensor Cores可提供高达12倍的浮点数计算峰值性能。
 
@@ -425,28 +427,63 @@ NVIDIA在2018年发布的TU102芯片和TU104芯片中引入了Turing架构，并
 
 <img src="NVIDIA GPU硬件白皮书.assets/NVIDIA TU102 SM架构.png" style="zoom: 33%;" />
 
-在Turing架构中，一个SM拥有1个光线追踪核心（Ray Tracing Core，RT Core）、2个FP64核心（图中未显示）、被划分为4个不同的处理块分区（Processing Block Partition），每个处理块都有自己的专用资源用于指令缓存和调度。一个处理块分区拥有1个新的L0级指令缓存（L0 Instruction Cache）、1个线程束调度器（Warp Scheduler）、1个指令分派单元（Instruction Dispatch Unit）、1个包含16384个32位寄存器的寄存器文件（Register File）、16个FP32核心、16个INT32核心、2个用于深度学习矩阵乘法的新型混合精度的张量核心（Tensor Core）。
+在Turing架构中，一个SM拥有1个光线追踪核心（Ray Tracing Core，RT Core）、2个FP64核心（图中未显示）、被划分为4个不同的处理块分区（Processing Block Partition），每个处理块都有自己的专用资源用于指令缓存和调度。一个处理块分区拥有1个新的L0级指令缓存（L0 Instruction Cache）、1个线程束调度器（Warp Scheduler）、1个指令分派单元（Instruction Dispatch Unit）、1个包含16384个32位寄存器的寄存器文件（Register File）、16个FP32核心、16个INT32核心、2个第二代张量核心（Tensor Core）。
 
-在Turing架构中，一个SM中的共享内存和L1数据缓存共用同一个物理高速缓存，并能配置最高64KB的共享内存容量。
+在Turing架构中，一个SM中的共享内存和L1数据缓存共用同一个96KB的物理高速缓存，并能配置最高64KB的共享内存容量。
 
-在Turing架构中，Tensor Core张量核心增加了对INT8和INT4精度的支持。
+在Turing架构中，第二代张量核心Tensor Core增加了对INT8和INT4精度的支持。
 
 # Ampere Architecture
 
-NVIDIA在2020年发布的GA100芯片中引入了Ampere架构，专用于高性能科学计算，并在[NVIDIA A100 Tensor Core GPU Architecture](https://images.nvidia.com/aem-dam/en-zz/Solutions/data-center/nvidia-ampere-architecture-whitepaper.pdf)一文中进行了描述；之后又发布了GA102芯片，用于图形学渲染和游戏行业，并在[NVIDIA Ampere GA102 GPU Architecture](https://www.nvidia.com/content/PDF/nvidia-ampere-ga-102-gpu-architecture-whitepaper-v2.pdf)一文中进行了描述。下图是NVIDIA GA100 GPU的架构示意图。
+NVIDIA在2020年发布的GA100芯片中引入了Ampere架构，专用于高性能科学计算，并在[NVIDIA A100 Tensor Core GPU Architecture](https://images.nvidia.com/aem-dam/en-zz/Solutions/data-center/nvidia-ampere-architecture-whitepaper.pdf)一文中进行了描述；之后又发布了GA102芯片，用于图形学渲染和游戏行业，并在[NVIDIA Ampere GA102 GPU Architecture](https://www.nvidia.com/content/PDF/nvidia-ampere-ga-102-gpu-architecture-whitepaper-v2.pdf)一文中进行了描述。下图是NVIDIA GA100 Full GPU的架构示意图。
 
 ![](NVIDIA GPU硬件白皮书.assets/NVIDIA GA100 GPU架构.png)
 
-一个GA100 GPU拥有1个主机接口（Host Interface）、1个负责全局调度的GigaThread引擎、8个相互独立的图形处理器簇（Graphics Processor Cluster，GPC）、12个512位的内存控制器（Memory Controller）、6个高速带宽内存（High Bandwidth Memory，HBM2 DRAM）堆栈单元、2个片上共享的L2读写缓存。一个GPC拥有8个纹理处理器簇（Texture Processor Cluster，TPC），一个TPC拥有2个流多处理器（Streaming Multiprocessor，SM）。
+一个GA100 Full GPU拥有1个主机接口（Host Interface）、1个负责全局调度的GigaThread引擎、8个相互独立的图形处理器簇（Graphics Processor Cluster，GPC）、12个512位的内存控制器（Memory Controller）、6个高速带宽内存（High Bandwidth Memory，HBM2 DRAM）堆栈单元、2个片上共享的L2读写缓存。一个GPC拥有8个纹理处理器簇（Texture Processor Cluster，TPC），一个TPC拥有2个流多处理器（Streaming Multiprocessor，SM）。而在A100 Tensor Core GPU中，只包含10个内存控制器，提供5120位的内存带宽，并且只包含108个SM。
 
 <img src="NVIDIA GPU硬件白皮书.assets/NVIDIA GA100 SM架构.png" style="zoom: 33%;" />
 
-在Ampere架构中，
+在Ampere架构中，一个SM拥有1个L1级指令缓存（L1 Instruction Cache）、被划分为4个不同的处理块分区（Processing Block Partition），每个处理块都有自己的专用资源用于指令缓存和调度。一个处理块分区拥有1个L0级指令缓存（L0 Instruction Cache）、1个线程束调度器（Warp Scheduler）、1个指令分派单元（Instruction Dispatch Unit）、1个包含16384个32位寄存器的寄存器文件（Register File）、16个FP32核心、16个INT32核心、8个FP64核心、1个第三代张量核心（Tensor Core）。
 
-！！！
+在Ampere架构中，一个SM中的共享内存和L1数据缓存共用同一个192KB的物理高速缓存，并能配置最高164KB的共享内存容量。
 
-一个SM拥有1个光线追踪核心（Ray Tracing Core，RT Core）、2个FP64核心（图中未显示）、被划分为4个不同的处理块分区（Processing Block Partition），每个处理块都有自己的专用资源用于指令缓存和调度。一个处理块分区拥有1个新的L0级指令缓存（L0 Instruction Cache）、1个线程束调度器（Warp Scheduler）、1个指令分派单元（Instruction Dispatch Unit）、1个包含16384个32位寄存器的寄存器文件（Register File）、16个FP32核心、16个INT32核心、2个用于深度学习矩阵乘法的新型混合精度的张量核心（Tensor Core）。
+此外，为进一步支持硬件加速的多进程服务器（MPS），Ampere架构支持多实例GPU架构（Multi-Instance GPU，MIG），可以将A100划分为多达7个GPU实例，以实现最佳利用率，从而有效地扩展对每个用户和应用程序的访问。MIG功能将单个GPU划分为多个GPU分区，称为GPU实例，每个实例的SM在整个内存系统中都有独立和隔离的路径，片上交叉端口（on-chip crossbar port）、L2缓存Bank存储体、内存控制器、DRAM地址总线都被唯一地分配给单个实例。
 
-在Turing架构中，一个SM中的共享内存和L1数据缓存共用同一个物理高速缓存，并能配置最高64KB的共享内存容量。
+## Tensor Core
 
-在Turing架构中，Tensor Core张量核心增加了对INT8和INT4精度的支持。
+在Ampere架构中，第三代张量核心Tensor Core增加了对FP16、BF16、TF32、FP64、INT8、INT4、Binary等所有数据类型精度的支持。一个Tensor Core在一个时钟能够执行M×N×K＝8×4×8＝256个混合精度的FP16/FP32的浮点FMA操作，或者执行512个单独的浮点操作。又或者，一个Tensor Core在一个时钟内能够执行16个FP64精度的浮点FMA操作，或者执行32个单独的浮点操作。
+
+<img src="NVIDIA GPU硬件白皮书.assets/A100和V100的张量核心比较.png" style="zoom: 50%;" />
+
+在Ampere架构中，张量核心支持三种新的BF16精度、TF32精度、FP64精度。其中，BF16精度是IEEE标准FP16精度的替代品，BF16和FP16都能够成功地以混合精度模式训练神经网络，在不进行超参数调整的情况下与FP32精度的训练结果相匹配。而由于目前AI训练的默认精度是FP32，没有使用张量核心加速，于是Ampere架构引入了TF32精度，使得使用TF32精度的AI训练默认使用张量核心，而无需用户手动使用。非Tensor Core的操作会继续使用FP32的数据路径，而TF32则会使用张量核心读取FP32数据并使用与FP32相同的范围，但内部使用与FP16相同的精度，然后产生标准的IEEE FP32输出。
+
+<img src="NVIDIA GPU硬件白皮书.assets/BF16精度和TF32精度.png" style="zoom: 67%;" />
+
+在Ampere架构中，第三代Tensor Core张量核心允许数据在所有32个线程上共享，而Volta架构的张量核心上只允许数据在8个线程上共享。这种共享是指，在Tensor Core指令层面，每个线程的私有寄存器被设计为可共享资源，通过一种透明的共享机制，允许Tensor Core张量核心能够访问并充分利用这些寄存器资源，实现更高效的矩阵计算。跨多个线程共享数据可以减少向Tensor Core张量核心提供数据的寄存器文件的带宽，还可以减少从共享内存加载到寄存器文件中的冗余数据量，从而节省共享内存的带宽和寄存器文件的存储。执行的寄存器文件访问比V100少2.9倍。图中MAC是指乘法累加（Multiply Accumulate）操作。
+
+<img src="NVIDIA GPU硬件白皮书.assets/A100和V100使用张量核心计算的比较.png" style="zoom:50%;" />
+
+为进一步提高效率，A100 Tensor Core指令将每条指令的矩阵乘法的K维数相对于V100增加了4倍，使得在计算矩阵乘法运算时，A100发出的指令比V100少8倍。对于16×16×16矩阵乘法，A100使用增强的16×8×16的张量核心的Warp级指令，共需2条硬件指令；而V100使用8×8×4的张量核心的Warp级指令（被翻译成4条底层MMA硬件指令），共需16条硬件指令。注意，图中的Cycle时钟按照一个SM的处理块分区计算。
+
+## 存储访问
+
+在Ampere架构中，再一次对HBM2内存进行了改进，NVIDIA A100 GPU包含40GB的快速HBM2 DRAM内存。内存被组织为5个HBM2堆栈，每个堆栈有8个内存芯片，并且A100的HBM2提供1215MHz的数据速率（DDR），一个A100 GPU完整能够提供1555GB/sec的内存带宽。
+
+NVIDIA A100 GPU包含40MB的L2缓存，被分成2个分区，以支持更高的带宽和更低的延迟内存访问。一个L2缓存分区进一步被划分为40个L2缓存片（L2 Cache Slice），一个L2缓存片具有512KB的空间，一个内存控制器关联8个L2缓存片。一个L2缓存分区会在本地缓存所访问的数据，以便直接连接到该分区的GPC中的SM进行访问。硬件缓存一致性（hardware cache-coherence）能够在整个GPU上为CUDA编程模型提供支持，应用程序将自动利用A100新的L2缓存的带宽和延迟优势。
+
+---
+
+在Ampere架构中，程序员能够对L2缓存的驻留进行控制和数据管理，以保留或从缓存中删除指定数据。！！！！！！！！！
+
+用于L2缓存管理和驻留控制的新指令
+
+---
+
+Ampere架构支持一个新的异步复制指令load-global-store-shared，能够直接从全局内存（通常是从DRAM和L2缓存当中）加载数据到SM上的共享内存，绕过中间的L1缓存，同时避免为传输数据分配中间临时寄存器，避免寄存器文件的往返读写以节省SM内部带宽。而在Volta架构上，想要将数据从全局内存加载到共享内存，需要先使用load-global指令将数据通过L1缓存加载到寄存器文件，然后使用store-shared指令将数据从寄存器文件传输到共享内存中，最后在使用数据时再使用load-shared指令将数据从共享内存加载到多线程的寄存器中。
+
+<img src="NVIDIA GPU硬件白皮书.assets/从全局内存到共享内存的异步数据加载.png" style="zoom:50%;" />
+
+同时Ampere架构支持一个新的异步栅障指令，它与异步复制指令一起工作，以启用高效的数据访问流水线，从而保证A100 SM不间断的数据流，以保持L2缓存不断被使用。NVIDIA A100 GPU增加了SM数量和更强大的张量核心，从而提高了从DRAM和L2缓存获取数据所需的速率；为满足张量核心，A100实现了由5个HBM2堆栈组成的内存子系统，带宽为1555GB/sec，并提供了40MB的L2缓存空间；为充分利用L2缓存容量，A100改进了缓存管理控制，通过最大限度地减少对内存的回写并将重用的数据保存在L2缓存中，以减少冗余的DRAM流量，确保缓存中的数据得到更有效的使用。
+
+
+
