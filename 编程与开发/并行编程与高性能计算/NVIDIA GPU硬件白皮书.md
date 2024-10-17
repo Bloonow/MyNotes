@@ -425,7 +425,7 @@ NVIDIA在2018年发布的TU102芯片和TU104芯片中引入了Turing架构，并
 
 ![](NVIDIA GPU硬件白皮书.assets/NVIDIA TU102 GPU架构.png)
 
-一个TU102 GPU拥有1个主机接口（Host Interface）、1个负责全局调度的GigaThread引擎、6个相互独立的图形处理器簇（Graphics Processor Cluster，GPC）、12个512位的内存控制器（Memory Controller）、1个片上共享的L2读写缓存。一个内存控制器绑定512KB的L2缓存，一个完整的TU102 GPU总共拥有6144位的内存接口，以及6144KB的L2缓存。
+一个TU102 GPU拥有1个主机接口（Host Interface）、1个负责全局调度的GigaThread引擎、6个相互独立的图形处理器簇（Graphics Processor Cluster，GPC）、12个内存控制器（Memory Controller）、1个片上共享的L2读写缓存。一个内存控制器绑定512KB的L2缓存，一个完整的TU102 GPU总共拥有6144KB的L2缓存。
 
 一个GPC拥有6个纹理处理器簇（Texture Processor Cluster，TPC），一个TPC拥有2个流多处理器（Streaming Multiprocessor，SM）。一个TU102 GPU总共拥有4608个CUDA单精度计算核心、4608个CUDA整型计算核心、576个Tensor Core张量核心。
 
