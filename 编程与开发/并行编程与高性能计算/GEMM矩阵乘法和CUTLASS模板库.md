@@ -1,3 +1,169 @@
+# 通用矩阵乘法GEMM
+
+通用矩阵乘法GEMM一般是指计算数学公式
+$$
+C=\alpha AB+\beta C
+$$
+其中，$\alpha,\beta$是标量，$A,B,C$分别是形状为[M,K]，[K,N]，[M,N]的矩阵。
+
+本文主要使用NSight Compute远程连接RTX 4090服务器，以分析执行GEMM核函数的各项性能。假设矩阵A,B,C按照行主序的方式在内存中存储，且规定左上角为原点，右向为x正方向，下向为y正方向。
+
+## 朴素GEMM实现
+
+若由一个线程计算结果矩阵C中的一个元素，则基本的GEMM实现如下所示。
+
+```c++
+__global__ void matrix_mul_kernel(
+    const float *A, const float *B, float *C, 
+    const int M, const int N, const int K, const float alpha, const float beta
+) {
+    const int tx = blockIdx.x * blockDim.x + threadIdx.x;
+    const int ty = blockIdx.y * blockDim.y + threadIdx.y;
+    float c = 0.0;
+    if (tx < N && ty < M) {
+        for (int k = 0; k < K; ++k) {
+            c += A[ty * K + k] * B[k * N + tx]; 
+        }
+        C[ty * N + tx] = alpha * c + beta * C[ty * N + tx];
+    }
+}
+```
+
+该版本的代码显然无法发挥出GPU的硬件性能，编译运行，取[M,N,K]为[4096,4096,4096]，blockDim为[16,16]，使用NSight分析结果如下图所示。
+
+<img src="GEMM矩阵乘法和CUTLASS模板库.assets/GEMM_v0_prof.png" style="zoom:50%;" />
+
+可以看到，FP32浮点数计算性能只达到峰值性能的6%，主要原因是设备全局内存带宽利用率太低，只达到理论峰值带宽的0.97%，下面分析如何提升GEMM性能。
+
+## GEMM计算划分
+
+对于结果矩阵乘法来说，其经典的计算划分如下所示。
+
+<img src="GEMM矩阵乘法和CUTLASS模板库.assets/GEMM计算划分.png" style="zoom: 50%;" />
+
+其中，B表示一个Block线程块，W表示一个Warp线程束，T表示一个Thread线程。原始矩阵的形状为A[M,K]，B[K,N]，C[M,N]，数据存储在设备全局内存之中，下面在各个层面详细描述划分策略。
+
+在Block层面，每个Block计算形状为C[M_block,N_block]的矩阵块，对应数据为A[M_block,K]和B[K,N_block]。可以看到，一个Block中的同一行Thread会用到A的同一行数据，同一列Thread会用到B的同一列数据，故为提高性能，可将A和B的数据加载到共享内存之中。但因为共享内存空间有限，无法一次性将全部的A[M_block,K]和B[K,N_block]加载到共享内存，故每次加载A[M_block,K_block]和B[K_block,N_block]数据，并分ceil(K/K_block)轮迭代计算。
+
+在Warp层面，每个Warp计算形状为C[M_warp,N_warp]的矩阵块，对应数据为A[M_warp,K_warp]和[K_warp,N_warp]，其中K_warp等于K_block。
+
+在Thread层面，每个Thread计算形状为C[M_thread,N_thread]的矩阵块，对应数据为A[M_thread,K_thread]和B[K_thread,N_thread]，其中K_thread等于K_block。
+
+下面分析如何确定分块大小。对于一个Block来说，其主要操作为FMA（Fused Multiply Add）操作，在维度K上迭代计算，每次迭代完全相同，故可通过其中的一次迭代来分析，计算量为$\mathtt{M\_block}\times\mathtt{N\_block}\times\mathtt{K\_block}\times2\text{ FLOP}$，访存量为$(\mathtt{M\_block}+\mathtt{N\_block})\times\mathtt{K\_block}\times4\text{ Byte}$，则计算访存比（计算强度）为
+$$
+\frac{1}{2}\frac{1}{\dfrac{1}{\mathtt{M\_block}}+\dfrac{1}{\mathtt{N\_block}}} \ \text{FLOP}/\text{Byte}
+$$
+可以看到，计算强度与K_block无关，若不考虑其他因素，显然M_block与N_block越大，计算强度越大。
+
+在实际应用中，根据经验，对于一个Block来说，取[M_block,N_block,K_block]的值为[128,128,8]，通常能达到相对较好的性能。而且一个Block通常将Warp的布局组织为Block[4,2]warp形状，而一个Warp又将Thread的布局组织为Warp[4,8]thread形状，故一个Block将Thread的布局组织为Block[16,16]thread形状。那么，一个Warp所计算数据形状[M_warp,N_warp,K_warp]的值为[32,64,8]，一个Thread所计算数据形状[M_thread,N_thread,K_thread]的值为[8,8,8]。
+
+> 但需要注意的是，具体如何划分要充分考虑结果矩阵C的大小，若分块M_block,N_block越大，而矩阵C较小时，会导致最终划分的线程块的数目较少，而一个线程块只能运行到一个SM上，若最终线程块的数据小于设备SM芯片的数目时，则天然无法充分利用设备硬件资源。故，若出现这种情况时，应考虑降低一个线程块的大小或降低一个线程所处理数据的大小，以充分利用硬件资源。
+
+可以看到，最终划分到一个Thread线程负责计算一个[8,8]的小矩阵，且由于K_thread取值为8，则一个Thread计算的是[8,8]的小方阵乘法。实际上，对于矩阵乘法，有采用向量内积与采用向量外积之分，区别仅在于M,N,K三个维度的循环嵌套顺序不同，如下述伪代码。
+
+```c++
+const int M = 8, N = 8, K = 8;
+float A[M * K], B[K * N], C[M * N];
+
+/* inner product */
+for (int i = 0; i < M; i++)
+    for (int j = 0; j < N; j++)
+        for (int k = 0; k < K; k++)
+            C[i * N + j] += A[i * K + k] * B[k * N + j];
+
+/* outer product */
+for (int k = 0; k < K; k++)
+    for (int i = 0; i < M; i++)
+        for (int j = 0; j < N; j++)
+            C[i * N + j] += A[i * K + k] * B[k * N + j];
+```
+
+<img src="GEMM矩阵乘法和CUTLASS模板库.assets/GEMM小矩阵乘法.png" style="zoom: 50%;" />
+
+由代码可以看到，在向量内积方式中，如上图(左)，最内层循环下标k变化时，对A,B会产生跨步访问，对C会访问同一数据；而在向量外积方式中，如上图(右)，最内层循环下标j变化时，对B,C会产生连续访问，对A会访问同一数据。显然，连续内存地址访问的方式更优，这不仅满足数据访问的局部性，还有利于做循环展开，以使用向量化指令，并使用双缓冲以让计算掩盖访存延迟。
+
+从访问局部性的角度，向量外积方式中，可以使用寄存器缓存而避免无意义的重复访存，伪代码如下所示。
+
+```c++
+/* outer product */
+for (int k = 0; k < K; k++) {
+    regB[0,N] = B[k * N, (k + 1) * N];
+    for (int i = 0; i < M; i++) {
+        regA = A[i * K + k];
+        for (int j = 0; j < N; j++)
+            C[i * N + j] += regA * regB[j];
+    }
+}
+```
+
+其中，regA与regB均为寄存器，可以看到，循环下标j变化时，使用的是A的同一个元素，是B的同一行元素，因此可分别使用1个寄存器regA和N个寄存器regB[N]缓存这些值，从而将原来的$K\times M\times N\times 2$次访存，减少为$K\times (M+N)$次访存。
+
+从循环展开的角度，向量外积方式中，编译器能够在不展开K维度循环的情况下，仅展开M维度和N维度就能够自动识别到重复访存，并使用相应的寄存器来避免重复访存。例如，假定M,N,K均取值为2，那么对M维度和N维度展开得到如下伪代码。
+
+```c++
+const int M = 2, N = 2, K = 2;
+
+/* outer product */
+for (int k = 0; k < K; k++) {
+    C[0 * N + 0] += A[0 * K + k] * B[k * N + 0];
+    C[0 * N + 1] += A[0 * K + k] * B[k * N + 1];
+    C[1 * N + 0] += A[1 * K + k] * B[k * N + 0];
+    C[1 * N + 1] += A[1 * K + k] * B[k * N + 1];
+}
+```
+
+只要是稍微现代一点的编译器，就可以一眼看出这4条指令的8次访存，完全可以合并为4次访存。同时，现代一点的编译器也能在一定程度上更具生成的汇编指令，交叉排列计算指令和访存指令，以达到掩盖访存延迟的目的。而在向量内积方式中，必须把整个K维度先展开，然后再展开M维度和N维度，才能看到这些潜在的访存合并机会。
+
+在CPU环境中，一般K的取值都较大，而M和N的取值较小，寄存器又非常少，因此基本上无法在K维度将循环完全展开并做优化。但在GPU环境中，情况却恰恰相反，对于循环次数已知的小循环，即使没有指定#pragma unroll编译制导指令，nvcc编译器也会自动将循环展开，而对于一个Thread来说，其M,N,K的取值均为8，符合nvcc自动展开循环的条件。而在展开完成后，nvcc会对所有的访存以及计算指令重排得到一个不错的汇编指令排列。所以，在GPU上采用向量外积方式，可能并不会像在CPU上那么效果明显。
+
+在GPU上采用向量外积方式的真正目的是使用double buffer双缓冲。当提前知道下一次循环迭代所需的数据时，就可以提前预取该次循环的数据，同时在预取下次数据时进行该次计算，从而实现计算掩盖访存延迟，这在向量内积方式中是无法实现的。同时由于双缓冲需要额外的寄存器从gmem中转移数据到smem，所以当一开始循环展开使用的寄存器过多时，编译器可能无法正确的在限定寄存器数量下实现双缓冲。
+
+## GEMM访存划分
+
+在Block层面，每个Block计算形状为C[M_block,N_block]的矩阵块，对应数据为A[M_block,K]和B[K,N_block]，并迭代进行ceil(K/K_block)轮计算，每一轮都需要将A[M_block,K_block]数据和B[K_block,N_block]数据从gmem中加载到smem中，下面分析在该过程中的Warp与Thread布局，并综合考虑向量化指令、合并访存、避免bank冲突等策略。
+
+需要注意的是，由于一个Thread采用向量外积方式计算小矩阵乘法，每次访问A的一列与B的一行，而矩阵采用行主序存储，那么对于在设备全局内存gmem中的矩阵A的数据，需要对其进行转置，以列主序的方式写入到smem中。
+
+一个Block中的Warp及其Thread对于从设备全局内存中读取矩阵A并将之写入到共享内存中的访问模式如下图所示。一个Block中的Warp及其Thread对于从设备全局内存中读取矩阵B并将之写入到共享内存中的访问模式如下图所示。
+
+<img src="GEMM矩阵乘法和CUTLASS模板库.assets/将矩阵A,B转移到共享内存.png" style="zoom:50%;" />
+
+## GEMM线程束划分
+
+在计算时，一个Block将Warp的布局组织为Block[4,2]warp形状，一个Warp将Thread的布局组织为Warp[4,8]thread形状，而一个Thread访问[8,8]形状数据，那么对于每个Warp来说，其访问A[32,8]数据与B[8,64]数据的访问模式如下图所示。
+
+<img src="GEMM矩阵乘法和CUTLASS模板库.assets/GEMM从smem中读取A与B.png" style="zoom:50%;" />
+
+使用向量外积的计算方式，每个Thread读取连续的4个元素，采用float4向量化读取，一次性读取16字节（128bit）。
+
+对于矩阵A来说，一个Warp一次性只读取4块不同的A[8,8]（其中每行8个Thread广播相同的数据块），根据这4块A[8,8]在共享内存中的存储位置，可以看到，当采用float4向量化读取时，一个Warp内不会发生bank冲突。
+
+对于矩阵B来说，一个Warp一次性只读取8块不同的B[8,8]（其中每列4个Thread广播相同的数据块），根据这8块B[8,8]在共享内存中的存储位置，可以看到，当采用float4向量化读取时，一个Warp内不会发生bank冲突。
+
+## GEMM线程块的Wave划分
+
+在CUDA编程模型中，一个Wave指的是能够在GPU设备上同时运行的Block数量，该数量与设备SM芯片数量、每个SM芯片所能承载的Block数量、以及一个Block所需的硬件资源有关。此处分析假设，一个SM的硬件资源足以同时运行它所能运行所有Block块。在CUDA执行模型中，一个Kernel核函数所产生的所有Block块，会按照朴素的形式排列，即按照(blockIdx.x,blockIdx.y,blockIdx.z)依次递增的方式，划分为若干个Wave在GPU设备上执行。
+
+假设一个Wave内存在Wave_block个的Block块，且一个Wave所处理的数据形状为Wave[M_wave,N_wave]，且一个Wave内的Wave_block个线程块刚好可以计算矩阵C的整数行，则一个Wave需要从设备全局内存中读取$(\mathtt{M\_block}\times\mathtt{K}+\mathtt{K}\times\mathtt{N\_block})\times\mathtt{Wave\_block}$个数据。若假设一个Wave所读取的数据都能够被设备的L2 Cache装下，那么实际上只从设备全局内存中读取了$\mathtt{M\_wave}\times\mathtt{K}+\mathtt{K}\times\mathtt{N\_wave}$个数据，由此可计算得L2 Cache的命中率为
+$$
+\begin{align}
+&\ 1 - \frac{\mathtt{M\_wave}\times\mathtt{K}+\mathtt{K}\times\mathtt{N\_wave}}{(\mathtt{M\_block}\times\mathtt{K}+\mathtt{K}\times\mathtt{N\_block})\times\mathtt{Wave\_block}} \\
+=&\ 1 - \frac{\mathtt{M\_wave}+\mathtt{N\_wave}}{\mathtt{Wave\_block}}\frac{1}{\mathtt{M\_block}+\mathtt{N\_block}} \\
+=&\ 1 - \frac{\mathtt{M\_wave}+\mathtt{N\_wave}}{\mathtt{M\_wave}\times\mathtt{N\_wave}}\frac{1}{\mathtt{M\_block}+\mathtt{N\_block}}
+\end{align}
+$$
+可以看到，M_wave和N_wave差距越大，L2 Cache的命中率就越低，但对于GEMM情景来说，这并不是主要性能瓶颈。对性能影响更大的情况是一个Wave中Block线程块的排列顺序，如下图所示。
+
+<img src="GEMM矩阵乘法和CUTLASS模板库.assets/GEMM的Wave划分.png" style="zoom:50%;" />
+
+可以看到，当M与N足够大时，一个Wave的线程块只能覆盖矩阵C的若干行或若干列（甚至无法覆盖一整行或一整列），此时就会根据(blockIdx.x,blockIdx.y)是沿着(N,M)维度轴还是(M,N)维度轴变化，从而造成横着排列与竖着排列两种Wave形状。
+
+假设矩阵A与矩阵B都采用行主序存储，一个数据的类型是float类型，占用4Byte空间，而L2 Cache的一个Cache Line大小是128Byte，即32个float数据。
+
+若采用横着排列的Wave，则对于读取矩阵B时，每行Block线程块将其自己的数据与之后连续存储的数据加载到L2 Cache中，同一行有许多其他的Block就可以直接从L2中加载数据，而无需再次读取设备全局内存。若采用竖着排列，则对于读取矩阵A时，每行Block线程块将自己的数据与之后连续存储的数据加载到L2 Cache中，同一行仅有较少其他的Block可以直接从L2中加载数据，而每行都会出现L2 Cache的未命中。
+
+虽然两种排列方式最终的Cache未命中总次数一样，但对于第二种情况，它的Cache未命中会在刚开始的短时间内集中爆发，这种情况所带来的延迟是难以被其他优化手段所掩盖的。因为这种延迟不仅爆发密集，且每一次的延迟都很长，所以会造成性能损失。因此要注意合理地将Cache miss分配到Kernel核函数运行的各个阶段。
+
 # Efficient GEMM in CUDA
 
 朴素地，矩阵乘法可以使用多层嵌套循环实现，在并行编程环境下，可以使用不同的并行资源对多层嵌套的矩阵乘法计算进行Tiling平铺分片，以利用并行硬件的并发性、数据的存储局部性等。CUTLASS将通用矩阵乘法GEMM映射到GPU设备上，并使用CUDA并行编程模型中的并行资源，包括Device设备、Kernel核函数、Threadblock线程块、Warp线程束、Thread线程、Instruction指令等多个层级，对矩阵乘法进行并行分片，伪代码如下所示。
@@ -19,7 +185,7 @@ MMA（Matrix Multiply Accumulate）是指矩阵乘法累加操作，是矩阵乘
 
 CUTLASS对矩阵乘法的划分如下图所示，从左至右，每个层级对应着CUDA编程模型中不同的并行资源。
 
-![](CUTLASS模板库和CuTe模板库.assets/gemm-hierarchy.png)
+![](GEMM矩阵乘法和CUTLASS模板库.assets/gemm-hierarchy.png)
 
 ## Tiling and Epilogue
 
@@ -42,7 +208,7 @@ CUTLASS对矩阵乘法的划分如下图所示，从左至右，每个层级对�
 
 下图展示CUTLASS所使用的GEMM主循环流水线。
 
-<img src="CUTLASS模板库和CuTe模板库.assets/software-pipeline.png" style="zoom:25%;" />
+<img src="GEMM矩阵乘法和CUTLASS模板库.assets/software-pipeline.png" style="zoom:25%;" />
 
 ## SplitK and SliceK
 
@@ -610,7 +776,7 @@ public:
 
 在cuBLAS库中，存在前导维数的概念，在默认采用列主序存储的矩阵布局时，这意味着矩阵元素{rid,cid}具有值为rid+cid\*ld的偏移，等价于CUTLASS提供的ColumnMajor布局类型；同时CUTLASS也提供RowMajor、RowMajorInterleaved、ColumnMajorInterleaved等布局类型，如下示意图。
 
-<img src="CUTLASS模板库和CuTe模板库.assets/Matrix Layout.png" style="zoom: 50%;" />
+<img src="GEMM矩阵乘法和CUTLASS模板库.assets/Matrix Layout.png" style="zoom: 50%;" />
 
 一个使用布局将逻辑坐标映射到存储偏移的示例，如下所示。
 
@@ -1165,11 +1331,11 @@ void gemm_splitK_demo() {
 
 # CUTLASS GEMM API Implementation
 
-![](CUTLASS模板库和CuTe模板库.assets/gemm-hierarchy.png)
+![](GEMM矩阵乘法和CUTLASS模板库.assets/gemm-hierarchy.png)
 
 如前所述，CUTLASS对通用矩阵乘法GEMM进行并行分片，映射到CUDA并行编程模型中的多个层级资源上，其代码实现组织为如下图所示的层级结构。注意，图中所展示的一些名称，均是充当API接口的概念，作用可分为两点，即(1)使用下一层级API接口实现某功能，(2)作为API接口提供给上一层级。而其它一些“仅仅是作为某个层级工具类实现，但未参与API接口构建”的概念则未在图中展示。
 
-![](CUTLASS模板库和CuTe模板库.assets/cutlass-components.png)
+![](GEMM矩阵乘法和CUTLASS模板库.assets/cutlass-components.png)
 
 ```shell
 cutlass
