@@ -129,12 +129,22 @@ CUDA-GDB与GDB的使用方法类似，而且对于主机代码，使用GDB原有
 
 调试设备函数时，只要设备函数不是内联的，用户就可以单步进入、执行、越过、退出，使用\_\_noinline\_\_说明符可以强制编译器不内联所修饰的函数。
 
-# NVIDIA Nsight
+# NVIDIA Nsight Compute
 
-Nsight是NVIDIA面相开发者提供的开发工具套件，能提供深入的跟踪、调试、评测和分析，以优化跨NVIDIA GPU和CPU的复杂计算应用程序。Nsight主要包含Nsight System、Nsight Compute、Nsight Graphics三部分。在连接服务器时，可能会出现https://developer.nvidia.com/nvidia-development-tools-solutions-ERR_NVGPUCTRPERM-permission-issue-performance-counters中所提到的权限错误。
+Nsight是NVIDIA面向开发者提供的开发工具套件，能提供深入的跟踪、调试、评测和分析，以优化跨NVIDIA GPU和CPU的复杂计算应用程序。Nsight主要包含Nsight Graphics、Nsight System、Nsight Compute三部分。在连接服务器时，可能会出现https://developer.nvidia.com/nvidia-development-tools-solutions-ERR_NVGPUCTRPERM-permission-issue-performance-counters中所提到的权限错误。
+
+Nsight Graphics是一个用于调试、评测和分析Microsoft Windows和Linux上的图形应用程序的工具。它允许优化基于Direct3D 11，Direct3D 12，DirectX，Raytracing 1.1，OpenGL，Vulkan和KHR Vulkan Ray Tracing Extension的应程序的性能。
 
 Nsight System给开发者一个系统级别的应用程序性能的可视化分析。所有与NVIDIA GPU相关的程序开发都可以从Nsight System开始以确定最大的优化机会。开发人员可以优化瓶颈，以便在任意数量或大小的CPU和GPU之间实现高效扩展。
 
-Nsight Compute是一个CUDA应用程序的交互式Kernel分析器。它通过用户接口和命令行工具的形式提供了详细的性能分析度量和API调试。Nsight Compute还提供了定制化的和数据驱动的用户接口和度量集合，可以使用分析脚本对这些界面和度量集合进行扩展，以获得后处理的结果。
+Nsight Compute是一个CUDA应用程序的交互式Kernel分析器。它通过用户接口和命令行工具的形式提供了详细的性能分析度量和API调试。Nsight Compute还提供了定制化的和数据驱动的用户接口和度量集合，可以使用分析脚本对这些界面和度量集合进行扩展，以获得后处理的结果。Nsight Compute CLI提供了一个命令行分析器，其命令的可执行文件是ncu，它可以直接在命令行上打印结果或将其存储在报告文件中。
 
-Nsight Graphics是一个用于调试、评测和分析Microsoft Windows和Linux上的图形应用程序的工具。它允许优化基于Direct3D 11，Direct3D 12，DirectX，Raytracing 1.1，OpenGL，Vulkan和KHR Vulkan Ray Tracing Extension的应程序的性能。
+## 分析方式与指标集
+
+用户常规启动的CUDA应用程序进程，会基于CUDA运行时库以及CUDA驱动程序执行。
+
+！！！
+
+使用 NVIDIA Nsight Compute 对应用程序进行性能分析时，行为会有所不同。用户在主机系统上启动 NVIDIA Nsight Compute 前端（UI 或 CLI），然后主机系统将实际应用程序作为目标系统上的新进程启动。虽然主机和目标通常是同一台机器，但目标也可能是具有可能不同操作系统的远程系统。
+
+该工具将其测量库插入到应用程序进程中，从而使分析器能够拦截与 CUDA 用户模式驱动程序的通信。此外，当检测到内核启动时，库可以从 GPU 收集请求的性能指标。然后将结果传回前端。

@@ -152,7 +152,7 @@ CUDA版本也可由形如X.Y的两个数字表示，但它并不等同于GPU的�
 
 NVIDIA官方文档网址为https://docs.nvidia.com/cuda，其包括安装指南、编程指南、针对GPU架构的优化指南、各种CUDA API手册等。
 
-## （四）用nvcc编译CUDA程序
+## （四）用NVCC编译CUDA程序
 
 首先明确，GPU只是一个设备，它要工作的话，还需要有一个主机（CPU）给它下达命令。所以，一个使用GPU的CUDA程序既有主机代码（由CPU执行），又有设备代码（由GPU执行）；主机对设备的调用是通过核函数（Kernel Function）来实现的。所以，一个典型的CUDA程序的结构具有下面的形式。
 
@@ -169,11 +169,11 @@ int main(int argc, char* argv[]) {
 
 CUDA中的核函数与C++中的函数是类似的，但一个显著的差别是，它必须被限定词\_\_global\_\_修饰，此外，核函数的返回类型必须为void空。
 
-众所周知，在编写C++程序时，需要在源文件中包含一些标准的头文件。CUDA中也有一些头文件，但是在使用nvcc编译器编译.cu文件时，将自动包含必要的CUDA头文件，例如cuda.h和cuda_runtime.h头文件，又因为cuda.h头包含stdlib.h头文件，故使用nvcc编译CUDA程序时，甚至不需要在.cu文件中包含stdlib.h头。当然，程序员可手动在.cu文件中包含所需头文件，因为正确编写的头文件不会在一个编译单元中被包含多次。
+众所周知，在编写C++程序时，需要在源文件中包含一些标准的头文件。CUDA中也有一些头文件，但是在使用NVCC编译器编译.cu文件时，将自动包含必要的CUDA头文件，例如cuda.h和cuda_runtime.h头文件，又因为cuda.h头包含stdlib.h头文件，故使用NVCC编译CUDA程序时，甚至不需要在.cu文件中包含stdlib.h头。当然，程序员可手动在.cu文件中包含所需头文件，因为正确编写的头文件不会在一个编译单元中被包含多次。
 
-CUDA程序的源文件用.cu作为扩展名。CUDA程序的编译器nvcc在编译一个CUDA程序时，先将全部源代码分离为主机代码和设备代码，主机代码（纯粹C++代码）交给C++编译器（例如g++或cl）负责编译，而设备代码（剩余部分）则由nvcc负责编译。主机代码完整地支持C++语法，但设备代码只部分地支持C++语法。
+CUDA程序的源文件用.cu作为扩展名。CUDA程序的编译器NVCC在编译一个CUDA程序时，先将全部源代码分离为主机代码和设备代码，主机代码（纯粹C++代码）交给C++编译器（例如g++或cl）负责编译，而设备代码（剩余部分）则由NVCC负责编译。主机代码完整地支持C++语法，但设备代码只部分地支持C++语法。
 
-对于设备代码，nvcc先将设备代码编译为虚拟的**PTX（Parallel Thread Execution）伪汇编代码**，它是一种中间表示；再将PTX代码编译为二进制的cubin目标代码，可以由机器直接执行的二进制目标代码对应的汇编称为**SASS（Streaming Assembly）流汇编代码**，它是基于特定GPU架构的。
+对于设备代码，NVCC先将设备代码编译为虚拟的**PTX（Parallel Thread Execution）伪汇编代码**，它是一种中间表示；再将PTX代码编译为二进制的cubin目标代码，可以由机器直接执行的二进制目标代码对应的汇编称为**SASS（Streaming Assembly）流汇编代码**，它是基于特定GPU架构的。
 
 在将.cu源代码编译为PTX代码时，需要用编译器选项-arch=compute_XY指定一个虚拟架构的计算能力，用以确定代码中能够使用的CUDA功能。在将PTX代码编译为cubin代码时，需要用选项-code=sm_ZW指定一个真实架构的计算能力，用以确定可执行文件能够使用的GPU设备。真实架构的计算能力必须大于等于虚拟架构的计算能力。如果仅针对一个GPU编译程序，一般情况下建议将以上两个计算能力都指定为目标GPU的计算能力。
 
@@ -197,7 +197,7 @@ nvcc demo.cu -o demo.exe             \
 
 编译出来的可执行文件将包含4个二进制文件版本，这样可执行文件称为**胖二进制文件（fatbinary）**，其在不同架构的GPU中运行是会自动选择对应的二进制版本。需要注意的是，指定多个计算能力，会增加编译时间和可执行文件大小。
 
-nvcc有一种称为即时编译（just-in-time compilation）的机制，可以在运行可执行文件时，从其中保留的PTX代码，临时编译出一个cubin目标代码。要在可执行文件中保留（或者说嵌入）一个这样的PTX代码，就必须用如下方式指定所保留PTX代码的虚拟架构，如下所示。
+NVCC有一种称为即时编译（just-in-time compilation）的机制，可以在运行可执行文件时，从其中保留的PTX代码，临时编译出一个cubin目标代码。要在可执行文件中保留（或者说嵌入）一个这样的PTX代码，就必须用如下方式指定所保留PTX代码的虚拟架构，如下所示。
 
 ```shell
 -gencode arch=compute_XY,code=compute_XY
@@ -228,7 +228,7 @@ nvcc demo.cu -o demo.exe             \
 -gencode arch=compute_XY,code=compute_XY
 ```
 
-此外，也可以不为nvcc指定目标计算能力，此时会使用默认的目标计算能力。对于CUDA 6.0及更早，默认计算能力为1.0；对于CUDA 6.5至CUDA 8.0，默认计算能力为2.0；对于CUDA 9.0至CUDA 10.2，默认计算能力为3.0。将来更新版本的情况，请查阅CUDA官网信息。
+此外，也可以不为NVCC指定目标计算能力，此时会使用默认的目标计算能力。对于CUDA 6.0及更早，默认计算能力为1.0；对于CUDA 6.5至CUDA 8.0，默认计算能力为2.0；对于CUDA 9.0至CUDA 10.2，默认计算能力为3.0。将来更新版本的情况，请查阅CUDA官网信息。
 
 # 二、CUDA的线程组织
 
@@ -556,7 +556,7 @@ extern __host__ cudaError_t cudaMemcpy(void *dst, const void *src, size_t count,
 
 注意，不能同时使用\_\_global\_\_和\_\_device\_\_修饰一个函数，即不能将一个函数同时定义为核函数和设备函数；不能同时使用\_\_global\_\_和\_\_host\_\_修饰一个函数，即不能将一个函数同时定义为核函数和主机函数。
 
-编译器nvcc会自动决定是否把一个设备函数作为内联函数（inline function）或非内联函数，可以使用限定符\_\_noinline\_\_建议一个设备函数为非内联函数（编译器不一定接受），也可以用限定符\_\_forceinline\_\_建议一个设备函数为内联函数。
+编译器NVCC会自动决定是否把一个设备函数作为内联函数（inline function）或非内联函数，可以使用限定符\_\_noinline\_\_建议一个设备函数为非内联函数（编译器不一定接受），也可以用限定符\_\_forceinline\_\_建议一个设备函数为内联函数。
 
 ## （四）CUDA中常用的数据类型
 
@@ -771,7 +771,7 @@ void time_it() {
 
 ### 1. 为C++程序计时
 
-先考虑C++版本的程序，该程序中没有使用核函数，仍为其使用.cu扩展名，并使用nvcc进行编译。对于C++程序来说，其性能显著的依赖于编译器优化选项，对于之后的代码，都默认使用-O3编译器优化选项。代码如下所示。
+先考虑C++版本的程序，该程序中没有使用核函数，仍为其使用.cu扩展名，并使用NVCC进行编译。对于C++程序来说，其性能显著的依赖于编译器优化选项，对于之后的代码，都默认使用-O3编译器优化选项。代码如下所示。
 
 ```c++
 // a.cu
@@ -1016,7 +1016,11 @@ nsys profile -o run_prof run.exe         # or
 nsys profile -o run_prof python main.py
 ```
 
-官方更加建议使用新的工具，因为NSight Systems运行时消耗的资源更少，统计的数据更加贴近实际运行情况的数据。而且，nvprof不支持计算能力8.0及更高的架构，在这种设备上需要使用新版的性能分析工具NSight Systems。
+官方更加建议使用新的工具，因为NSight Systems运行时消耗的资源更少，统计的数据更加贴近实际运行情况的数据。而且，nvprof不支持计算能力8.0及更高的架构，在这种设备上需要使用新版的性能分析工具NSight Systems和NSight Compute。
+
+```shell
+ncu -o run_prof run.exe
+```
 
 ## （二）影响GPU加速的关键因素
 
@@ -1485,7 +1489,7 @@ Maximum threads per SM:          2048
 
 以上单独分析了线程块大小、寄存器数量、共享内存容量对SM占有率的影响，一般情况下，需要综合以上三点分析。
 
-值得注意的是，在使用nvcc编译CUDA程序时，可使用--ptxas-options=-v编译选项，查询每个核函数的寄存器使用数量。CUDA还提供了对\_\_global\_\_核函数的\_\_launch\_bounds\_\_(N)修饰符，以对某个核函数中能使用的寄存器数量进行控制；此外，还可以使用nvcc提供的--maxrregcount=N编译选项，来对所有核函数中能够使用的寄存器数量进行控制。
+值得注意的是，在使用NVCC编译CUDA程序时，可使用--ptxas-options=-v编译选项，查询每个核函数的寄存器使用数量。CUDA还提供了对\_\_global\_\_核函数的\_\_launch\_bounds\_\_(N)修饰符，以对某个核函数中能使用的寄存器数量进行控制；此外，还可以使用NVCC提供的--maxrregcount=N编译选项，来对所有核函数中能够使用的寄存器数量进行控制。
 
 此外，CUDA工具套件提供了NVIDIA/CUDA/v11.8/tools/CUDA_Occupancy_Calculator.xls表格文件，可用于计算SM占有率。或直接使用在网址https://xmartlabs.github.io/cuda-calculator/使用其网页版。
 
