@@ -800,7 +800,7 @@ cublasStatus_t cublasSgemmBatched(
 
 ```c++
 cublasStatus_t cublasSgemmStridedBatched(
-    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k,
+    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n, int k, 
     const float* alpha, const float* A, int lda, long long int strideA,
     const float* B, int ldb, long long int strideB,
     const float* beta, float* C, int ldc, long long int strideC,

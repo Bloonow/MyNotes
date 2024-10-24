@@ -8,7 +8,7 @@
 
 GPU是英文Graphics Processing Unit的首字母缩写，意为图形处理器，GPU也常被称为显卡（Graphics Card）。与它对应的一个概念是CPU，即Central Processing Unit（中央处理器）的首字母缩写。
 
-从硬件的角度来看，一个GPU由若干**图形处理簇（Graphics Processing Cluster，GPC）**构成，每个GPC包含一些诸如光栅化引擎（Raster Engine）等部件。每个GPC由若干**流多处理器（streaming multiprocessor，SM）**构成，每个SM是相对独立的，而每个SM中有若干**流处理器（streaming processor，SP）**，流处理器又称为**CUDA核心**；若一个SM中的SP单元数量大于32个时，则每32个SP单元（物理上）构成一个分区，称为一个SM分区（partition）。
+从硬件的角度来看，一个GPU由若干**图形处理簇（Graphics Processing Cluster，GPC）**构成，每个GPC包含一些诸如光栅化引擎（Raster Engine）等部件。每个GPC由若干**流多处理器（streaming multiprocessor，SM）**构成，每个SM是相对独立的，而每个SM中有若干**流处理器（streaming processor，SP）**，流处理器又称为**CUDA核心**。
 
 GPU计算不是指单独的GPU计算，而是CPU+GPU的异构（heterogeneous）计算。一块单独的GPU是无法独立地完成所有计算任务的，它必须在CPU的调度下才能完成特定任务。在由CPU和GPU构成的异构计算平台中，通常将起控制作用的CPU成为**主机（host）**，将起加速作用的GPU称为**设备（device）**。主机和（非集成）设备都有自己的DRAM内存，它们之间一般由PCIE总线连接。
 
@@ -173,7 +173,7 @@ CUDA中的核函数与C++中的函数是类似的，但一个显著的差别是�
 
 CUDA程序的源文件用.cu作为扩展名。CUDA程序的编译器NVCC在编译一个CUDA程序时，先将全部源代码分离为主机代码和设备代码，主机代码（纯粹C++代码）交给C++编译器（例如g++或cl）负责编译，而设备代码（剩余部分）则由NVCC负责编译。主机代码完整地支持C++语法，但设备代码只部分地支持C++语法。
 
-对于设备代码，NVCC先将设备代码编译为虚拟的**PTX（Parallel Thread Execution）伪汇编代码**，它是一种中间表示；再将PTX代码编译为二进制的cubin目标代码，可以由机器直接执行的二进制目标代码对应的汇编称为**SASS（Streaming Assembly）流汇编代码**，它是基于特定GPU架构的。
+对于设备代码，NVCC先将设备代码编译为虚拟的**PTX（Parallel Thread Execution）伪汇编代码**，它是一种中间表示；再将PTX代码编译为二进制的cubin目标代码，可以由机器直接执行的二进制目标代码对应的汇编称为**SASS（Streaming Assembly）流汇编代码**，又称为低级汇编指令（Low-Level Assembly Instruction），它是基于特定GPU架构的。
 
 在将.cu源代码编译为PTX代码时，需要用编译器选项-arch=compute_XY指定一个虚拟架构的计算能力，用以确定代码中能够使用的CUDA功能。在将PTX代码编译为cubin代码时，需要用选项-code=sm_ZW指定一个真实架构的计算能力，用以确定可执行文件能够使用的GPU设备。真实架构的计算能力必须大于等于虚拟架构的计算能力。如果仅针对一个GPU编译程序，一般情况下建议将以上两个计算能力都指定为目标GPU的计算能力。
 
@@ -1146,7 +1146,7 @@ $$
 $$
 可见，提高算术强度能够显著地提高GPU相对于CPU的加速比。
 
-另外，值得注意的是，当算术强度很高时，GeForce系列GPU的单精度浮点数的运算能力就能更加充分地发挥出来。在上述GeForce RTX 2070中，双精度版本核函数速度是单精度版本核函数速度的$28/1000\approx1/36$，接近理论比值$0.2/65\approx1/32$，进一步说明该问题是计算主导的，而不是访存主导的。而用Tesla V100测试，双精度浮点和单精度浮点核函数的执行时间分别是28ms(11ms)，只相差$11/28\approx1/2.5$左右。可见
+另外，值得注意的是，当算术强度很高时，GeForce系列GPU的单精度浮点数的运算能力就能更加充分地发挥出来。在上述GeForce RTX 2070中，双精度版本核函数速度是单精度版本核函数速度的$28/1000\approx1/36$，接近理论比值$0.2/65\approx1/32$，进一步说明该问题是计算主导的，而不是访存主导的。而用Tesla V100测试，双精度浮点和单精度浮点核函数的执行时间分别是28ms(11ms)，只相差$11/28\approx1/2.5$左右。
 
 可见，对于算术强度很高的问题，在使用双精度浮点数时，Tesla系列的GPU相对于GeForce系列的GPU有很大的优势；而在使用单精度浮点数时，Tesla系列没有显著的优势。对于算术强度不高的问题，Tesla系列的GPU在使用单精度浮点数或双精度浮点数时都没有显著的优势；在使用单精度浮点数时，GeForce系列的GPU具有更高的性价比。
 
@@ -1154,7 +1154,7 @@ $$
 
 另一个影响CUDA程序性能的因素是**并行规模**，并行规模可用GPU中总的线程数目来衡量。
 
-从硬件的角度来看，一个GPU由若干**图形处理簇（Graphics Processing Cluster，GPC）**构成，每个GPC包含一些诸如光栅化引擎（Raster Engine）等部件。每个GPC由若干**流多处理器（streaming multiprocessor，SM）**构成，每个SM是相对独立的，而每个SM中有若干**流处理器（streaming processor，SP）**，流处理器又称为**CUDA核心**；若一个SM中的SP单元数量大于32个时，则每32个SP单元（物理上）构成一个分区，称为一个SM分区（partition）。
+从硬件的角度来看，一个GPU由若干**图形处理簇（Graphics Processing Cluster，GPC）**构成，每个GPC包含一些诸如光栅化引擎（Raster Engine）等部件。每个GPC由若干**流多处理器（streaming multiprocessor，SM）**构成，每个SM是相对独立的，而每个SM中有若干**流处理器（streaming processor，SP）**，流处理器又称为**CUDA核心**。
 
 在执行核函数时，GPU会以线程块Block为单位分配给SM单元，一个Block只能占用一个SM，一个SM可以同时运行多个Block。对于SM单元来说，它的Warp Scheduler会调度线程束执行，其每个线程会被分配到SP单元即CUDA核心上执行，但至于具体如何执行，是在一个指令周期执行完毕，还是分次在多个指令周期执行完毕，还是执行若干指令周期后被挂起转而执行另一个Warp，则与具体情况有关，这由GPU根据执行情况自行决定。
 
@@ -1364,7 +1364,7 @@ __global__ void func_kernel(real *x, int N) {
 
 ### 4. 寄存器
 
-GPU中的**寄存器堆（register file）**位于设备的SM流多处理器芯片的各自的SM Partition分区上（每个SM分区包含32个SP单元），一个寄存器容量为**32位**（即4字节），一个双精度浮点数占用两个寄存器。每个SM分区拥有的寄存器数量非常有限，具体跟GPU设备型号有关，如Tuning架构的GPU每个SM分区拥有16384个寄存器，平均每个SP持有512个寄存器。
+GPU中的**寄存器堆（register file）**位于设备的SM流多处理器芯片的各自的SM Partition分区上（又称为处理块分区），一个寄存器容量为**32位**（即4字节），一个双精度浮点数占用两个寄存器。每个SM分区拥有的寄存器数量非常有限，具体跟GPU设备型号有关，如Tuning架构的GPU每个SM分区拥有16384个寄存器，平均每个SP持有512个寄存器。
 
 寄存器变量**仅被一个线程可见**，可读可写，其访问速度是所有类型内存中速度最快的。寄存器变量的生命周期也与其所属线程的生命周期一致，从寄存器变量定义开始，到线程消失时（或寄存器被其他变量占用）结束。
 
