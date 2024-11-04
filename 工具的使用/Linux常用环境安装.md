@@ -284,82 +284,6 @@ sudo ln -s /usr/bin/gcc-7 /usr/bin/cc
 sudo ln -s /usr/bin/g++-7 /usr/bin/c++
 ```
 
-# 源码编译安装Python
-
-Python官方文档https://docs.python.org/3/using/index.html给出在不同平台上配置安装Python的教程，包括构建源码所需的特性。
-
-本教程源码安装的是Python-3.9.17，下载Python的链接为https://www.python.org/ftp/python/3.9.17/Python-3.9.17.tgz。对于Python项目，在其源码目录下存在一个README.rst文件，会给出安装的配置选项和注意事项。
-
-通常情况下，源码编译安装Python时，GCC需要用到如下库。
-
-| module                    | lib                | install                             |
-| ------------------------- | ------------------ | ----------------------------------- |
-| \_dbm                     | libgdbm-compat-dev | sudo apt install libgdbm-compat-dev |
-| \_bz2                     | libbz2-dev         | sudo apt install libbz2-dev         |
-| \_uuid                    | uuid-dev           | sudo apt install uuid-dev           |
-| \_curses                  | libncurses5-dev    | sudo apt install libncurses5-dev    |
-| _curses_panel             |                    |                                     |
-| _gdbm                     | libgdbm-dev        | sudo apt install libgdbm-dev        |
-| _lzma                     | liblzma-dev        | sudo apt install liblzma-dev        |
-| _sqlite3                  | sqlite3            | sudo apt install sqlite3            |
-|                           | libsqlite3-dev     | sudo apt install libsqlite3-dev     |
-| _ssl                      | openssl            | sudo apt install openssl            |
-|                           | libssl-dev         | sudo apt install libssl-dev         |
-| _tkinter                  | tcl8.6-dev         | sudo apt install tcl8.6-dev         |
-|                           | tk8.6-dev          | sudo apt install tk8.6-dev          |
-| _readline                 | libreadline-dev    | sudo apt install libreadline-dev    |
-| _zlib                     | zlib1g-dev         | sudo apt install zlib1g-dev         |
-| No module named '_ctypes' | libffi-dev         | sudo apt install libffi-dev         |
-
-指定安装路径并编译安装的命令如下所示。
-
-```shell
-cd Python-3.9.17
-./configure --prefix=$HOME/.B/python39 --enable-shared --enable-optimizations CFLAGS=-fPIC
-make -j8
-make install
-```
-
-在$HOME/.B/python39/bin目录下，创建python和pip的软链接，如下所示。
-
-```shell
-cd $HOME/.B/python39/bin
-ln -s python3.9 python
-ln -s pip3 pip	
-```
-
-在用户的.bashrc文件中添加以下代码，以在每次启动shell时执行，配置bash的环境变量。需要注意的，如果源码安装多个版本的Python，则需要先将下述环境变量撤销，以免执行configure配置时导入错误版本的头文件，从而导致编译错误。
-
-```shell
-PYTHON_BIN=$HOME/.B/python39/bin
-PYTHON_INCLUDE=$HOME/.B/python39/include
-PYTHON_LIB=$HOME/.B/python39/lib
-export PATH=$PYTHON_BIN:$PATH
-export C_INCLUDE_PATH=$PYTHON_INCLUDE:$C_INCLUDE_PATH
-export CPLUS_INCLUDE_PATH=$PYTHON_INCLUDE:$CPLUS_INCLUDE_PATH
-export LD_LIBRARY_PATH=$PYTHON_LIB:$LD_LIBRARY_PATH
-export PYTHONUNBUFFERD=1
-```
-
-或者如果拥有sudo权限，可直接在/etc/ld.so.conf文件或/etc/ld.so.conf.d/xxx.conf文件中添加动态库的路径。
-
-可以通过在用户家目录下，创建.pip/pip.conf文件，配置pip工具所使用的镜像源，添加清华的镜像源如下所示。
-
-```
-[global]
-index-url = https://pypi.tuna.tsinghua.edu.cn/simple
-[install]
-use-mirrors = true
-mirrors = https://pypi.tuna.tsinghua.edu.cn/simple
-trusted-host = pypi.tuna.tsinghua.edu.cn
-```
-
-或者在使用pip命令时，临时指定所使用的镜像源，如下所示。
-
-```shell
-pip install -i https://pypi.tuna.tsinghua.edu.cn/simple package-name
-```
-
 # 安装NVIDIA驱动和CUDA开发套件
 
 在终端键入nvidia-smi，以查看是否安装NVIDIA显卡驱动，若未安装，则会提示设备硬件推荐驱动版本的安装命令。
@@ -758,3 +682,86 @@ alias matlab='$HOME/.B/matlab2019b/bin/matlab -nodesktop -nodisplay'
 matlab -batch matlab_test
 ```
 
+# 源码编译安装Python
+
+Python官方文档https://docs.python.org/3/using/index.html给出在不同平台上配置安装Python的教程，包括构建源码所需的特性。
+
+本教程源码安装的是Python-3.9.17，下载Python的链接为https://www.python.org/ftp/python/3.9.17/Python-3.9.17.tgz。对于Python项目，在其源码目录下存在一个README.rst文件，会给出安装的配置选项和注意事项。
+
+通常情况下，源码编译安装Python时，GCC需要用到如下库。
+
+| module                    | lib                | install                             |
+| ------------------------- | ------------------ | ----------------------------------- |
+| \_dbm                     | libgdbm-compat-dev | sudo apt install libgdbm-compat-dev |
+| \_bz2                     | libbz2-dev         | sudo apt install libbz2-dev         |
+| \_uuid                    | uuid-dev           | sudo apt install uuid-dev           |
+| \_curses                  | libncurses5-dev    | sudo apt install libncurses5-dev    |
+| _curses_panel             |                    |                                     |
+| _gdbm                     | libgdbm-dev        | sudo apt install libgdbm-dev        |
+| _lzma                     | liblzma-dev        | sudo apt install liblzma-dev        |
+| _sqlite3                  | sqlite3            | sudo apt install sqlite3            |
+|                           | libsqlite3-dev     | sudo apt install libsqlite3-dev     |
+| _ssl                      | openssl            | sudo apt install openssl            |
+|                           | libssl-dev         | sudo apt install libssl-dev         |
+| _tkinter                  | tcl8.6-dev         | sudo apt install tcl8.6-dev         |
+|                           | tk8.6-dev          | sudo apt install tk8.6-dev          |
+| _readline                 | libreadline-dev    | sudo apt install libreadline-dev    |
+| _zlib                     | zlib1g-dev         | sudo apt install zlib1g-dev         |
+| No module named '_ctypes' | libffi-dev         | sudo apt install libffi-dev         |
+
+指定安装路径并编译安装的命令如下所示。
+
+```shell
+cd Python-3.9.17
+./configure --prefix=$HOME/.B/python39 --enable-shared --enable-optimizations CFLAGS=-fPIC
+make -j8
+make install
+```
+
+在$HOME/.B/python39/bin目录下，创建python和pip的软链接，如下所示。
+
+```shell
+cd $HOME/.B/python39/bin
+ln -s python3.9 python
+ln -s pip3 pip	
+```
+
+在用户的.bashrc文件中添加以下代码，以在每次启动shell时执行，配置bash的环境变量。需要注意的，如果源码安装多个版本的Python，则需要先将下述环境变量撤销，以免执行configure配置时导入错误版本的头文件，从而导致编译错误。
+
+```shell
+PYTHON_BIN=$HOME/.B/python39/bin
+PYTHON_INCLUDE=$HOME/.B/python39/include
+PYTHON_LIB=$HOME/.B/python39/lib
+export PATH=$PYTHON_BIN:$PATH
+export C_INCLUDE_PATH=$PYTHON_INCLUDE:$C_INCLUDE_PATH
+export CPLUS_INCLUDE_PATH=$PYTHON_INCLUDE:$CPLUS_INCLUDE_PATH
+export LD_LIBRARY_PATH=$PYTHON_LIB:$LD_LIBRARY_PATH
+export PYTHONUNBUFFERD=1
+```
+
+或者如果拥有sudo权限，可直接在/etc/ld.so.conf文件或/etc/ld.so.conf.d/xxx.conf文件中添加动态库的路径。
+
+可以通过在用户家目录下，创建.pip/pip.conf文件，配置pip工具所使用的镜像源，添加清华的镜像源如下所示。
+
+```
+[global]
+index-url = https://pypi.tuna.tsinghua.edu.cn/simple
+[install]
+use-mirrors = true
+mirrors = https://pypi.tuna.tsinghua.edu.cn/simple
+trusted-host = pypi.tuna.tsinghua.edu.cn
+```
+
+或者在使用pip命令时，临时指定所使用的镜像源，如下所示。
+
+```shell
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple package-name
+```
+
+# 安装Miniconda
+
+Conda发行并开源于2012年，是一个可以在Windows、maxOS和Linux上运行的包和环境管理系统，它能够适用于任何语言的打包和分发，包括Python、R、Ruby、Lua、Java、C/C++等。Conda允许用户方便地安装、运行和更新不同版本的二进制软件包与该计算平台所需要的所有库（以及库的依赖项）。
+
+Anaconda是一个大而全的软件发行版，是一个预先建立和配置好的模块集，能够安装在操作系统上使用；它包含了Python本身和数百个第三方开源项目的二进制文件，如numpy、scipy、ipython、matplotlib等，这些库基本是为了方便处理数据科学相关的问题。Miniconda也是一个软件发行版，但它仅包含python、conda和conda的依赖项，本质上就是一个空的用来安装conda环境的安装器，它没有Anaconda中那么多的包，可以理解为Anaconda的精简版，能够方便用户按照自己的需求，从零开始构建任意的环境。
+
+可以从诸如https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh链接下载所需的软件版本。执行安装脚本即可进行安装，并且可以修改安装路径。在安装完成之后，可以将prefix/miniconda3/bin可执行路径添加到PATH路径当中，可添加到.bashrc文件。

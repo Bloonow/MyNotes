@@ -139,6 +139,10 @@ Nsight System给开发者一个系统级别的应用程序性能的可视化分�
 
 Nsight Compute是一个CUDA应用程序的交互式Kernel分析器。它通过用户接口和命令行工具的形式提供了详细的性能分析度量和API调试。Nsight Compute还提供了定制化的和数据驱动的用户接口和度量集合，可以使用分析脚本对这些界面和度量集合进行扩展，以获得后处理的结果。Nsight Compute CLI提供了一个命令行分析器，其命令的可执行文件是ncu，它可以直接在命令行上打印结果或将其存储在报告文件中。
 
+> 当Nsight Compute安装在Windows平台，而应用程序部署在Linux平台上时，可以直接使用Nsight Compute客户端远程启动Linux平台上的可执行程序。在首次远程启动时，Nsight Compute会在远程Linxu系统上安装Nsight Compute相关组件，通常会安装在/tmp/var/target/linux-desktop-glibc_2_11_3-x64/ncu路径之中。
+>
+> 如果要在远程Linux系统上分析复杂应用程序，或者是复杂启动方式的程序，则推荐直接在Linux系统上使用NCU命令，然后传回分析结果，再使用Nsight Comput打开。需要注意的是，此时应该使用/tmp/var/target/linux-desktop-glibc_2_11_3-x64/ncu路径的NCU命令，而不是可能存在的其它安装。
+
 用户常规启动的CUDA应用程序进程，会基于CUDA运行时库以及CUDA驱动程序执行。当使用Nsight Compute分析应用程序时，其行为是不同的。用户在主机系统上启动Nsight Compute前端（UI或CLI），并且又在目标系统上启动实际的应用程序作为一个新进程。虽然主机系统和目标系统通常是同一台机器，但目标也可以是安装不同操作系统的远程机器。该工具将其测量库（measurement library）插入到应用程序进程中，这允许分析器拦截与CUDA驱动程序的通信。此外，当检测到内核启动时，这些库可以从GPU收集所请求的性能指标，然后将结果传送回前端。
 
 <img src="NVCC编译与Nsight调优.assets/Nsight Compute Injection.png" style="zoom:50%;" />
@@ -181,7 +185,7 @@ L1缓存和L2缓存都使用128字节的缓存行（Cache Line），而标签Tag
 
 ## 指标集合
 
-性能指标集合（Collection of Performance Metrics）是Nsight Compute的关键特性，由于存在大量可用的指标，因此通常使用一些预定义的集合或子集（set or section），用户可以根据需要自由调整。下表中Stats是Statistics的缩写，意为统计信息。
+性能指标集合（Collection of Performance Metrics）是Nsight Compute的关键特性，由于存在大量可用的指标，因此通常使用一些预定义的集合或子集（set or section），用户可以根据需要自由调整，例如使用--set选项。下表中Stats是Statistics的缩写，意为统计信息。
 
 | Identifier                    | Description                                                  |
 | ----------------------------- | ------------------------------------------------------------ |
