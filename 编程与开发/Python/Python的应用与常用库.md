@@ -889,7 +889,7 @@ mirrors = https://pypi.tuna.tsinghua.edu.cn/simple
 trusted-host = pypi.tuna.tsinghua.edu.cn
 ```
 
-conda工具可以使用-c选项或--channel选项指定所使用的镜像源，如下所示。
+conda工具可以使用-c选项或--channel选项指定所使用的镜像源，如下所示。或者，使用-c conda-forge镜像仓库，GCC、GXX等编译工具都在其中。
 
 ```shell
 conda install -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main package-name
