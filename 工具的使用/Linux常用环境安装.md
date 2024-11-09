@@ -765,3 +765,5 @@ Conda发行并开源于2012年，是一个可以在Windows、maxOS和Linux上运
 Anaconda是一个大而全的软件发行版，是一个预先建立和配置好的模块集，能够安装在操作系统上使用；它包含了Python本身和数百个第三方开源项目的二进制文件，如numpy、scipy、ipython、matplotlib等，这些库基本是为了方便处理数据科学相关的问题。Miniconda也是一个软件发行版，但它仅包含python、conda和conda的依赖项，本质上就是一个空的用来安装conda环境的安装器，它没有Anaconda中那么多的包，可以理解为Anaconda的精简版，能够方便用户按照自己的需求，从零开始构建任意的环境。
 
 可以从诸如https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh链接下载所需的软件版本。执行安装脚本即可进行安装，并且可以修改安装路径。在安装完成之后，可以将prefix/miniconda3/bin可执行路径添加到PATH路径当中，可添加到.bashrc文件。
+
+需要注意的是，如果使用conda配置CUDA开发环境，则应该使用cudatoolkit作为包名，不要直接使用cuda包名。

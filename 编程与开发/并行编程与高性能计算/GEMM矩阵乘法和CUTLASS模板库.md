@@ -2,38 +2,22 @@
 
 通用矩阵乘法GEMM一般是指计算数学公式
 $$
-C=\alpha AB+\beta C
+C=AB
 $$
-其中，$\alpha,\beta$是标量，$A,B,C$分别是形状为[M,K]，[K,N]，[M,N]的矩阵。
-
-本文主要使用NSight Compute远程连接RTX 4090服务器，以分析执行GEMM核函数的各项性能。假设矩阵A,B,C按照行主序的方式在内存中存储，且规定左上角为原点，右向为x正方向，下向为y正方向。
-
-## 朴素GEMM实现
-
-若由一个线程计算结果矩阵C中的一个元素，则基本的GEMM实现如下所示。
+其中，$A,B,C$分别是形状为[M,K]，[K,N]，[M,N]的矩阵，则计算矩阵C的伪代码如下所示。
 
 ```c++
-__global__ void matrix_mul_kernel(
-    const float *A, const float *B, float *C, 
-    const int M, const int N, const int K, const float alpha, const float beta
-) {
-    const int tx = blockIdx.x * blockDim.x + threadIdx.x;
-    const int ty = blockIdx.y * blockDim.y + threadIdx.y;
-    float c = 0.0;
-    if (tx < N && ty < M) {
-        for (int k = 0; k < K; ++k) {
-            c += A[ty * K + k] * B[k * N + tx]; 
+for (int i = 0; i < M; i++) {
+    for (int j = 0; j < N; j++) {
+        C[i][j] = 0;
+        for (int p = 0; p < K; k++) {
+            C[i][j] += A[i][p] * B[p][j];
         }
-        C[ty * N + tx] = alpha * c + beta * C[ty * N + tx];
     }
 }
 ```
 
-该版本的代码显然无法发挥出GPU的硬件性能，编译运行，取[M,N,K]为[4096,4096,4096]，blockDim为[16,16]，使用NSight分析结果如下图所示。
-
-<img src="GEMM矩阵乘法和CUTLASS模板库.assets/GEMM_v0_prof.png" style="zoom:50%;" />
-
-可以看到，FP32浮点数计算性能只达到峰值性能的6%，主要原因是设备全局内存带宽利用率太低，只达到理论峰值带宽的0.97%，下面分析如何提升GEMM性能。
+假设矩阵A,B,C按照行主序的方式在内存中存储，且规定左上角为原点，右向为x正方向，下向为y正方向。本节在NVIDIA GeForce RTX 3090 GPU上进行优化实现，其配备的是Ampere GA102架构的芯片。
 
 ## GEMM计算划分
 
