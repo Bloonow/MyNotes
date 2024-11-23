@@ -1760,6 +1760,7 @@ class ZeroRedundancyOptimizer(Optimizer, Joinable):
 
 ```shell
 #!/bin/bash
+# 两个节点，每个节点八张GPU卡，提交命令如下
 # sbatch -N 2 --gres=gpu:8 submit.sh
 
 nodes=($(scontrol show hostnames $SLURM_JOB_NODELIST))
