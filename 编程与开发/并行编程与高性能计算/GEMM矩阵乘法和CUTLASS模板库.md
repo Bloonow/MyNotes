@@ -229,7 +229,7 @@ __global__ void sgemm_128x128(
     uint32_t smem_ld_idx = 0, smem_st_idx = 1;
 
     // K-Loop
-    for (int k_iter = (K + K_tile - 1) / K_tile - 1; k_iter > 0; k_iter--) {
+    for (int num_k_tiles = (K + K_tile - 1) / K_tile - 1; num_k_tiles > 0; num_k_tiles--) {
         for (int i = 0; i < K_tile; i++) {
             // K_tile次计算即将执行完毕，将下一个tile写入共享内存
             if (i == K_tile - 1) {
@@ -266,7 +266,7 @@ __global__ void sgemm_128x128(
 }
 ```
 
-其中，K_tile为常数，对K_tile的内部循环体可以被编译器展开，所以代码实际只产生k_iter这一个循环，称之为K-Loop，或称之为Main-Loop主循环，K-Loop是GEMM的性能热点，也是优化的主要对象。
+其中，K_tile为常数，对K_tile的内部循环体可以被编译器展开，所以代码实际只产生num_k_tiles这一个循环，称之为K-Loop，或称之为Main-Loop主循环，K-Loop是GEMM的性能热点，也是优化的主要对象。
 
 ## Threadblock Tile尺寸选择
 
