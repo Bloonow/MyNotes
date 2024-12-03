@@ -801,9 +801,15 @@ pip freeze > requirements.txt    # 导出环境文件
 pip install -r requirements.txt  # 导入环境文件
 ```
 
-### conda/anaconda
+### anaconda/conda
 
-Anaconda的虚拟环境中主要用conda和pip下载和管理各种包，conda是一个跨平台的包和运行环境管理工具，其安装的包通常来自于Anaconda repository和Anaconda Cloud镜像网站。和pip安装的包不同的是，conda包是二进制格式的，因此无需预先安装编译器。除此之外，conda更强大的地方在于其不仅可以安装Python包，还可以安装C（C++）、R语言包以及其他语言编写的包等。
+Conda发行并开源于2012年，是一个可以在Windows、maxOS和Linux上运行的包和环境管理系统，它能够适用于任何语言的打包和分发，包括Python、R、Ruby、Lua、Java、C/C++等。Conda允许用户方便地安装、运行和更新不同版本的二进制软件包与该计算平台所需要的所有库（以及库的依赖项）。
+
+Anaconda是一个大而全的软件发行版，是一个预先建立和配置好的模块集，能够安装在操作系统上使用；它包含了Python本身和数百个第三方开源项目的二进制文件，如numpy、scipy、ipython、matplotlib等，这些库基本是为了方便处理数据科学相关的问题。Miniconda也是一个软件发行版，但它仅包含python、conda和conda的依赖项，本质上就是一个空的用来安装conda环境的安装器，它没有Anaconda中那么多的包，可以理解为Anaconda的精简版，能够方便用户按照自己的需求，从零开始构建任意的环境。
+
+可以从诸如https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh链接下载所需的软件版本。执行安装脚本即可进行安装，并且可以修改安装路径。在安装完成之后，可以键入yes令Miniconda3自动配置.bashrc文件（推荐），也可以手动将prefix/miniconda3/bin可执行路径添加到.bashrc文件并指定PATH路径环境变量。
+
+在Anaconda的虚拟环境中主要用conda和pip下载和管理各种包，conda是一个跨平台的包和运行环境管理工具，其安装的包通常来自于Anaconda repository和Anaconda Cloud镜像网站。和pip安装的包不同的是，conda包是二进制格式的，因此无需预先安装编译器。
 
 可以使用如下命令创建一个Python虚拟环境。
 
@@ -889,7 +895,7 @@ mirrors = https://pypi.tuna.tsinghua.edu.cn/simple
 trusted-host = pypi.tuna.tsinghua.edu.cn
 ```
 
-conda工具可以使用-c选项或--channel选项指定所使用的镜像源，如下所示。或者，使用-c conda-forge镜像仓库，GCC、GXX等编译工具都在其中。
+conda工具可以使用-c选项或--channel选项指定所使用的镜像源，如下所示。并且需要注意的是，若不使用--channel指定目标软件仓库，则在搜索软件包时，会默认先搜索默认软件仓库，当安装一些比较混乱的包时，需要正确指定--channel仓库，以正确处理版本依赖。
 
 ```shell
 conda install -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main package-name
@@ -909,6 +915,24 @@ custom_channels:
   conda-forge: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
   pytorch: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
 ```
+
+如果想要安装GCC和GXX开发环境，可以在https://anaconda.org/conda-forge/repo?label=main查看软件仓库。
+
+```shell
+conda install gcc=11.4.0 gxx=11.4.0 -c conda-forge
+```
+
+如果想要在conda中安装纯CUDA开发环境，可以先使用conda search命令搜索所需要的软件包，例如cuda、cudatoolkit、cudnn等，并查看需要满足的版本依赖关系。但需要注意的是，在安装指定CUDA版本时，应该使用-c nvidia/label/cuda-11.8.0指定所访问的软件仓库，否则会定位到默认软件仓库，从而会安装最新版本的lib库，导致依赖关系错误。可以从https://anaconda.org/nvidia/repo?label=cuda-11.8.0查看软件仓库。
+
+```shell
+conda install nvidia/label/cuda-11.8.0::cuda -c nvidia/label/cuda-11.8.0
+```
+
+```shell
+conda install cudnn=8.9.2.26=cuda11_0
+```
+
+上述在安装cudnn时，指定8.9.2.26版本，并指定cuda11_0的build以用于CUDA 11.X版本。
 
 # 二、Python语言特性
 
