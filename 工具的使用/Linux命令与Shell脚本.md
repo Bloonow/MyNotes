@@ -17,63 +17,63 @@ lscpu              # 列出CPU信息
 cat /proc/cpuinfo  # 详细的CPU信息
 ```
 
-```shell
-wget url
-```
-
 使用wget命令可以从网络上下载文件，并保存到当前目录中，使用--continue选项可进行断点续传，即从上次下载中断的位置继续下载。
 
 ```shell
-cat path
+wget url
 ```
 
 使用cat命令显示文本文件中的所有内容。其中，使用-n选项在显式所有行之前加上行号；使用-b选项只在有文本的行之前加上行号；使用-T命令将文件中的制表符替换为^I符号。
 
 ```shell
-more path
+cat path
 ```
 
 使用more命令显示文本文件中的内容，但会在每页数据之后停下来，避免大量文本显示在屏幕上。其中，在more模式下，可使用J或K上下移动显示内容，或使用回车键逐行浏览，或使用空格键逐页浏览，使用q键退出。
 
 ```shell
-tail path
+more path
 ```
 
 使用tail命令显示文本文件中最后几行的内容，默认显示最后10行，常用于显示日志文件。其中，使用-n选项指定要显示的最后n行内容，或直接使用-指定行数；使用-f选项可在其它进程使用该文件时查看文件内容，tail命令会保持活动状态，并不断显示添加到文件中的内容，可用于实时监测系统日志。
 
 ```shell
-head path
+tail path
 ```
 
 使用head命令显示文本文件中开始几行的内容，默认显示开始10行。其中，使用-n选项指定要显示的最后n行内容，或直接使用-指定行数。
 
 ```shell
-source path [arguments]
+head path
 ```
 
 使用source命令，在当前shell中执行一个文件中的命令，并可指定所需的位置参数。
 
 ```shell
-sort path
+source path [arguments]
 ```
 
 使用sort命令按照shell会话中指定的默认语言的排序规则，对文本文件中的数据行排序。其中，使用-n选项将数字识别成数字而不是字符，并且按照数字的值排序；使用-M选项将三字符月份名按照月份排序；使用-r选项逆序排序；使用-t指定区分键位置的字符；使用-k指定依据第几个键值排序。
 
 ```shell
-du -sh * | sort -nr  # 将du命令输出重定向到sort命令，有序地列出所有文件大小
+sort path
 ```
 
 ```shell
-grep [option] pattern [path]
+du -sh * | sort -nr  # 将du命令输出重定向到sort命令，有序地列出所有文件大小
 ```
 
 使用grep命令根据匹配模式查找，输出包含相关字符的行。其中，使用-v选项进行反向搜索；使用-n显示所匹配的行号；使用-e指定多个匹配模式。由于grep命令非常流行，经历了大量的更新，有很多功能被加进grep命令。
 
 ```shell
-xargs [option] command [initial_args]
+grep [option] pattern [path]
 ```
 
 使用xargs命令执行某个指定命令command，xargs会解析一系列参数或解析从标准输入中读取的参数，并将解析得到的参数传递个command命令用于执行，常用于管道后为其它命令解析并提供命令行参数。该命令在解析initial_args参数或从标准输入读取的参数时，默认使用空格字符（如空格、换行符等）作为界定符来分隔多个参数。
+
+```shell
+xargs [option] command [initial_args]
+```
 
 其中，使用-n选项指定每次为command命令传递多少个解析得到的参数；使用-I选项指定所解析参数在command中使用的占位符（默认为{}空）。其中，-n选项和-I选项互斥。
 
@@ -97,35 +97,41 @@ f2.c
 f3.c
 ```
 
-```shell
-read [option] var1 var2 ...
-```
-
 使用read命令从标准输入或文件中读取数据（默认采用换行符作为终止符，即读取一行数据），将其读入到若干变量当中，如果指定多个变量，则根据IFS所指定的字段分隔符对数据进行分隔。read命令通常用于shell脚本的while循环中，用于读取类似CSV文件，它会自动读取文本文件的下一行内容，直到文件内容结束，read命令返回非零退出状态码，while循环结束。
 
 其中，使用-d delim选项指定新的终止符delim，而不是使用换行符作为终止符；使用-a array选项将分隔后数据写入array列表变量中，索引从0开始；使用-r选项指定不采用反斜杠进行转义。
 
 ```shell
-find [path] -name pattern
+read [option] var1 var2 ...
 ```
 
 使用find命令在某个目录下进行查找，并执行相关动作，默认动作是打印所匹配的结果。
 
 ```shell
-find /path/to -name pattern | xargs rm -rf  # 删除目录下所有匹配的对象
+find [path] -name pattern
 ```
 
 ```shell
-exec [-cl] [-a name] command [arg ...] [redirection]
+find /path/to -name pattern | xargs rm -rf  # 删除目录下所有匹配的对象
+```
+
+使用whereis命令用于查找某个命令的可执行程序的路径，如下所示。
+
+```shell
+whereis python
 ```
 
 在shell脚本中，可使用exec命令去执行其它所指定的命令（会启动一个新的shell执行），当未指定命令时，则redirection重定向在当前shell中生效。其中，使用-c选项表示使用空环境（而不继承当前环境）去执行命令；使用-l选项表示为指定命令提供dash作为\$0位置参数；使用-a选项为指定命令提供一个name作为\$0位置参数。
 
 ```shell
-eval [arg ...]
+exec [-cl] [-a name] command [arg ...] [redirection]
 ```
 
 命令eval将指定的参数arg作为一个命令执行，它将参数组合成一个字符串，并将其作为输入提供给shell程序，然后在当前的shell环境中执行生成的命令。
+
+```shell
+eval [arg ...]
+```
 
 # Linux进程
 

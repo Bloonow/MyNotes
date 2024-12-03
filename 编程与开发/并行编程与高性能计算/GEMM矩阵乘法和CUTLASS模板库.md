@@ -161,7 +161,7 @@ $$
 
 GPU设备的实际调度的单位为一个Warp，许多开销都与整个Warp的行为密切相关，所以向量化外积方案中，除了单线程内的延迟覆盖问题，还要考虑整个Warp上的计算访存比。
 
-一个Warp由Warp_x×Warp_y个线程组成，可以是1×32、2×16、4×8等，将这些线程对应的Thread Tile拼在一起的区域称为一个Warp Tile，尺寸为M_warp×N_warp，如下图所示。可以看到FFMA次数为M_warp×N_warp，对smem的访存量与M_warp、N_warp之和成正比，显然一个Warp的Thread摆放成4×8时计算访存比最高，摆放成1×32时最低。
+一个Warp由Warp_y×Warp_x个线程组成，可以是1×32、2×16、4×8等，将这些线程对应的Thread Tile拼在一起的区域称为一个Warp Tile，尺寸为M_warp×N_warp，如下图所示。可以看到FFMA次数为M_warp×N_warp，对smem的访存量与M_warp、N_warp之和成正比，显然一个Warp的Thread摆放成4×8时计算访存比最高，摆放成1×32时最低。
 
 <img src="GEMM矩阵乘法和CUTLASS模板库.assets/Warp Tile.png" style="zoom:12%;" />
 
@@ -230,43 +230,43 @@ __global__ void sgemm_128x128(
 
     // K-Loop
     for (int num_k_tiles = (K + K_tile - 1) / K_tile - 1; num_k_tiles > 0; num_k_tiles--) {
-        for (int i = 0; i < K_tile; i++) {
+        for (int k_frag = 0; k_frag < K_tile; k_frag++) {
             // K_tile次计算即将执行完毕，将下一个tile写入共享内存
-            if (i == K_tile - 1) {
+            if (k_frag == K_tile - 1) {
                 store_tile(A_ldg_buffer, A_tile[smem_st_idx]);
                 store_tile(B_ldg_buffer, B_tile[smem_st_idx]);
                 smem_ld_idx ^= 1;
                 smem_st_idx ^= 1;
             }
             // 读取下一次计算所需的frag并写入寄存器
-            load_frag(A_tile[smem_ld_idx][(i + 1) % K_tile], A_frag[(i + 1) % 2]);
-            load_frag(B_tile[smem_ld_idx][(i + 1) % K_tile], B_frag[(i + 1) % 2]);
+            load_frag(A_tile[smem_ld_idx][(k_frag + 1) % K_tile], A_frag[(k_frag + 1) % 2]);
+            load_frag(B_tile[smem_ld_idx][(k_frag + 1) % K_tile], B_frag[(k_frag + 1) % 2]);
             // K_tile的第一次计算之前，读取下一个tile数据
-            if (i == 0) {
+            if (k_frag == 0) {
                 load_tile(A_ptr, A_ldg_buffer);
                 load_tile(B_ptr, B_ldg_buffer);
             }
             // 执行FFMA计算
-            ffma(A_frag[i % 2], B_frag[i % 2], C_frag);
+            ffma(A_frag[k_frag % 2], B_frag[k_frag % 2], C_frag);
         }
     }
     // 最后一个tile的迭代
-    for (int i = 0; i < K_tile; i++) {
+    for (int k_frag = 0; k_frag < K_tile; k_frag++) {
         // 读取下一次计算所需的frag并写入寄存器
-        if (i < K_tile) {
-            load_frag(A_tile[smem_ld_idx][(i + 1) % K_tile], A_frag[(i + 1) % 2]);
-            load_frag(B_tile[smem_ld_idx][(i + 1) % K_tile], B_frag[(i + 1) % 2]);
+        if (k_frag < K_tile) {
+            load_frag(A_tile[smem_ld_idx][(k_frag + 1) % K_tile], A_frag[(k_frag + 1) % 2]);
+            load_frag(B_tile[smem_ld_idx][(k_frag + 1) % K_tile], B_frag[(k_frag + 1) % 2]);
         }
         // 执行FFMA计算
-        ffma(A_frag[i % 2], B_frag[i % 2], C_frag);
+        ffma(A_frag[k_frag % 2], B_frag[k_frag % 2], C_frag);
     }
 
-    // 写回矩阵C的计算结果
+    // 重用共享内存空间，写回矩阵C的计算结果
     store_result(C_ptr, C_frag);
 }
 ```
 
-其中，K_tile为常数，对K_tile的内部循环体可以被编译器展开，所以代码实际只产生num_k_tiles这一个循环，称之为K-Loop，或称之为Main-Loop主循环，K-Loop是GEMM的性能热点，也是优化的主要对象。
+其中，K_tile为常数，对K_tile的内部循环体可以被编译器展开，所以代码实际只产生num_k_tiles这一循环，称之为K-Loop，或称之为Main-Loop主循环，K-Loop是GEMM的性能热点，也是优化的主要对象。
 
 ## Threadblock Tile尺寸选择
 
@@ -294,9 +294,9 @@ $$
 一个Wave的大小，即在GPU上同时运行的Threadblock的数目，表示为Wave_gpu，于是得到：
 $$
 \begin{align}
-\text{Wave\_x} &= \frac{\text{M}}{\text{M\_tile}} \\
-\text{Wave\_y} &= \frac{\text{N}}{\text{N\_tile}} \\
-\text{Wave\_rem} &= \text{Wave\_gpu} \;\%\; \text{Wave\_y}
+\text{Wave\_y} &= \frac{\text{M}}{\text{M\_tile}} \\
+\text{Wave\_x} &= \frac{\text{N}}{\text{N\_tile}} \\
+\text{Wave\_rem} &= \text{Wave\_gpu} \;\%\; \text{Wave\_x}
 \end{align}
 $$
 可以算出一个Wave对应的访存请求量：
@@ -307,7 +307,7 @@ $$
 对设备内存dram产生的实际访存量：
 $$
 \begin{align}
-\text{A\_ldg\_dram} &= (\text{Wave\_x} + 1) \times \text{M\_tile} \times \text{K} \\
+\text{A\_ldg\_dram} &= (\text{Wave\_y} + 1) \times \text{M\_tile} \times \text{K} \\
 \text{B\_ldg\_dram} &= \text{N} \times \text{K}
 \end{align}
 $$
@@ -436,15 +436,19 @@ $$
 
 ## 读写gmem和smem时的线程摆放
 
-假设矩阵A和矩阵B都是行主序存储，由于一个线程采用向量外积实现来计算矩阵乘法，所以一个线程每次访问A的一列与B的一行，那么对于在设备全局内存gmem中的矩阵A的数据，需要对其进行转置，以列主序的方式写入到smem中。假设Threadblock Tile是128×128×8，线程数目为256个，则当将矩阵A和矩阵B从设备全局内存加载到共享内存中时，线程摆放如下所示。
+假设矩阵A和矩阵B都是行主序存储，由于一个线程采用向量外积实现来计算矩阵乘法，所以一个线程每次访问A的一列与B的一行，那么对于在设备全局内存gmem中的矩阵A的数据，需要对其进行转置，以列主序的方式写入到smem中。
+
+假设Threadblock Tile是128×128×8，线程数目为256个，则当将矩阵A和矩阵B从设备全局内存加载到共享内存中时，线程摆放如下所示。
 
 <img src="GEMM矩阵乘法和CUTLASS模板库.assets/Thread Layout for LDG and STS.png" style="zoom:12%;" />
 
-假设Threadblock Tile是128×128×8，线程数目为256个，则当将矩阵A和矩阵B从共享内存加载到寄存器当中时，线程摆放如下所示。
+假设Threadblock Tile是128×128×8，线程数目为256个，则当将矩阵A和矩阵B从共享内存加载到寄存器当中时，线程摆放如下所示。使用向量外积的计算方式，每个线程读取连续的4个元素，采用float4向量化读取，一次性读取16字节（128bit）。
 
 <img src="GEMM矩阵乘法和CUTLASS模板库.assets/Thread Layout for LDS.png" style="zoom:12%;" />
 
-使用向量外积的计算方式，每个线程读取连续的4个元素，采用float4向量化读取，一次性读取16字节（128bit）。
+从Ampere架构（计算能力8.6）开始，设备支持一个新的异步复制指令load-global-store-shared，在CUDA 11.0中提供支持，能够直接从全局内存（通常是从DRAM和L2缓存当中）加载数据到SM上的共享内存，绕过中间的L1缓存，同时避免为传输数据分配中间临时寄存器，避免寄存器文件的往返读写以节省SM内部带宽。
+
+
 
 # Efficient GEMM in CUDA
 

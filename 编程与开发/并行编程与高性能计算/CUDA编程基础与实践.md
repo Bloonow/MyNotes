@@ -37,10 +37,10 @@ CUDA（Compute Unified Device Architecture）是显卡厂商NVIDIA推出的运�
 | 2016 | 6.0      | 帕斯卡（Pascal）     | Tesla P系列               | Quadro P系列 | GeForce 10系列           | Tegra X2   |
 | 2017 | 7.0      | 伏特（Volta）        | Tesla V系列               |              |                          | AGX Xavier |
 | 2018 | 7.5      | 图灵（Turning）      | Tesla T系列               | Quadro T系列 | GeForce 16/20系列        |            |
-| 2020 | 8.0      | 安培（Ampere）       | Tesla A系列               |              | GeForce 30系列           | AGX Orin   |
+| 2020 | 8.X      | 安培（Ampere）       | Tesla A系列               |              |                          | AGX Orin   |
 | 2022 | 8.9      | 艾达（Ada·Lovelace） | Tesla L系列               |              | GeForce 40系列           |            |
 | 2022 | 9.0      | Hopper               | Tesla H系列（H100、H200） |              |                          |            |
-| 2024 | 10.0     | Blackwell            | Tesla B系列（B40）        |              | GeForce 50系列           |            |
+| 2024 | 10.X     | Blackwell            | Tesla B系列（B40）        |              | GeForce 50系列           |            |
 
 需要注意的是，特斯拉（Tesla）既是第一代GPU架构的代号，也是科学计算系列GPU的统称，其具体含义要根据上下文确定。
 
@@ -154,7 +154,7 @@ NVIDIA官方文档网址为https://docs.nvidia.com/cuda，其包括安装指南�
 
 ## （四）用NVCC编译CUDA程序
 
-首先明确，GPU只是一个设备，它要工作的话，还需要有一个主机（CPU）给它下达命令。所以，一个使用GPU的CUDA程序既有主机代码（由CPU执行），又有设备代码（由GPU执行）；主机对设备的调用是通过核函数（Kernel Function）来实现的。所以，一个典型的CUDA程序的结构具有下面的形式。
+首先明确，GPU只是一个设备，它要工作的话，还需要有一个主机（CPU）给它下达命令。所以，一个使用GPU的CUDA程序既有主机代码（由CPU执行），又有设备代码（由GPU执行）；主机对设备的调用是通过核函数（kernel function）来实现的。所以，一个典型的CUDA程序的结构具有下面的形式。
 
 ```c++
 __global__ void func_cuda_kernel(data_on_device) { /* body */; }
@@ -305,6 +305,8 @@ Hello, love from (0,0,0)(1,2,0).
 一个GPU往往有几千个计算核心，当总线程数大于计算核心数时，才能更充分地利用GPU中的计算资源，因为这会让计算和内存访问之间及不同的计算之间合理地重叠，从而减小计算核心空闲的时间。一般来说，只要线程数比GPU中的计算核心数（几百甚至几千）多几倍时，就有可能充分利用GPU中的全部计算资源。需要指出，虽然可指定核函数的线程数，但在执行时同时活跃（不活跃的线程处于等待状态）的线程数是由硬件（主要是CUDA核心数）和软件（核函数代码）决定的。
 
 CUDA中对对能够定义的网格大小和线程块大小做了限制。从GPU计算能力3.0开始，最大允许的网格大小在x,y,z三个维度分别是2^31^-1,65535,65535；最大允许的线程块大小在x,y,z三个维度分别是1024,1024,64；此外，还要求线程块最大线程数目不得超过1024，即blockDim三成员之积不得大于1024。这些限制是必须牢记的。
+
+通常来说，GPU驱动在调度kernel核函数时，会优先调度x维度上的线程，然后调度y维度上的线程，最后调度z维度上的线程，因此，通常优先将x维度的线程在数据的主序维度上进行摆放。
 
 ## （二）核函数执行配置
 
