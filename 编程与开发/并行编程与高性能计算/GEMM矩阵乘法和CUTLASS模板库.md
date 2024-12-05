@@ -446,6 +446,10 @@ $$
 
 <img src="GEMM矩阵乘法和CUTLASS模板库.assets/Thread Layout for LDS at 128x128.png" style="zoom:12%;" />
 
+假设Threadblock Tile是128×128×8，线程数目为256个，Thread Tile是8×8，则当将矩阵A和矩阵B从寄存器写回到设备全局内存当中时，并借助共享内存重排数据布局，则线程摆放如下所示。
+
+<img src="GEMM矩阵乘法和CUTLASS模板库.assets/Thread Layout for STG at 128x128.png" style="zoom:12%;" />
+
 从Ampere架构（计算能力8.6）开始，设备支持一个新的异步复制指令load-global-store-shared，在CUDA 11.0中提供支持，能够直接从全局内存（通常是从DRAM和L2缓存当中）加载数据到SM上的共享内存，绕过中间的L1缓存，同时避免为传输数据分配中间临时寄存器，避免寄存器文件的往返读写以节省SM内部带宽。
 
 假设Threadblock Tile是128×256×8，线程数目为256个，则当将矩阵A和矩阵B从设备全局内存加载到共享内存中时，线程摆放如下所示。
