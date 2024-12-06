@@ -932,7 +932,7 @@ conda install nvidia/label/cuda-11.8.0::cuda -c nvidia/label/cuda-11.8.0
 conda install cudnn=8.9.2.26=cuda11_0
 ```
 
-上述在安装cudnn时，指定8.9.2.26版本，并指定cuda11_0的build以用于CUDA 11.X版本。
+上述在安装cudnn时，指定8.9.2.26版本，并指定cuda11_0的build以用于CUDA 11.X版本，该cudnn包是存在于默认软件仓库中的。
 
 # 二、Python语言特性
 
