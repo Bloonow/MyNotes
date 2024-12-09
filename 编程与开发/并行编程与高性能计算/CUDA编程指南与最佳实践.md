@@ -62,19 +62,31 @@ int main(int argc, char *argv[]) {
 
 在计算能力9.0的设备上，一个线程块簇中的所有线程块会保证在一个GPU处理簇（Graphics Processor Cluster）上协同调度，并且同一个簇的这些线程块之间能够使用Cluster Group簇组API接口，例如使用cluster.sync()函数执行硬件支持的同步操作。簇组提供一系列函数，例如使用num_blocks()函数查询簇组的线程块数目，使用num_threads()函数查询簇组的线程数目；使用dim_blocks()函数查询当前线程块在簇组中的编号，使用dim_threads()函数查询当前线程在簇组的编号。
 
-！！！！簇组！！！！
-
-https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#cluster-group-cg
+【！！！！簇组！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#cluster-group-cg
 
 一个簇组中的所有线程块能够访问分布式共享内存（Distributed Shared Memory），能够在分布式共享内存的任意地址执行读取、写入、原子操作。
 
-！！！！分布式共享内存！！！！
+【！！！！分布式共享内存！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#distributed-shared-memory
 
-https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#distributed-shared-memory
+## 异步SIMT编程模型
 
-# CUDA运行时
+CUDA线程是执行计算或访存操作的最低级别的抽象。从Ampere架构开始，GPU设备支持异步的内存操作，并由CUDA异步编程模型定义了异步操作相对于CUDA线程的行为。异步编程模型定义了异步栅障（Asynchronous Barrier）的行为，用于CUDA线程之间的同步，该模型还定义并解释了在GPU上计算时如何使用cuda::memcpy_async()从全局内存中异步移动数据。
+
+【！！！！异步栅障！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#asynchronous-barrier
+
+【！！！！异步数据复制！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#asynchronous-data-copies
+
+# CUDA运行时环境
 
 CUDA Runtime运行时环境在cudart库中实现，使用CUDA的应用程序都需要链接到该运行时库，要么是cudart.lib或libcudart.a静态库，要么是cudart.dll或libcuda.so动态库。因此需要动态链接到cudart.dll或libcudart.so库的应用程序，通常会将CUDA动态库包含在安装目录。只有链接到同一个CUDA运行时实例的多个组件，才能安全地传递地址信息。
+
+CUDA运行时构建在更低级别的API之上，即CUDA驱动程序，驱动程序API通过公开更低级别的概念来提供额外的控制，例如，CUDA Context上下文（设备的主机进程模拟），CUDA Module模块（设备的动态加载库的模拟）。在使用CUDA运行时环境时，上下文和模块的管理是隐式的，这可以产生更简洁的代码。
+
+CUDA运行时的所有函数都以cuda为前缀，这些函数用于分配和释放设备内存、在主机内存和设备内存之间传输数据、管理具有多个设备的系统等。
+
+【！！！！CUDA运行时！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#cuda-c-runtime
+
+【！！！！驱动API！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#driver-api
 
 ## 初始化
 

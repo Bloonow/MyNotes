@@ -2684,7 +2684,7 @@ a.exe
 
 ### 1. 线程块级别的协作组
 
-在协作组编程模型中，最基本的类型是线程组thread_group类，它是cooperative_groups中的基类，定义如下所示。
+在协作组编程模型中，最基本的类型是线程组thread_group类，它是cooperative_groups.h中的基类，定义如下所示。
 
 ```c++
 class thread_group {
