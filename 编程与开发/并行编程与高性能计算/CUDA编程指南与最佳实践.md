@@ -2,11 +2,7 @@
 
 # 编程模型
 
-## 线程层次结构
-
-核函数中的线程通常组织为若干线程块（thread block），一个核函数的全部线程块构成一个网格（grid）。三括号中的第一项即线程块的数目，也即网格维度，称为网格大小（grid size）；第二项即每个线程块中线程的数目，也即线程块维度，称为线程块大小（block size）。
-
-### 线程块簇
+## 线程块簇
 
 随着NVIDIA设备计算能力9.0引入，CUDA编程模型提供一个可选的线程层次，称为线程块簇（Thread Block Cluster），由线程块组成。线程块可以保证其中的线程在一个流多处理器上协同调度，线程块簇也保证其中的线程块在一个GPU处理簇（GPU Processing Cluster，CPC）上协同调度。
 
@@ -22,9 +18,11 @@
 
 ```c++
 // Compile time cluster size 2 in X-dimension and 1 in Y and Z dimension
-__global__ void __cluster_dims__(2,1,1) cluster_kernel(float *input, float *output) {}
+__cluster_dims__(2,1,1)
+__global__ void cluster_kernel(float *input, float *output) {}
 
 int main(int argc, char *argv[]) {
+    const int M = 1024, N = 1024;
     float *input, *output;
     dim3 blockDim(32, 32);
     dim3 gridDim((M + blockDim.x - 1) / M, (N + blockDim.y - 1) / N);
@@ -62,9 +60,17 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-在计算能力9.0的设备上，一个线程块簇中的所有线程块会保证在一个GPU处理簇上协同调度，并且同一个簇的这些线程块之间能够使用Cluster Group簇组API接口，例如使用cluster.sync()函数执行硬件支持的同步操作。簇组提供一系列函数，例如使用num_blocks()函数查询簇组的线程块数目，使用num_threads()函数查询簇组的线程数目；使用dim_blocks()函数查询当前线程块在簇组中的编号，使用dim_threads()函数查询当前线程在簇组的编号。
+在计算能力9.0的设备上，一个线程块簇中的所有线程块会保证在一个GPU处理簇（Graphics Processor Cluster）上协同调度，并且同一个簇的这些线程块之间能够使用Cluster Group簇组API接口，例如使用cluster.sync()函数执行硬件支持的同步操作。簇组提供一系列函数，例如使用num_blocks()函数查询簇组的线程块数目，使用num_threads()函数查询簇组的线程数目；使用dim_blocks()函数查询当前线程块在簇组中的编号，使用dim_threads()函数查询当前线程在簇组的编号。
+
+！！！！簇组！！！！
+
+https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#cluster-group-cg
 
 一个簇组中的所有线程块能够访问分布式共享内存（Distributed Shared Memory），能够在分布式共享内存的任意地址执行读取、写入、原子操作。
+
+！！！！分布式共享内存！！！！
+
+https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#distributed-shared-memory
 
 # CUDA运行时
 
