@@ -67,30 +67,6 @@ if __name__ == '__main__':
         print(f'========== Saving Results ==========')
 ```
 
-使用torch.distributed.elastic启动训练的脚本如下所示。
-
-```shell
-#!/bin/bash
-source ~/.bashrc
-module purge
-module load gcc/11.1.0
-module load cuda/11.8
-module load openmpi/4.1.1_gcc11.1.0_cuda11.8
-module load anaconda/2020.11
-module list
-source activate py39
-conda activate py39
-export PYTHONUNBUFFERED=1
-
-torchrun --standalone --nnodes=1 --nproc-per-node=8 TRAIN_SCRIPT.py
-```
-
-```shell
-sbatch --gpus=8 run.sh
-```
-
-在run.sh提交脚本中，torchrun的--nproc-per-node参数指定分布式启动的进程数目，每个进程持有一块GPU加速卡，进程数目与系统GPU设备的数目一致。这些进程执行相同的TRAIN_SCRIPT.py脚本。在TRAIN_SCRIPT.py脚本中，torch.utils.data.DataLoader的num_workers指定读取数据集时使用的进程数目，它与上述--nproc-per-node参数无任何关系，这些进程是由上述执行进程派生出来的，它们仅负责加载数据集。
-
 ## 2. Data Parallel Training
 
 PyTorch为数据并行训练提供了几种选项。对于从简单到复杂、从原型到生产环境的应用程序，常见的开发轨迹如下所示。
@@ -1756,12 +1732,13 @@ class ZeroRedundancyOptimizer(Optimizer, Joinable):
 
 其中的torchrun模块可以使分布式PyTorch作业具有容错性和弹性，它是torch.distributed.launch启动工具的一个超集。
 
-在使用Slurm管理的集群上，启动多节点分布式作业的脚本示例如下所示。
+在使用Slurm管理的集群上，启动多节点分布式作业的submit.sh脚本示例如下所示。
 
 ```shell
 #!/bin/bash
-# 两个节点，每个节点八张GPU卡，提交命令如下
-# sbatch -N 2 --gres=gpu:8 submit.sh
+source ~/.bashrc
+module purge
+module load xxx
 
 nodes=($(scontrol show hostnames $SLURM_JOB_NODELIST))
 nodes_array=($nodes)
@@ -1777,6 +1754,12 @@ torchrun
     --rdzv-endpoint=$head_node_ip:29500
     TRAIN_SCRIPT.py --script-args
 ```
+
+```shell
+sbatch -N 2 --gres=gpu:8 submit.sh
+```
+
+使用sbatch命令提交submit.sh脚本，申请2个节点，每个节点8张GPU卡。在submit脚本中，torchrun的--nproc-per-node参数指定分布式启动的进程数目，每个进程持有一块GPU加速卡，进程数目与系统GPU设备的数目一致。这些进程执行相同的TRAIN_SCRIPT.py脚本。在TRAIN_SCRIPT.py脚本中，torch.utils.data.DataLoader的num_workers指定读取数据集时使用的进程数目，它与上述--nproc-per-node参数无任何关系，这些进程是由上述执行进程派生出来的，它们仅负责加载数据集。
 
 ## 1. Quickstart
 

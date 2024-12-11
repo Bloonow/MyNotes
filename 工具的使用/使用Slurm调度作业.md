@@ -204,7 +204,8 @@ SelectTypeParameters=CR_CPU_Memory
 #SBATCH --nodes 4
 #SBATCH --ntasks-per-node=8
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:8
 python script.sh
 ```
 
+上述脚本分配4个节点，每个节点执行8个任务，每个任务使用4个CPU核心，每个节点分配8个GPU资源。
