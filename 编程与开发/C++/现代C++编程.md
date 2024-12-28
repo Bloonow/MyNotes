@@ -175,6 +175,43 @@ C++17引入了更加安全可靠的std::variant类，来作为联合体的替代
 
 通过在块范围中显式声明相同的名称，可以隐藏带全局范围的名称。但是，可以使用范围解析运算符`::`访问全局范围名称。
 
+内联命名空间（Inline Namespace）是C++11引入的一种特殊命名空间，允许其成员可以直接作为父命名空间的成员访问，而无需显式指定内联命名空间的名称。使用inline namespace关键字声明一个内联命名空间。
+
+```c++
+namespace ParentNamespace {
+    inline namespace InlineNamespace {
+        void MyFunction();
+    }
+}
+```
+
+访问时，可以直接通过ParentNamespace::MyFunction()访问其中的成员，而无需使用InlineNamespace名称符号。
+
+内联命名空间可以帮助管理不同版本的代码，如下所示。
+
+```c++
+namespace API {
+    namespace __v1 {
+        void doSomething() { std::cout << "API __v1" << std::endl; }
+    }
+    inline namespace __v2 {
+        void doSomething() { std::cout << "API __v2" << std::endl; }
+    }
+}
+
+int main() {
+    API::doSomething();  // 调用 v1 的实现
+    API::doSomething();  // 调用新版的 v2 的实现
+    return 0;
+}
+```
+
+
+
+
+
+
+
 ## 编译单元和链接类型
 
 在C++程序中，符号（symbol），例如变量或函数名称，可以在其范围内进行任意次数的声明。但是，一个符号只能被定义一次，也即单一定义规则（One Definition Rule，ODR）。声明在程序中引入（或重新引入）一个名称以及足够的信息，以便以后将该名称与定义联系起来；而定义引入一个名称，并提供创建它所需的全部信息，如果名称表示变量，则定义会显式创建存储并进行初始化。必须在使用变量、函数、类等程序元素的名称之前对其进行声明，以告知编译器元素是何种类型。此外，必须在使用每个名称的.cpp文件中（直接或间接）声明每个名称。

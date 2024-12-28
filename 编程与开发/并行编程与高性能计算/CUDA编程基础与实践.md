@@ -2322,7 +2322,7 @@ Elapse = 1779.52 ms, Average = 177.952 ms, Repeat = 10.
 
 ## （二）原子函数
 
-原子函数对它的第一个address参数指向的数据进行一次“**读改写**”的原子操作，地址address可以指向全局内存，也可以指向共享内存。对所有参与的线程来说，这个“读改写”的原子操作是一个线程一个线程轮流做的、但没有明确的次序。另外，原子函数没有同步功能。
+原子函数（Atomic Function）对它的第一个address参数指向的数据进行一次“**读改写**”的原子操作，地址address可以指向全局内存，也可以指向共享内存。对所有参与的线程来说，这个“读改写”的原子操作是一个线程一个线程轮流做的、但没有明确的次序。另外，原子函数没有同步功能。
 
 下面，列出所有原子函数的原型，并介绍它们的功能。约定，对每一个线程来说，在实施与该线程对应的原子函数前，address所指变量的值为old，在实施与该线程对应的原子函数后，address所指变量的值为new。对每一个原子函数来说，它们都有返回值，其返回值都是old。
 
@@ -2360,17 +2360,18 @@ T atomicXor (T *addr, T val);          // new = old ^ val;                      
 
 从Pascal架构（计算能力3.0）开始，在原来的原子函数的基础上引入了两类新的原子函数。例如，对原子函数atomicAdd()来说，从Pascal架构起引入了另外两个原子函数，分别是atomicAdd_system()和atomicAdd_block()，前者将原子函数的作用范围扩展到一个计算节点，包括主机和所有设备（而不只是一张GPU设备），后者将原子函数的作用范围缩小到一个线程块的范围。
 
-在所有原子函数中，atomicCAS()函数是比较特殊的，所有其他原子函数都可以用它实现，例如，在Pascal架构以前，atomicAdd()函数不支持双精度浮点数，就可用atomicCAS()函数实现一个支持双精度浮点数的atomicAdd()函数，如下所示。但其比Pascal架构提供的支持双精度浮点数的atomicAdd()函数慢得多，不建议使用。
+在所有原子函数中，atomicCAS()函数（Compare And Swap）是特殊的，所有其他原子函数都可以用它实现，例如，在Pascal架构以前，atomicAdd()函数不支持双精度浮点数，就可用atomicCAS()函数实现一个支持双精度浮点数的atomicAdd()函数，如下所示。但其比Pascal架构提供的支持双精度浮点数的atomicAdd()函数慢得多，不建议使用。
 
 ```c++
 __device__ double my_atomicAdd(double *address, double val) {
     unsigned long long *address_ull = (unsigned long long *)address;
     unsigned long long old = *address_ull;
-    unsigned long long assumed_old;
+    unsigned long long assumed;
     do {
-        assumed_old = old;
-        old = atomicCAS(address_ull, assumed_old, __double_as_longlong(__longlong_as_double(assumed_old) + val));
-    } while (assumed_old != old);
+        assumed = old;
+        old = atomicCAS(address_ull, assumed, __double_as_longlong(__longlong_as_double(assumed) + val));
+        // Note: uses integer comparison to avoid hang in case of NaN (since NaN != NaN)
+    } while (assumed != old);
     return __longlong_as_double(old);
 }
 ```
@@ -2678,9 +2679,15 @@ a.exe
 
 ## （四）协作组
 
-在有些并行算法中，需要若干线程之间的协作，协作就必须要有同步机制。**协作组（cooperative groups）**可以看作线程块和线程束同步机制的推广，它提供了更为灵活的线程协作方式，包括线程块内部（线程块级别）的同步协作，线程块之间（网格级别）的同步协作，设备之间的同步协作。协作组在CUDA 9才被引入，但关于线程块级别的协作组功能可以用于Kepler及以上的架构，而其他级别的协作组功能则需要Pascal及以上的架构才能使用。类似于MPI中的通信子（communicator）。
+**协作组（Cooperative Group）**编程模型是CUDA编程模型的扩展，用于组织进行通信的线程组，类似于MPI中的通信子（communicator）概念。协作组它提供更为灵活的线程协作方式，包括线程块之内（线程块级别）的同步协作，线程块之间（网格级别）的同步协作，设备之间的同步协作，允许开发人员表达线程通信的粒度，从而表达更丰富更高效的并行分解。
 
-使用协作组的功能时需要包含cooperative_groups.h头文件，而且需要注意，所有与协作组相关的数据类型和函数都定义在cooperative_groups命名空间中。
+协作组功能在CUDA 9版本中引入，使用时需要包含cooperative_groups.h头文件，所有与协作组相关的数据类型和函数都定义在cooperative_groups命名空间中。此外，一些特定的功能位于诸如cooperative_groups/memcpy_async.h、cooperative_groups/reduce.h、cooperative_groups/scan.h的头文件中。
+
+```c++
+#include <cooperative_groups.h>
+// using namespace cooperative_groups;
+namespace cg = ::cooperative_groups;  // use an alias to avoid polluting the namespace with collective algorithms
+```
 
 ### 1. 线程块级别的协作组
 
@@ -2715,7 +2722,8 @@ public:
     int num_threads();    // 当前线程块中所有线程的数目，即blockDim.x * blockDim.y * blockDim.z
 };
 
-thread_block this_thread_block() { return (thread_block()); }  // 用于初始化一个thread_block对象
+grid_group this_grid() { return grid_group(details::get_grid_workspace()); }  // 用于初始化一个grid_group对象
+thread_block this_thread_block() { return thread_block(); }                   // 用于初始化一个thread_block对象
 thread_group tiled_partition(const thread_block& parent, unsigned int tilesz);
 thread_group tiled_partition(const thread_group& parent, unsigned int tilesz);
 ```

@@ -1,4 +1,48 @@
-> 本文章摘抄自NVIDIA官方，CUDA编程指南、CUDA最佳实践。
+# 性能优化指南
+
+性能优化围绕四个基本策略展开，最大化并行执行以实现最大利用率（maximize parallel execution to achieve maximum utilization），优化内存使用以实现最大内存吞吐量（optimize memory usage to achieve maximum memory throughput），优化指令使用以实现最大的指令吞吐量（optimize instruction usage to achieve maximum instruction throughput），最大限度地减少内存抖动（minimize memory thrashing）。
+
+哪些策略将为应用程序的特定部分产生最佳性能增益，具体取决于该部分的性能限制，应通过测量和监控性能限制来不断指导优化工作。此外，将特定内核的浮点运算吞吐量或内存吞吐量（以更有意义的为准）与设备的相应峰值理论吞吐量进行比较，可以表示内核还有多大的改进空间。
+
+## 最大化利用率
+
+为最大化利用率，应用程序的结构应尽可能多地公开并行性，并有效地将这种并行性映射到系统的各个器件，以使它们在大部分时间都保持忙碌。在应用程序级别（application level），应该使用异步函数和流来最大化主机、设备、总线之间的并行执行。在设备级别（device level），多个内核可以在一个设备上并发执行，因此也可以通过使用流来启动足够多的内核来并发执行。在流式多处理器级别（streaming multiprocessor level），应该最大化SM中各个功能单元之间的并行执行。
+
+SM主要依赖于线程级并行性来最大限度地利用其功能单元，因此利用率与驻留的Warp数目直接相关。在每个指令发出时，Warp调度器都会选择一条准备执行的指令，此指令可以是同一Warp的另一个独立指令，以利用指令级并行性，或者更常见的是另一个Warp的指令，以利用线程级并行性；如果选择了准备执行的指令，则会将其发送到Warp的活动线程。
+
+Warp执行一条指令所需的时钟周期（clock cycle）数目称为延迟（latency），当一个SM处理块子分区上的Warp调度器在该latency延迟期间的每个时钟都有一些指令要为某个Warp发射时，也即当latency完全隐藏时，就可以实现该处理块子分区的完全利用；当一个SM上的所有处理块子分区都可以掩盖其Warp的延迟时，就可以实现该SM的完全利用。隐藏一个长达L时钟周期的延迟所需的指令数目取决于这些指令各自的吞吐量，吞吐量是指满流水线情况下的每SM每时钟执行的指令数目，这与具体的GPU架构有关，例如，具有4个Warp调度器的SM需要4L的指令数目，具有2个Warp调度器的SM需要2L的指令数目。
+
+Warp没有准备好执行下一条指令的最常见原因是该指令的输入操作数尚不可用。如果所有输入操作数都在寄存器上，则延迟是由寄存器依赖引起的，即一些输入操作数是由一些尚未完成执行的先前指令得到的。在这种情况下，延迟等于前一条指令的执行时间，并且Warp调度器必须在该时间内调度其它Warp的指令。指令执行时间因指令类型而异，在计算能力大于等于7.X的设备上，大多数算术指令的执行通常需要4个时钟周期，这意味着每个SM的处理块子分区需要4个活动Warp来隐藏算术指令延迟。如果单个Warp表现出指令级并行性，即在其指令流中有多个独立的指令，则需要更少的Warp数目，因为来自单个Warp的多个独立指令可以连续发射。如果一些输入操作数驻留在片外内存中，则延迟要高得多，通常为数百个时钟周期。在如此高延迟期间，使Warp调度器保持忙碌所需的Warp数目取决于内核代码及其指令级并行度。通常，如果没有片外存储器操作数的指令数目（通常是算术指令）与具有片外存储器操作数的指令数目（通常是访存指令）之比较低，也即算术强度较低，则需要更多的Warp掩盖延迟。
+
+Warp没有准备好执行下一条指令的另一个原因是它正在等待某个内存栅栏函数（Memory Fence Function）或同步（Synchronization）。同步可以强制多处理器空闲，因为会有越来越多的Warp等待同一线程块中的其它Warp完成同步点之前的指令。在这种情况下，每个SM拥有多个常驻线程块有助于减少空闲，因为来自不同块的Warp不需要在同步点相互等待。
+
+对于给定的内核调用，驻留在每个SM的线程块和Warp的数目取决于调用时的执行配置（execution configuration）、SM的各种资源以及内核对资源的需求。使用--ptxas-options=-v编译选项进行编译时，编译器会报告寄存器和共享内存使用情况。内核使用的寄存器数目对驻留Warp的数目有很大影响，因此编译器会尝试最小化寄存器使用，同时保持寄存器溢出和指令数目最少。可以使用--maxrregcount编译器选项、\_\_launch_bounds\_\_()限定符或\_\_maxnreg\_\_()限定符来控制寄存器的使用。线程块所需的共享内存总量等于静态分配的共享内存量和动态分配的共享内存量之和。
+
+使用cudaOccupancyMaxActiveBlocksPerMultiprocessor()函数可以根据内核的线程块大小、寄存器使用情况、共享内存使用情况提供占用率预测，此函数根据每个SM的并发线程块数目来报告占用率；此值可以转换为其它量度，乘以每个线程块的Warp数目可以得到每个SM的并发Warp数数目，进一步除以每个SM的最大Warp数目可以得到占用率百分比。使用cudaOccupancyMaxPotentialBlockSize()函数和cudaOccupancyMaxPotentialBlockSizeVariableSMem()函数可以启发式地计算实现最大SM占用率的执行配置。
+
+## 最大化内存吞吐量
+
+最大化应用程序的整体内存吞吐量的第一步是最小化低带宽的数据传输。这意味着需要最大限度地减少主机和设备之间的数据传输，因为它们的带宽比全局内存和设备之间的数据传输低得多。实现此目的的一种方法是将更多代码从主机移动到设备，即使这意味着运行的内核没有公开足够的并行度，无法在设备上高效执行。中间数据结构可以在设备内存中创建，由设备操作，并在不被主机映射或复制到主机内存的情况下销毁。此外，由于与每次传输相关的开销，将许多小型传输批处理为单个大型传输始终比单独进行每个传输效果更好。
+
+最大限度地减少主机和设备之间的数据传输，也意味着需要最大限度地利用片上存储来最大限度地减少全局内存和设备之间的数据传输，即最大化地利用共享内存和高速缓存（L1缓存、L2缓存、常量缓存、纹理缓存）。共享内存等同于用户管理的缓存，应用程序可以显式分配和访问它。典型的编程模式是将来自设备内存的数据暂存到共享内存中，对于一个线程块的每个线程而言，典型流程为，将数据从设备内存加载到共享内存；与线程块的所有其它线程同步，以便每个线程都可以安全地读取由不同线程填充的共享内存位置；处理共享内存中的数据；如有必要再次同步，以确保共享内存的数据是最新的；将结果写回设备内存。
+
+最大化内存吞吐量的下一步是根据最佳的内存访问模式，尽可能优化地组织内存和访问。这种优化对于全局内存访问尤其重要，因为与可用的片上带宽和算术指令吞吐量相比，全局内存带宽较低，因此非最佳的全局内存访问通常对性能有很大影响，内核的内存访问吞吐量可能会相差一个数量级。访问可寻址内存（即全局内存、本地内存、共享内存等）的指令可能需要多次重新发射（re-issue），具体取决于内存地址在Warp线程之间的分布。不同的分布如何影响指令吞吐量特定于每种类型的内存，例如，对于全局内存而言，通常地址越分散，吞吐量越低。
+
+全局内存空间的物理存储器是设备内存，通过32字节、64字节、128字节的内存事务（memory transaction），这些内存事务必须自然对齐，也即只有起始地址是32字节、64字节、128字节的整数倍的内存段才能被内存事务读取或写入。当Warp执行访问全局内存的指令时，它会根据每个线程访问的数据大小和内存地址在线程之间的分布，将Warp中线程的内存访问合并到一个或多个这些内存事务中。一般来说，需要的事务越多，则除了线程访问的所需数据之外，传输的未使用的数据就越多，从而相应地降低了指令吞吐量。
+
+全局内存指令支持读取或写入大小等于1、2、4、8、16字节的数据，当且仅当数据类型的大小为1、2、4、8、16字节，并且数据自然对齐（即其地址是该大小的倍数）时，那么，对驻留在全局内存中的数据的任何访问（通过变量或指针）都会被编译为单个全局内存指令。如果未满足此大小和对齐要求，则访问将编译为多个指令，这些指令具有交错访问模式，这会阻止这些指令完全合并。因此，建议对驻留在全局内存中的数据使用满足此要求的类型。内置向量类型会自动满足对齐要求，而对自定义结构体而言，可以使用\_\_align\_\_说明符来强制内存对齐。
+
+为最小化内存抖动，应尝试在应用程序的早期以适当大小的分配方式分配内存，并且仅在应用程序没有任何用途时分配内存，减少应用程序中cudaMalloc()和cudaFree()调用的次数，尤其是在性能关键区域。过于频繁地不断分配和释放内存的应用程序可能会发现，分配调用往往会随着时间的推移而变慢，直到达到限制。这通常是意料之中的，因为将内存释放回操作系统之后，会被操作系统用于执行其它任务，从而导致过于离散且零碎的内存空间。
+
+## 最大化指令吞吐量
+
+为最大限度地提高指令吞吐量，应用程序应该注意以下几点。最大限度地减少使用低吞吐量的算术指令，在不影响最终结果的情况下用精度换取速度，使用内建的快速数学函数而不是常规函数、使用单精度而不是双精度、或将非规范化浮点数刷新为零。最大限度地减少由控制流指令引起的Warp发散。减少指令数，尽可能地优化同步点，使用\_\_restrict\_\_受限指针。
+
+指令吞吐量可以使用一个SM一个时钟周期所执行的操作次数来计算得到，对于一个拥有32个线程的Warp而言，一条指令对应32次操作，因此如果一个时钟周期执行N次操作，则一个SM的指令吞吐量为一个时钟周期N/32个指令。本机算术指令（Native Arithmetic Instruction）的吞吐量可以见表格Instruction Throughput所示，而其他指令和函数是在本机指令之上实现的，不同计算能力的设备，实现可能会有所不同。
+
+通常，使用-ftz=true编译的代码（非规范化浮点数刷新为零）往往比使用-ftz=false编译的代码具有更高的性能，使用-prec-div=false（低精确的除法）编译的代码往往比使用-prec-div=true编译的代码具有更高的性能，使用-prec-sqrt=false（低精确的平方根）编译的代码往往比使用-prec-sqrt=true编译的代码具有更高的性能。NVCC编译器手册中有更详细的描述。
+
+任何流控制指令（if、switch、do、while、for）都可能导致同一Warp的线程发散（即线程具有不同的执行路径），从而显著影响有效指令的吞吐量。如果发生这种情况，则必须串行执行不同的路径，从而增加Warp需要执行的指令总数。有时，编译器可能会展开循环，或者可能会使用分支预测断言来优化短的if块，在这些情况下，任何Warp都不会发散。
 
 # 编程模型
 
@@ -57,21 +101,11 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-在计算能力9.0的设备上，一个线程块簇中的所有线程块会保证在一个GPU处理簇（Graphics Processor Cluster）上协同调度，并且同一个簇的这些线程块之间能够使用Cluster Group簇组API接口，例如使用cluster.sync()函数执行硬件支持的同步操作。簇组提供一系列函数，例如使用num_blocks()函数查询簇组的线程块数目，使用num_threads()函数查询簇组的线程数目；使用dim_blocks()函数查询当前线程块在簇组中的编号，使用dim_threads()函数查询当前线程在簇组的编号。
+在计算能力9.0的设备上，一个线程块簇中的所有线程块会保证在一个GPU处理簇上协同调度，并且同一个簇的这些线程块之间能够使用Cluster Group簇组API接口，例如使用cluster.sync()函数执行硬件支持的同步操作。簇组提供一系列函数，例如使用num_blocks()函数查询簇组的线程块数目，使用num_threads()函数查询簇组的线程数目；使用dim_blocks()函数查询当前线程块在簇组中的编号，使用dim_threads()函数查询当前线程在簇组的编号。
 
 一个簇组中的所有线程块能够访问所有参与线程块的共享内存，称为**分布式共享内存（Distributed Shared Memory）**，相应的地址空间称为分布式共享内存地址空间。属于线程块簇的线程可以在分布式共享内存的任意地址执行读取、写入、执行原子操作，无论该地址是属于本地线程块还是远程线程块。无论内核是否使用分布式共享内存，使用共享内存规范声明的静态或动态共享内存仍然是属于每个线程块的，分布式共享内存的大小只是簇组中的线程块的数目乘以每个线程块的共享内存大小。
 
 访问分布式共享内存中的数据需要所有线程块都存在，用户可以使用簇组API中的cluster.sync()函数保证所有线程块都已经开始执行，用户还需要确保所有的分布式共享内存操作都发生在线程块退出之前。例如，如果当前线程块需要读取远程线程块的共享内存，则用户需要确保该次读取操作在远程线程块退出之前完成。
-
-【！！！！簇组API！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#cluster-group-cg
-
-## 异步SIMT编程模型
-
-CUDA线程是执行计算或访存操作的最低级别的抽象。从Ampere架构开始，GPU设备支持异步的内存操作，并由CUDA异步编程模型定义了异步操作相对于CUDA线程的行为。异步编程模型定义了异步栅障（Asynchronous Barrier）的行为，用于CUDA线程之间的同步，该模型还定义并解释了在GPU上计算时如何使用cuda::memcpy_async()从全局内存中异步移动数据。
-
-【！！！！异步栅障！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#asynchronous-barrier
-
-【！！！！异步数据复制！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#asynchronous-data-copies
 
 ## 运行时环境
 
@@ -83,9 +117,9 @@ CUDA运行时的所有函数都以cuda为前缀，这些函数用于分配和释
 
 【！！！！驱动API！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#driver-api
 
-在CUDA 12.0之前，函数cudaSetDevice()并不会初始化CUDA运行时，应用程序通常会使用cudaFree(0)函数以初始化CUDA运行时环境。而自CUDA 12.0以来，cudaInitDevice()调用或cudaSetDevice()调用都会初始化特定设备的CUDA运行时以及主上下文环境（Primary Context），若没有手动执行该初始化调用，CUDA运行时会使用编号为0的GPU设备，并在执行其它运行时API时执行自初始化。在统计API时间或分析第一次调用错误时，需要注意这一点。
+在CUDA 12.0之前，函数cudaSetDevice()并不会初始化CUDA运行时，应用程序通常会使用cudaFree(0)函数以初始化CUDA运行时环境。而自CUDA 12.0以来，cudaInitDevice()调用或cudaSetDevice()调用都会初始化特定设备的CUDA运行时以及主上下文环境（primary context），若没有手动执行该初始化调用，CUDA运行时会使用编号为0的GPU设备，并在执行其它运行时API时执行自初始化。在统计API时间或分析第一次调用错误时，需要注意这一点。
 
-CUDA运行时会为系统中的每个GPU设备创建一个CUDA上下文环境（Context），称为该设备的主上下文环境，并在运行时API首次需要上下文环境时被初始化。在创建主上下文环境时，如果需要，设备代码会即时编译（Just-In-Time Compile）并加载到设备内存中。主上下文环境会在应用程序的所有主机线程之间共享，可使用驱动API访问主上下文环境。当主机线程调用cudaDeviceReset()函数时，当前主机线程正在使用设备的主上下文环境会被销毁，并在下次调用运行时API函数时，在相应的GPU设备上创建一个新的主上下文环境。
+CUDA运行时会为系统中的每个GPU设备创建一个CUDA上下文环境（Context），称为该设备的主上下文环境，并在运行时API首次需要上下文环境时被初始化。在创建主上下文环境时，如果需要，设备代码会即时编译（Just-In-Time compile，JIT）并加载到设备内存中。主上下文环境会在应用程序的所有主机线程之间共享，可使用驱动API访问主上下文环境。当主机线程调用cudaDeviceReset()函数时，当前主机线程正在使用设备的主上下文环境会被销毁，并在下次调用运行时API函数时，在相应的GPU设备上创建一个新的主上下文环境。
 
 > 需要注意的是，CUDA接口需要使用一个在主机程序启动期间初始化并在主机程序终止期间销毁的全局状态，CUDA运行时和驱动API无法检测此状态是否无效，因此在程序启动期间或main函数之后的终止期间（隐式或显式）使用这些CUDA接口都将导致未定义的行为。
 
@@ -103,7 +137,7 @@ CUDA运行时环境提供了cudaHostAlloc()和cudaFreeHost()函数，允许分�
 
 ## L2缓存管理
 
-在设备全局内存中的数据区域，从概念上可以分为两类。当CUDA内核执行时，会被内核多次重复访问的数据区域，视为**持久（Persisting）数据**，而只会被内核访问一次的数据区域，视为**流式（Streaming）数据**。从CUDA 11.0开始，计算能力8.0（Ampere架构）及以上的设备能够配置L2缓存中数据的持久性，从而有可能获得更高的带宽和更低的全局内存访问延迟。
+在设备全局内存中的数据区域，从概念上可以分为两类。当CUDA内核执行时，会被内核多次重复访问的数据区域，视为**持久（persisting）数据**，而只会被内核访问一次的数据区域，视为**流式（streaming）数据**。从CUDA 11.0开始，计算能力8.0（Ampere架构）及以上的设备能够配置L2缓存中数据的持久性，从而有可能获得更高的带宽和更低的全局内存访问延迟。
 
 L2缓存的一部分可以预留出来，用于持久化对全局内存的数据访问。持久访问会优先使用L2缓存的这一预留部分，而普通或流式访问只能在持久访问未使用这一部分时利用它。可以使用cudaDeviceSetLimit()函数调整L2缓存的用于持久访问的容量大小。
 
@@ -195,11 +229,175 @@ int main(int argc, char* argv[]) {
 }
 ```
 
+## 异步栅障
+
+CUDA线程是执行计算或访存操作的最低级别的抽象。CUDA异步编程模型定义了异步栅障（asynchronous barrier）的行为，用于CUDA线程之间的同步，该模型还定义并解释了在GPU上计算时如何使用cuda::memcpy_async()从全局内存中异步移动数据。从计算能力8.0（Ampere架构）设备开始，GPU设备支持异步的内存操作，并由异步编程模型定义了异步操作相对于CUDA线程的行为。
+
+在cuda/barrier头文件中，CUDA标准库引入了std::barrier栅障的GPU版本实现cuda::barrier，并扩展以允许用户指定barrier栅障对象的范围。计算能力8.0（Ampere架构）或者更高版本的设备，可以为barrier栅障操作提供硬件层面的加速，并将这些barrier栅障与memcpy_async()异步内存复制功能集成。
+
+### 简单同步模式
+
+如果不使用到达/等待栅障（arrive/wait barrier），则同步功能可以使用__syncthreads()或cooperative_groups::thread_block.sync()实现。
+
+```c++
+__global__ void simple_sync_kernel(int iteration_count) {
+    cooperative_groups::thread_block this_block = cooperative_groups::this_thread_block();
+    
+    for (int curr_iter = 0; curr_iter < iteration_count; ++curr_iter) {
+        // 1. Code before arrive.
+        // 2. Wait for all threads to arrive here.
+        this_block.sync();
+        // 3. Code after wait.
+    }
+}
+```
+
+在这种模式中，线程在同步点this_block.sync()处被阻塞，直到所有线程都到达同步点。这能够保证在同一个线程块中，同步点之前发生的内存更新，对同步点之后的所有线程可见，即等效于atomic_thread_fence(memory_order_seq_cst, thread_scope_block)内存栅栏。
+
+此模式分三个阶段：(1)同步点之前的代码执行内存更新，该更新会在同步点之后读取；(2)同步点；(3)同步点之后的代码，此时同步点之前的内存更新已经可见。
+
+### 时间划分和五阶段同步
+
+使用barrier栅障的时间划分（temporal splitting）的同步模式如下所示。
+
+```c++
+__device__ void compute_operation(float* data, int curr_iteration) { }
+
+__global__ void split_arrive_wait_kernel(float* data, int iteration_count) {
+    using block_barrier_t = cuda::barrier<cuda::thread_scope_block>;
+    __shared__ block_barrier_t barrier;
+    cooperative_groups::thread_block this_block = cooperative_groups::this_thread_block();
+
+    if (this_block.thread_rank() == 0) {
+        // Initialize the barrier with expected arrival count (All threads in a block)
+        init(&barrier, this_block.size());  // cuda::__4::init() as a friend of barrier
+    }
+    this_block.sync();
+
+    for (int curr_iter = 0; curr_iter < iteration_count; ++curr_iter) {
+        // 1. Code before arrive.
+        // 2. This thread arrives. Arrival does not block a thread.
+        block_barrier_t::arrival_token token = barrier.arrive();
+        // 3. Code between arrive and wait.
+        compute_operation(data, curr_iter);
+        // 4. Wait for all threads participating in the barrier to complete barrier.arrive() function.
+        barrier.wait(std::move(token));
+        // 5. Code after wait.
+    }
+}
+```
+
+在这种模式中，同步点this_block.sync()被拆分为到达点barrier.arrive()和等待点barrier.wait(std::move(token))两部分。线程第一次调用barrier.arrive()时开始参与cuda::barrier栅障同步，当线程调用barrier.wait(std::move(token))时会被阻塞，直到所有参与线程完成barrier.arrive()调用，所有参与线程的数目在使用init()初始化时指定。对于所有参与线程能够保证，在barrier.arrive()之前发生的内存更新，对barrier.wait(std::move(token))之后的所有线程可见。值得注意的是，对barrier.arrive()的调用不会阻塞线程，它可以继续进行其它工作，这些工作不依赖于其它参与线程调用barrier.arrive()之前发生的内存更新。
+
+此模式分五个阶段：(1)到达点之前的代码执行内存更新，该更新会在等待点之后读取；(2)等效于atomic_thread_fence(memory_order_seq_cst, thread_scope_block)内存栅栏的，具有隐式内存栅栏的到达点；(3)到达点和等待点之间的代码，可以执行不依赖于内存更新的计算；(4)等待点；(5)等待点之后的代码，此时到达点之前的内存更新已经可见。
+
+栅障cuda::barrier可以灵活地指定线程如何参与（拆分到达点和等待点）以及哪些线程参与，相比之下，来自协作组的this_thread_block().sync()或\_\_syncthreads()适用于一个完整的线程块，\_\_syncwarp(mask)适用于一个Warp的指定子集。当然，如果用户的目的是同步一个完整的线程块或一个完整的Warp，出于性能原因，则建议使用\_\_syncthreads()和\_\_syncwarp(mask)。
+
+在参与一个cuda::barrier之前，必须使用init()初始化该栅障，并指定预期的参与线程的数目，即在参与线程对barrier.wait(std::move(token))的调用被取消阻塞之前，参与线程将调用barrier.arrive()的次数。当参与线程调用barrier.arrive()时，cuda::barrier会从预期到达数目开始倒数直到为零，当倒数达到零时，当前阶段的cuda::barrier完成。当最后一次调用barrier.arrive()导致倒数为零时，会唤醒所有阻塞线程，并且倒数计数会自动重置为初始化的预期到达数目（原子操作），并将cuda::barrier移动至下一个阶段，也即是说一个cuda::barrier可以重复使用。
+
+从barrier.arrive()函数返回的block_barrier_t::arrival_token对象是与该cuda::barrier的当前阶段相关联的。正常情况下，当cuda::barrier也处于当前阶段时，arrival_token阶段与cuda::barrier阶段相匹配，对barrier.wait(std::move(token))的调用会阻塞线程。如果线程在调用barrier.wait(std::move(token))时，cuda::barrier已经进入到下一阶段（因为调用barrier.arrive()使得倒数计数已经到达零），则当前线程不会再阻塞，并且会唤醒阻塞中的其它线程。
+
+### 空间划分模式
+
+线程块可以在空间上进行划分，以便Warp专门用于执行独立的计算。空间划分适用于生产者消费者模式（producer and consumer pattern），其中线程的一个子集生成的数据，而另一个（不相交的）子集使用数据。
+
+生产者消费者的空间划分模式需要两个单侧同步来管理生产者和消费者之间的数据缓冲区。对于完整的生产者消费者模式，至少需要具有两个独立的缓冲区才能正常运行，每个缓冲区需要两个cuda::barrier栅障。对于一个缓冲区而言，生产者等待缓冲区变为空，以填充数据，之后发送缓冲区已填满的信号，而消费者等待缓冲区被填满，以使用数据，然后发送缓冲区已变空的信号。
+
+```c++
+using block_barrier_t = cuda::barrier<cuda::thread_scope_block>;
+
+__device__ void producer_task(
+    block_barrier_t empty_barrier[2], block_barrier_t filled_barrier[2], float* in, float* buffer, int N, int buf_len
+) {
+    for (int i = 0; i < N / buf_len; ++i) {
+        // 1. Wait for buffer[i % 2] to be ready to be filled.
+        empty_barrier[i % 2].arrive_and_wait();
+        // 2. Code to produce data and fill in buffer[i % 2].
+        // 3. buffer[i % 2] is filled.
+        block_barrier_t::arrival_token token = filled_barrier[i % 2].arrive();
+    }
+}
+
+__device__ void consumer_task(
+    block_barrier_t empty_barrier[2], block_barrier_t filled_barrier[2], float* out, float* buffer, int N, int buf_len
+) {
+    // Initialize buffer to be emtpy and ready for fill.
+    block_barrier_t::arrival_token token0 = empty_barrier[0].arrive();
+    block_barrier_t::arrival_token token1 = empty_barrier[1].arrive();
+    for (int i = 0; i < N / buf_len; ++i) {
+        // 1. Wait for buffer[i % 2] to be filled.
+        filled_barrier[i % 2].arrive_and_wait();
+        // 2. Code to consume the data in buffer[i % 2].
+        // 3. buffer[i % 2] is ready to be re-filled.
+        block_barrier_t::arrival_token token = empty_barrier[i % 2].arrive();
+    }
+}
+
+__global__ void producer_consumer_pattern_kernel(float* in, float* out, int N, int buf_len) {
+    // The total size is buf_len * 2 for double buffer
+    extern __shared__ float buffer[];
+    __shared__ block_barrier_t empty_barrier[2];
+    __shared__ block_barrier_t filled_barrier[2];
+    cooperative_groups::thread_block this_block = cooperative_groups::this_thread_block();
+
+    if (this_block.thread_rank() < 2) {
+        init(&empty_barrier[this_block.thread_rank()], this_block.size());
+        init(&filled_barrier[this_block.thread_rank()], this_block.size());
+    }
+    this_block.sync();
+
+    if (this_block.thread_rank() < warpSize) {
+        producer_task(empty_barrier, filled_barrier, in, buffer, N, buf_len);   // The first Warp do producer task
+    } else {
+        consumer_task(empty_barrier, filled_barrier, out, buffer, N, buf_len);  // The remaining Warp do consumer task
+    }
+}
+```
+
+在此示例中，第一个Warp作为生产者，剩余的其它Warp作为消费者，所有生产者线程和消费者线程都参与四个cuda::barrier中的每一个，因此预期的参与线程的数目为this_block.size()。
+
+生产者线程等待消费者线程发出信号，表明共享内存缓冲区已为空可以被填充，为了等待cuda::barrier，生产者线程必须首先执行empty_barrier.arrive()到达以获取token，然后使用该token执行empty_barrier.wait(token)等待。为简化代码，生产者线程使用empty_barrier.arrive_and_wait()组合了这些操作。消费者线程首先发出信号，表明两个缓冲区都已准备好填充，消费者线程此时不会等待，而是等待此迭代的缓冲区被填充，即filled_barrier.arrive_and_wait()等待。在消费者线程使用缓冲区后，它们会发出信号，表明缓冲区又已经准备好再次填充，即empty_barrier.arrive()到达，然后等待下一次迭代的缓冲区被填充。
+
+### 提前退出
+
+当参与cuda::barrier栅障同步的线程必须提前退出该栅障同步时，该线程必须在退出之前显式调用barrier.arrive_and_drop()以退出参与，这会使得之后的cuda::barrier栅障的预期参与线程数目递减一，如此才能使得其余参与线程可以正常执行后续的barrier.arrive()操作和barrier.wait(token)操作。
+
+```c++
+__device__ bool condition_check() {}
+
+__global__ void early_exit_kernel(int iteration_count) {
+    using block_barrier_t = cuda::barrier<cuda::thread_scope_block>;
+    __shared__ block_barrier_t barrier;
+    cooperative_groups::thread_block this_block = cooperative_groups::this_thread_block();
+
+    if (this_block.thread_rank() == 0) {
+        init(&barrier , this_block.size());
+    }
+    this_block.sync();
+
+    for (int curr_iter = 0; curr_iter < iteration_count; ++curr_iter) {
+        if (condition_check()) {
+          barrier.arrive_and_drop();
+          return;
+        }
+        block_barrier_t::arrival_token token = barrier.arrive();
+        // code between arrive and wait
+        barrier.wait(std::move(token));
+    }
+}
+```
+
+## 异步内存复制
+
+CUDA线程是执行计算或访存操作的最低级别的抽象。CUDA异步编程模型定义了异步栅障（asynchronous barrier）的行为，用于CUDA线程之间的同步，该模型还定义并解释了在GPU上计算时如何使用cuda::memcpy_async()从全局内存中异步移动数据。从计算能力8.0（Ampere架构）设备开始，GPU设备支持异步的内存操作，并由异步编程模型定义了异步操作相对于CUDA线程的行为。
+
+【！！！！异步数据复制！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#asynchronous-data-copies
+
 # 异步并发执行
 
 在CUDA执行模型中，可以彼此并发执行的独立操作包括：主机上的计算、设备上的计算、从主机到设备的内存传输、从设备到主机的内存传输、设备之内的内存传输、设备之间的内存传输。这些操作之间的并发级别取决于设备的特性和计算能力。
 
-并发主机执行（concurrent host execution）可以通过异步库函数（Asynchronous Library Function）来实现，这些异步函数能够在设备完成所请求的任务之间，就将程序控制权返回给主机线程。使用异步调用，许多设备操作可以一起排队，以便在设备资源可用的适当时机由CUDA驱动程序执行。这减轻了主机线程管理设备的大部分责任，使其可以自由地执行其它任务。对于主机而言可以异步执行的设备操作包括：内核启动、单个设备内存上的复制、主机到设备内存上的小于等于64KB的复制、由后缀为Async的函数执行的内存复制、内存赋值函数（memset）的调用。
+并发主机执行（concurrent host execution）可以通过异步库函数（asynchronous library function）来实现，这些异步函数能够在设备完成所请求的任务之间，就将程序控制权返回给主机线程。使用异步调用，许多设备操作可以一起排队，以便在设备资源可用的适当时机由CUDA驱动程序执行。这减轻了主机线程管理设备的大部分责任，使其可以自由地执行其它任务。对于主机而言可以异步执行的设备操作包括：内核启动、单个设备内存上的复制、主机到设备内存上的小于等于64KB的复制、由后缀为Async的函数执行的内存复制、内存赋值函数（memset）的调用。
 
 可以通过将CUDA_LAUNCH_BLOCKING环境变量设置为1来禁用系统上运行的所有CUDA应用程序的内核启动的异步性，不过此功能仅用于调试目的，不应该用作使程序可靠运行的一种方式。如果硬件计数器是通过分析器（例如Nsight）收集的，则内核启动是同步的，除非启用了并发内核分析。如果异步内存复制涉及未进行页锁定的主机内存，则异步内存复制也可能是同步的。
 
@@ -221,17 +419,17 @@ CUDA应用程序通过在GPU上启动和执行多个内核来利用GPU，典型�
 
 ```c++
 __global__ void primary_kernel() {
-    // 1. Initial work that should finish before starting secondary kernel
-    // 2. Trigger the secondary kernel
+    // 1. Initial work that should finish before starting secondary kernel.
+    // 2. Trigger the secondary kernel.
     cudaTriggerProgrammaticLaunchCompletion();
-    // 3. Work that can coincide with the secondary kernel
+    // 3. Work that can coincide with the secondary kernel.
 }
 
 __global__ void secondary_kernel() {
-    // 1. Independent work
-    // 2. Will block until all dependent primary kernels have completed and flushed results to global memory
+    // 1. Independent work.
+    // 2. Will block until all dependent primary kernels have completed and flushed results to global memory.
     cudaGridDependencySynchronize();
-    // 3. Dependent work
+    // 3. Dependent work.
 }
 
 int main(int argc, char* argv[]) {
@@ -300,19 +498,19 @@ int main(int argc, char* argv[]) {
 
 图为CUDA中的工作提交提供了一种新的模型。**一个CUDA图（Graph）是通过依赖关系（dependency）连接起来的一系列操作，例如内核启动等**。图的定义与执行分离开来，这允许对图进行一次定义，就可以重复多次启动。将图形的定义与其执行分离可以实现许多优化。首先，与CUDA流相比，CPU启动成本降低，因为大部分设置都是提前完成的；其次，图可以将整个工作流呈现给CUDA，这允许使用一些优化技术，而流的分段工作提交机制可能无法实现。
 
-使用图提交工作分为三个不同的阶段，定义（Definition）、实例化（Instantiation）、执行（Execution）。
+使用图提交工作分为三个不同的阶段，定义（definition）、实例化（instantiation）、执行（execution）。
 
 1. 在定义阶段，程序会在图中创建操作的描述以及它们之间的依赖关系。
-2. 实例化生成图的快照（Snapshot），对其进行验证，并执行大部分设置和初始化，以最大限度地减少启动时需要完成的工作。生成的实例称为可执行图。
+2. 实例化生成图的快照（snapshot），对其进行验证，并执行大部分设置和初始化，以最大限度地减少启动时需要完成的工作。生成的实例称为可执行图。
 3. 可执行图可以启动到流中，类似于任何其它CUDA工作，它可以启动任意次数，而无需重复实例化。
 
-一个操作在图形中是一个节点（Node），操作之间的依赖关系是一条边（Edge），这些依赖关系制定了操作的执行顺序。一旦操作所依赖的节点完成，就可以随时对相应的操作进行调度，这由CUDA系统决定。
+一个操作在图形中是一个节点（node），操作之间的依赖关系是一条边（edge），这些依赖关系制定了操作的执行顺序。一旦操作所依赖的节点完成，就可以随时对相应的操作进行调度，这由CUDA系统决定。
 
-图的节点可以是以下操作之一：内核（Kernel）、CPU函数调用（CPU function call）、内存复制（memory copy）、内存赋值（memset）、记录事件（recording an event）、等待事件（waiting on an event）、向外部信号量发出信号（signalling an external semaphore）、等待外部信号量（waiting on an external semaphore）、条件节点（conditional node）、执行独立的嵌套子图（nested child graph）。
+图的节点可以是以下操作之一：内核（kernel）、CPU函数调用（CPU function call）、内存复制（memory copy）、内存赋值（memset）、记录事件（recording an event）、等待事件（waiting on an event）、向外部信号量发出信号（signalling an external semaphore）、等待外部信号量（waiting on an external semaphore）、条件节点（conditional node）、执行独立的嵌套子图（nested child graph）。
 
-对于图的边来说，CUDA 12.3引入了边数据（Edge Data），边数据修改了边指定的依赖关系，由入口端（incoming port）、出口端（outgoing port）、类型（type）三个部分组成。入口端指定节点的哪个部分依赖于关联的边；出口端指定何时触发关联的边；类型修改端点之间的关系。端口值取决于节点类型和方向，边类型可能仅受限于特定节点类型。在所有情况下，零初始化的边数据都表示默认行为。传入端0阻止整个任务，传出端0等待整个任务，边缘类型0与内存同步行为的完全依赖关系相关联。
+对于图的边来说，CUDA 12.3引入了边数据（edge data），边数据修改了边指定的依赖关系，由入口端（incoming port）、出口端（outgoing port）、类型（type）三个部分组成。入口端指定节点的哪个部分依赖于关联的边；出口端指定何时触发关联的边；类型修改端点之间的关系。端口值取决于节点类型和方向，边类型可能仅受限于特定节点类型。在所有情况下，零初始化的边数据都表示默认行为。传入端0阻止整个任务，传出端0等待整个任务，边缘类型0与内存同步行为的完全依赖关系相关联。
 
-条件节点（Conditional Node）允许IF条件执行和WHILE循环执行中中包含一个CUDA图，这允许条件选择和循环迭代的工作流完全在图中表示，从而释放主机CPU以并行执行其它工作。条件值由条件句柄访问，该句柄必须在节点之前创建，条件值可以通过设备代码使用cudaGraphSetConditional()进行设置，还可以在创建句柄时指定应用于每个图启动的默认值。具体见官方文档。
+条件节点（conditional node）允许IF条件执行和WHILE循环执行中中包含一个CUDA图，这允许条件选择和循环迭代的工作流完全在图中表示，从而释放主机CPU以并行执行其它工作。条件值由条件句柄访问，该句柄必须在节点之前创建，条件值可以通过设备代码使用cudaGraphSetConditional()进行设置，还可以在创建句柄时指定应用于每个图启动的默认值。具体见官方文档。
 
 ### 创建CUDA图
 
@@ -336,7 +534,7 @@ int main(int argc, char* argv[]) {
     cudaGraphAddKernelNode(&b_node, graph, NULL, 0, &b_param);
     cudaGraphAddKernelNode(&c_node, graph, NULL, 0, &c_param);
     cudaGraphAddKernelNode(&d_node, graph, NULL, 0, &d_param);
-    // Now set up dependencies on each node
+    // Now set up dependencies on each node.
     cudaGraphAddDependencies(graph, &a_node, &b_node, 1);  // A --> B
     cudaGraphAddDependencies(graph, &a_node, &c_node, 1);  // A --> C
     cudaGraphAddDependencies(graph, &b_node, &d_node, 1);  // B --> D
@@ -371,9 +569,9 @@ int main(int argc, char* argv[]) {
 }
 ```
 
-使用cudaStreamBeginCapture()会将一个流置于捕获模式，成为捕获流，启动到流中的工作不会排队等待执行，而是会被附加到一个正在逐步构建的内部临时图当中，然后调用cudaStreamEndCapture()即可返回此图，这也将结束流的捕获模式。由流捕获主动构建的图称为捕获图（Capture Graph）。捕获可以使用除了cudaStreamLegacy流之外的任何CUDA流。也可以直接使用cudaStreamBeginCaptureToGraph()将工作捕获到一个现有的用户构建的图当中，而不是使用内部临时的图。
+使用cudaStreamBeginCapture()会将一个流置于捕获模式，成为捕获流，启动到流中的工作不会排队等待执行，而是会被附加到一个正在逐步构建的内部临时图当中，然后调用cudaStreamEndCapture()即可返回此图，这也将结束流的捕获模式。由流捕获主动构建的图称为捕获图（capture graph）。捕获可以使用除了cudaStreamLegacy流之外的任何CUDA流。也可以直接使用cudaStreamBeginCaptureToGraph()将工作捕获到一个现有的用户构建的图当中，而不是使用内部临时的图。
 
-流捕获可以处理用cudaEventRecord()和cudaStreamWaitEvent()表示的跨流依赖关系，前提是正在等待的事件被记录到同一个捕获图中。在处于捕获模式的流中记录事件时，将生成一个捕获事件（Capture Event），一个捕获的事件表示捕获图中的一组节点。当一个其它的流使用cudaStreamWaitEvent()等待这个捕获事件时，它会将流置于捕获模式（如果尚未），并且流中的下一项将对捕获事件中的节点具有额外依赖关系。然后，这就可以两个流捕获到同一捕获图中。
+流捕获可以处理用cudaEventRecord()和cudaStreamWaitEvent()表示的跨流依赖关系，前提是正在等待的事件被记录到同一个捕获图中。在处于捕获模式的流中记录事件时，将生成一个捕获事件（capture event），一个捕获的事件表示捕获图中的一组节点。当一个其它的流使用cudaStreamWaitEvent()等待这个捕获事件时，它会将流置于捕获模式（如果尚未），并且流中的下一项将对捕获事件中的节点具有额外依赖关系。然后，这就可以两个流捕获到同一捕获图中。
 
 当流捕获中存在跨流依赖项时，cudaStreamEndCapture()仍必须在调用cudaStreamBeginCapture()的同一流中调用，这是源流（origin stream）。由于基于事件的依赖关系，被捕获到同一捕获图的任何其它流也必须联接回（join to）源流，未能重新合并入源流将导致整个捕获操作失败。如下所示。
 
@@ -418,7 +616,7 @@ int main(int argc, char* argv[]) {
 
 ### 启动CUDA图
 
-在创建或捕获一个CUDA图之后，需要实例化一个可执行图（Executable Graph），它是cudaGraphExec_t类型的对象，可以像单个内核一样启动和执行。
+在创建或捕获一个CUDA图之后，需要实例化一个可执行图（executable graph），它是cudaGraphExec_t类型的对象，可以像单个内核一样启动和执行。
 
 使用cudaGraphInstantiate()可以实例化一个CUDA图，该函数会创建并预初始化所有内核工作描述符，以便可以尽可能快地重复启动它们。然后可以使用cudaGraphLaunch()函数提交生成的实例图以启动执行。至关重要的是，只需要捕获和实例化一次，就可以在所有后续时间步中重复使用相同的实例图。
 
@@ -434,7 +632,7 @@ int main(int argc, char* argv[]) {
     a_kernel<<<128, 512, 0, stream>>>();
     cudaStreamEndCapture(stream, &graph);
 
-    // instantiate and launch a graph
+    // Instantiate and launch a graph
     cudaGraphInstantiate(&graph_instance, graph, NULL, NULL, 0);
     cudaGraphLaunch(graph_instance, stream);
     cudaStreamSynchronize(stream);
@@ -448,7 +646,7 @@ int main(int argc, char* argv[]) {
 
 图的执行是在流中完成的，以便与其它异步工作一起排序，但是，这个流也仅用于排序，它不会限制图的内部并行性，也不会影响图中节点的执行。需要注意的是，一个执行图的对象，不能与相同图的另一个执行图对象并发执行，它同一个图的执行图对象将在之前启动同一可执行图之后排序。
 
-有许多工作流需要在运行时做出依赖于数据的决策，并根据这些决策执行不同的操作。与其将此决策过程卸载给主机（这可能需要从设备往返），用户可能更愿意在设备上执行它。为此，CUDA提供一种从设备端直接启动一个图的机制。设备图启动（Device Graph Launch）提供了一种从设备执行动态控制流的便捷方法，无论是像循环（loop）这样简单的东西，还是像设备端调度（device-side work scheduler）这样复杂的东西。此功能仅在支持统一寻址的系统上可用。
+有许多工作流需要在运行时做出依赖于数据的决策，并根据这些决策执行不同的操作。与其将此决策过程卸载给主机（这可能需要从设备往返），用户可能更愿意在设备上执行它。为此，CUDA提供一种从设备端直接启动一个图的机制。设备图启动（device graph launch）提供了一种从设备执行动态控制流的便捷方法，无论是像循环（loop）这样简单的东西，还是像设备端调度（device-side work scheduler）这样复杂的东西。此功能仅在支持统一寻址的系统上可用。
 
 可以从设备启动的图称为设备图，无法从设备启动的图称为主机图。设备图可以从主机和设备启动，而主机图只能从主机启动，并且当设备图正在执行时重复启动同一设备图将会导致错误。因此，不能同时从设备启动设备图两次，同时从主机和设备启动设备图将导致未定义的行为。
 
@@ -458,6 +656,7 @@ int main(int argc, char* argv[]) {
 
 ```c++
 __global__ void my_kernel() { }
+
 __global__ void launchTailGraph(cudaGraphExec_t graph_exec) {
     cudaGraphLaunch(graph_exec, cudaStreamGraphTailLaunch);
 }
@@ -468,12 +667,12 @@ int main(int argc, char* argv[]) {
     cudaGraphExec_t g_exec1, g_exec2;
     cudaStreamCreate(&stream);
 
-    // Create, instantiate, and upload the device graph
+    // Create, instantiate, and upload the device graph.
     cudaGraphCreate(&g2, 0);
     cudaGraphInstantiate(&g_exec2, g2, cudaGraphInstantiateFlagDeviceLaunch);
     cudaGraphUpload(g_exec2, stream);
 
-    // Create and instantiate the launching graph
+    // Create and instantiate the launching graph.
     cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal);
     my_kernel<<<128, 512, 0, stream>>>();
     launchTailGraph<<<1, 1, 0, stream>>>(g_exec2);
@@ -495,44 +694,227 @@ int main(int argc, char* argv[]) {
 
 上述代码会尾部启动一个设备图，当图完成时，尾部启动列表中下一个图的环境会将替换掉已完成的环境，一个图可以有多个图排队等待尾部启动。
 
-# 性能优化指南
+# CUDA C++语言扩展
 
-性能优化围绕四个基本策略展开，最大化并行执行以实现最大利用率（maximize parallel execution to achieve maximum utilization），优化内存使用以实现最大内存吞吐量（optimize memory usage to achieve maximum memory throughput），优化指令使用以实现最大的指令吞吐量（optimize instruction usage to achieve maximum instruction throughput），最大限度地减少内存抖动（Minimize memory thrashing）。
+## 时钟与睡眠函数
 
-哪些策略将为应用程序的特定部分产生最佳性能增益，具体取决于该部分的性能限制，应通过测量和监控性能限制来不断指导优化工作。此外，将特定内核的浮点运算吞吐量或内存吞吐量（以更有意义的为准）与设备的相应峰值理论吞吐量进行比较，可以表示内核还有多大的改进空间。
+```c++
+clock_t clock();
+long long int clock64();
+```
 
-## 最大化利用率
+在设备代码中执行上述函数时，会返回所在SM的时钟计数器的值。在一个内核的开头和结尾对这个计数器进行采样，取两个样本的差值，并记录每个线程的结果，可以得到每个线程执行所需的时钟周期的数目，这是墙上时钟，而不是指令实际执行的时钟周期数，因为线程执行是时间切片的。
 
-为最大化利用率，应用程序的结构应尽可能多地公开并行性，并有效地将这种并行性映射到系统的各个器件，以使它们在大部分时间都保持忙碌。在应用程序级别（Application Level），应该使用异步函数和流来最大化主机、设备、总线之间的并行执行。在设备级别（Device Level），多个内核可以在一个设备上并发执行，因此也可以通过使用流来启动足够多的内核来并发执行。在流式多处理器级别（Streaming Multiprocessor Level），应该最大化SM中各个功能单元之间的并行执行。
+```c++
+void __nanosleep(unsigned ns);
+```
 
-SM主要依赖于线程级并行性来最大限度地利用其功能单元，因此利用率与驻留的Warp数目直接相关。在每个指令发出时，Warp调度器都会选择一条准备执行的指令，此指令可以是同一Warp的另一个独立指令，以利用指令级并行性，或者更常见的是另一个Warp的指令，以利用线程级并行性；如果选择了准备执行的指令，则会将其发送到Warp的活动线程。
+将线程挂起大约ns纳秒的睡眠时间，最大睡眠时间约为1毫秒，仅在计算能力7.0或更高版本的设备支持。
 
-Warp执行一条指令所需的时钟周期（clock cycle）数目称为延迟（latency），当一个SM处理块子分区上的Warp调度器在该latency延迟期间的每个时钟都有一些指令要为某个Warp发射时，也即当latency完全隐藏时，就可以实现该处理块子分区的完全利用；当一个SM上的所有处理块子分区都可以掩盖其Warp的延迟时，就可以实现该SM的完全利用。隐藏一个长达L时钟周期的延迟所需的指令数目取决于这些指令各自的吞吐量，吞吐量是指满流水线情况下的每SM每时钟执行的指令数目，这与具体的GPU架构有关，例如，具有4个Warp调度器的SM需要4L的指令数目，具有2个Warp调度器的SM需要2L的指令数目。
+## 栅栏与同步函数
 
-Warp没有准备好执行下一条指令的最常见原因是该指令的输入操作数尚不可用。如果所有输入操作数都在寄存器上，则延迟是由寄存器依赖引起的，即一些输入操作数是由一些尚未完成执行的先前指令得到的。在这种情况下，延迟等于前一条指令的执行时间，并且Warp调度器必须在该时间内调度其它Warp的指令。指令执行时间因指令类型而异，在计算能力大于等于7.X的设备上，大多数算术指令的执行通常需要4个时钟周期，这意味着每个SM的处理块子分区需要4个活动Warp来隐藏算术指令延迟。如果单个Warp表现出指令级并行性，即在其指令流中有多个独立的指令，则需要更少的Warp数目，因为来自单个Warp的多个独立指令可以连续发射。如果一些输入操作数驻留在片外内存中，则延迟要高得多，通常为数百个时钟周期。在如此高延迟期间，使Warp调度器保持忙碌所需的Warp数目取决于内核代码及其指令级并行度。通常，如果没有片外存储器操作数的指令数目（通常是算术指令）与具有片外存储器操作数的指令数目（通常是访存指令）之比较低，也即算术强度较低，则需要更多的Warp掩盖延迟。
+CUDA假设设备的内存模型是弱序的（weakly-ordered），也即一个线程将数据写入设备内存、共享内存、主机内存的顺序，对于另一个线程而言，其所观察到的顺序可能不同。两个线程在不同步的情况下写入或读取同一内存位置是未定义的行为。此处以一个示例说明。
 
-Warp没有准备好执行下一条指令的另一个原因是它正在等待某个内存栅障（Memory Fence）或同步（Synchronization）。同步可以强制多处理器空闲，因为会有越来越多的Warp等待同一线程块中的其它Warp完成同步点之前的指令。在这种情况下，每个SM拥有多个常驻线程块有助于减少空闲，因为来自不同块的Warp不需要在同步点相互等待。
+```c++
+__device__ int X = 1, Y = 2;
 
-对于给定的内核调用，驻留在每个SM的线程块和Warp的数目取决于调用时的执行配置（Execution Configuration）、SM的各种资源以及内核对资源的需求。使用--ptxas-options=-v编译选项进行编译时，编译器会报告寄存器和共享内存使用情况。内核使用的寄存器数目对驻留Warp的数目有很大影响，因此编译器会尝试最小化寄存器使用，同时保持寄存器溢出和指令数目最少。可以使用--maxrregcount编译器选项、\_\_launch_bounds\_\_()限定符或\_\_maxnreg\_\_()限定符来控制寄存器的使用。线程块所需的共享内存总量等于静态分配的共享内存量和动态分配的共享内存量之和。
+__device__ void writeXY() {
+    X = 10;
+    Y = 20;
+}
 
-使用cudaOccupancyMaxActiveBlocksPerMultiprocessor()函数可以根据内核的线程块大小、寄存器使用情况、共享内存使用情况提供占用率预测，此函数根据每个SM的并发线程块数目来报告占用率；此值可以转换为其它量度，乘以每个线程块的Warp数目可以得到每个SM的并发Warp数数目，进一步除以每个SM的最大Warp数目可以得到占用率百分比。使用cudaOccupancyMaxPotentialBlockSize()函数和cudaOccupancyMaxPotentialBlockSizeVariableSMem()函数可以启发式地计算实现最大SM占用率的执行配置。
+__device__ void readXY() {
+    int B = Y;
+    int A = X;
+}
+```
 
-## 最大化内存吞吐量
+假设，线程0执行writeXY()写入数据，线程1执行readXY()读取数据。整个过程所涉及的X和Y位于内存的同一位置，由于内存模型是弱序的，则任何数据争用都是未定义的行为。对于线程1而言，A和B的结果可以是任意值，即，A=1,B=2、A=1,B=20、A=10,B=1、A=10,B=20，共四种情况。
 
-最大化应用程序的整体内存吞吐量的第一步是最小化低带宽的数据传输。这意味着需要最大限度地减少主机和设备之间的数据传输，因为它们的带宽比全局内存和设备之间的数据传输低得多。实现此目的的一种方法是将更多代码从主机移动到设备，即使这意味着运行的内核没有公开足够的并行度，无法在设备上高效执行。中间数据结构可以在设备内存中创建，由设备操作，并在不被主机映射或复制到主机内存的情况下销毁。此外，由于与每次传输相关的开销，将许多小型传输批处理为单个大型传输始终比单独进行每个传输效果更好。
+内存栅栏函数（Memory Fence Function）可以强制内存访问的一致性顺序（sequentially-consistent），即一个线程对内存的访问顺序，对于另一个线程而言，其能够观察到一致的执行顺序。
 
-最大限度地减少主机和设备之间的数据传输，也意味着需要最大限度地利用片上存储来最大限度地减少全局内存和设备之间的数据传输，即最大化地利用共享内存和高速缓存（L1缓存、L2缓存、常量缓存、纹理缓存）。共享内存等同于用户管理的缓存，应用程序可以显式分配和访问它。典型的编程模式是将来自设备内存的数据暂存到共享内存中，对于一个线程块的每个线程而言，典型流程为，将数据从设备内存加载到共享内存；与线程块的所有其它线程同步，以便每个线程都可以安全地读取由不同线程填充的共享内存位置；处理共享内存中的数据；如有必要再次同步，以确保共享内存的数据是最新的；将结果写回设备内存。
+```c++
+void __threadfence_block();
+void __threadfence();
+void __threadfence_system();
+```
 
-最大化内存吞吐量的下一步是根据最佳的内存访问模式，尽可能优化地组织内存和访问。这种优化对于全局内存访问尤其重要，因为与可用的片上带宽和算术指令吞吐量相比，全局内存带宽较低，因此非最佳的全局内存访问通常对性能有很大影响，内核的内存访问吞吐量可能会相差一个数量级。访问可寻址内存（即全局内存、本地内存、共享内存等）的指令可能需要多次重新发射（re-issue），具体取决于内存地址在Warp线程之间的分布。不同的分布如何影响指令吞吐量特定于每种类型的内存，例如，对于全局内存而言，通常地址越分散，吞吐量越低。
+函数\_\_threadfence_block()在线程块的范围生效，\_\_threadfence()在设备内存的范围生效，\_\_threadfence_system()在整个系统的范围生效，包括设备内存、主机内存、对等设备的内存。这些函数等价于在cuda/atomic头文件中定义的cuda::atomic_thread_fence(cuda::memory_order_seq_cst, XXXX)函数，其中参数占位符XXXX分别是cuda::thread_scope_block、cuda::thread_scope_device、cuda::thread_scope_system枚举值。
 
-全局内存空间的物理存储器是设备内存，通过32字节、64字节、128字节的内存事务（memory transaction），这些内存事务必须自然对齐，也即只有起始地址是32字节、64字节、128字节的整数倍的内存段才能被内存事务读取或写入。当Warp执行访问全局内存的指令时，它会根据每个线程访问的数据大小和内存地址在线程之间的分布，将Warp中线程的内存访问合并到一个或多个这些内存事务中。一般来说，需要的事务越多，则除了线程访问的所需数据之外，传输的未使用的数据就越多，从而相应地降低了指令吞吐量。
+在某一个线程T调用\_\_threadfence_block()之后，那么对于同一个线程块的所有其它线程而言，其观察到的顺序是，线程T在\_\_threadfence_block()之前的所有内存写入（或读取），一定会在\_\_threadfence_block()之后的所有内存写入（或读取）之前发生。上述代码使用\_\_threadfence_block()的示例如下。
 
-全局内存指令支持读取或写入大小等于1、2、4、8、16字节的数据，当且仅当数据类型的大小为1、2、4、8、16字节，并且数据自然对齐（即其地址是该大小的倍数）时，那么，对驻留在全局内存中的数据的任何访问（通过变量或指针）都会被编译为单个全局内存指令。如果未满足此大小和对齐要求，则访问将编译为多个指令，这些指令具有交错访问模式，这会阻止这些指令完全合并。因此，建议对驻留在全局内存中的数据使用满足此要求的类型。内置向量类型会自动满足对齐要求，而对自定义结构体而言，可以使用\_\_align\_\_说明符来强制内存对齐。
+```c++
+__device__ int X = 1, Y = 2;
 
-## 最大化指令吞吐量
+__device__ void writeXY() {
+    X = 10;
+    __threadfence_block();
+    Y = 20;
+}
 
-为最大限度地提高指令吞吐量，应用程序应该注意以下几点。最大限度地减少使用低吞吐量的算术指令，在不影响最终结果的情况下用精度换取速度，使用内建的快速数学函数而不是常规函数、使用单精度而不是双精度、或将非规范化浮点数刷新为零。最大限度地减少由控制流指令引起的Warp发散。减少指令数，尽可能地优化同步点，使用\_\_restrict\_\_受限指针。
+__device__ void readXY() {
+    int B = Y;
+    __threadfence_block();
+    int A = X;
+}
+```
 
-指令吞吐量可以使用一个SM一个时钟周期所执行的操作次数来计算得到，对于一个拥有32个线程的Warp而言，一条指令对应32次操作，因此如果一个时钟周期执行N次操作，则一个SM的指令吞吐量为一个时钟周期N/32个指令。本机算术指令（Native Arithmetic Instruction）的吞吐量可以见表格[Instruction Throughput](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions-throughput-native-arithmetic-instructions)所示，而其他指令和函数是在本机指令之上实现的，不同计算能力的设备，实现可能会有所不同。
+于是，对于其它线程观察的结果而言，线程0一定是先对X赋值再对Y进行赋值，线程1一定是先读取Y再读取X。于是，A=1,B=20，这一结果一定不会发生。如果B读取到20是正确的，那么对于X和Y的赋值必然已经完成，于是A只能读取到10。如果A读取到1是正确的，那么B的读取也必然已经完成，而由A读到1可知对于X和Y的赋值还没执行，于是B只能读取到2。
 
-通常，使用-ftz=true编译的代码（非规范化浮点数刷新为零）往往比使用-ftz=false编译的代码具有更高的性能，使用-prec-div=false（低精确的除法）编译的代码往往比使用-prec-div=true编译的代码具有更高的性能，使用-prec-sqrt=false（低精确的平方根）编译的代码往往比使用-prec-sqrt=true编译的代码具有更高的性能。NVCC编译器手册中有更详细的描述。
+同步函数（Synchronization Function）用于同步一定范围内的线程的执行。
+
+```c++
+void __syncthreads();
+int __syncthreads_count(int predicate);
+int __syncthreads_and(int predicate);
+int __syncthreads_or(int predicate);
+```
+
+\_\_syncthreads()函数将等待线程块中的所有线程到达此同步点，并且这些线程在\_\_syncthreads()之前的所有全局和共享内存操作对线程块中所有线程都可见。
+
+\_\_syncthreads_count()函数执行同步，同时计算线程块的所有线程的predicate断言，并返回predicate计算结果为非零的线程的数目。
+
+\_\_syncthreads_and()函数执行同步，同时计算线程块的所有线程的predicate断言，当且仅当所有线程的predicate非零时，才返回非零。
+
+\_\_syncthreads_or()函数执行同步不，同时计算线程块的所有线程的predicate断言，只要存在线程的predicate非零，即返回非零。
+
+```c++
+void __syncwarp(unsigned mask=0xffffffff);
+```
+
+\_\_syncwarp()函数将等待线程束中的所有与mask掩码匹配的线程到达此同步点，掩码mask是无符号的32位整数，从低位到高位分别对应着0号线程到31号线程，一个线程的掩码位为1表示着该线程被选中参与同步。
+
+## 缓存暗示函数
+
+只读数据缓存加载函数（Read-Only Data Cache Load Function）在加载数据的过程中，会经过并使用只读数据缓存，在重复加载时可以提高性能。
+
+```c++
+T __ldg(const T* address);
+```
+
+缓存暗示的加载函数（Load Functions Using Cache Hints）在加载数据的过程中，会使用相应的缓存操作符，对应着PTX伪汇编代码。
+
+```c++
+T __ldca(const T* address);
+T __ldcg(const T* address);
+T __ldcs(const T* address);
+T __ldlu(const T* address);
+T __ldcv(const T* address);
+```
+
+缓存暗示的存储函数（Store Functions Using Cache Hints）在存储数据的过程中，会使用相应的缓存操作符，对应着PTX伪汇编代码。
+
+```c++
+void __stwb(T* address, T value);
+void __stcg(T* address, T value);
+void __stcs(T* address, T value);
+void __stwt(T* address, T value);
+```
+
+需要注意的是，这些函数仅在计算能力5.0及更高版本的设备上支持。
+
+## 地址空间函数
+
+地址空间断言函数（Address Space Predicate Function）可以判断一个指针所指向的内存空间，是否属于给定的内存空间，是则返回1，否则返回0。
+
+```c++
+__device__ unsigned int __isGlobal(const void* ptr);
+__device__ unsigned int __isLocal(const void* ptr);
+__device__ unsigned int __isShared(const void* ptr);
+__device__ unsigned int __isConstant(const void* ptr);
+__device__ unsigned int __isGridConstant(const void* ptr);
+```
+
+地址空间转换函数（Address Space Conversion Function）可以将一个指针转换为一个整数地址，或将一个整数地址转换为一个指针，如下所示。
+
+```c++
+__device__ size_t __cvta_generic_to_global(const void* ptr);
+__device__ size_t __cvta_generic_to_local(const void* ptr);
+__device__ size_t __cvta_generic_to_shared(const void* ptr);
+__device__ size_t __cvta_generic_to_constant(const void* ptr);
+```
+
+```c++
+__device__ void* __cvta_global_to_generic(size_t rawbits);
+__device__ void* __cvta_local_to_generic(size_t rawbits);
+__device__ void* __cvta_shared_to_generic(size_t rawbits);
+__device__ void* __cvta_constant_to_generic(size_t rawbits);
+```
+
+## 线程束基本函数
+
+线程束函数在一个Warp之内的所有线程之间执行某种操作，包括线程束表决函数（Warp Vote Function）、线程束匹配函数（Warp Match Function）、线程束归约函数（Warp Reduce Function）、线程束洗牌函数（Warp Shuffle Function）、线程束矩阵函数（Warp Matrix Function）。
+
+所有函数都接受一个32位的无符号整型的mask参数，以高位在左低位在右，用[31:0]依次表示31号线程到0号线程，也即从最低位到最高位分别表示0号线程到31号线程。某位的值为1表示对应线程参与函数计算，为0表示忽略对应的线程。特别注意，各种函数的返回结果对于被掩码排除的线程来说是没有定义的，所以，不要尝试在被排除的线程中使用这些函数的返回值。
+
+```c++
+unsigned __activemask();
+```
+
+该函数用于返回当前处于活动线程状态的32位无符号整数掩码，如果线程束内idx号线程处于活动状态，则[idx]二进制位值为1，否则值为0。已退出程序的线程始终标记为非活动状态。
+
+```c++
+int __all_sync(unsigned mask, int predicate);
+int __any_sync(unsigned mask, int predicate);
+unsigned __ballot_sync(unsigned mask, int predicate);
+```
+
+\_\_all_sync()在mask选中的所有线程中计算predicate断言，当且仅当所有线程的predicate非零时，才返回非零。
+
+\_\_any_sync()在mask选中的所有线程中计算predicate断言，只要存在线程的predicate非零，即返回非零。
+
+\_\_ballot_sync()在mask选中的所有线程中计算predicate断言，如果线程束内idx号线程的predicate值非零，则返回值在[idx]二进制位上值为1，否则值为0，表示idx号线程满足predicate断言。该函数的功能相当于从一个旧的掩码出发，产生一个新的掩码。
+
+```c++
+unsigned int __match_any_sync(unsigned mask, T value);
+unsigned int __match_all_sync(unsigned mask, T value, int* pred);
+```
+
+\_\_match_any_sync()在mask选中的所有线程中比较value的值，并返回具有相同value值的新的掩码。
+
+\_\_match_all_sync()在mask选中的所有线程中比较value的值，如果所有线程具有相同的value值，则返回原来的mask掩码，并将pred置为true，否则返回0，并将pred置为false。
+
+```c++
+unsigned __reduce_add_sync(unsigned mask, unsigned value);
+unsigned __reduce_min_sync(unsigned mask, unsigned value);
+unsigned __reduce_max_sync(unsigned mask, unsigned value);
+int __reduce_add_sync(unsigned mask, int value);
+int __reduce_min_sync(unsigned mask, int value);
+int __reduce_max_sync(unsigned mask, int value);
+```
+
+\_\_reduce_add_sync()在mask选中的所有线程中，对所有value应用add归约，并返回运算结果。
+
+\_\_reduce_min_sync()在mask选中的所有线程中，对所有value应用min归约，并返回运算结果。
+
+\_\_reduce_max_sync()在mask选中的所有线程中，对所有value应用max归约，并返回运算结果。
+
+```c++
+unsigned __reduce_and_sync(unsigned mask, unsigned value);
+unsigned __reduce_or_sync(unsigned mask, unsigned value);
+unsigned __reduce_xor_sync(unsigned mask, unsigned value);
+```
+
+\_\_reduce_and_sync()在mask选中的所有线程中，对所有value应用and归约，并返回运算结果。
+
+\_\_reduce_or_sync()在mask选中的所有线程中，对所有value应用or归约，并返回运算结果。
+
+\_\_reduce_xor_sync()在mask选中的所有线程中，对所有value应用xor归约，并返回运算结果。
+
+```c++
+T __shfl_sync(unsigned mask, T var, int srcLane, int width=warpSize);
+T __shfl_up_sync(unsigned mask, T var, unsigned int delta, int width=warpSize);
+T __shfl_down_sync(unsigned mask, T var, unsigned int delta, int width=warpSize);
+T __shfl_xor_sync(unsigned mask, T var, int laneMask, int width=warpSize);
+```
+
+\_\_shfl_sync()在mask选中的所有线程中，当前idx号线程可以获得srcLane号线程中的var变量值，若整个线程束的srcLane值相同，则会将srcLane线程中的var数据广播到其所在的逻辑线程束内的所有参与线程中，包括自己。需注意srcLane的值不能大于width的值，且width只能取2、4、8、16、32其中的一个。
+
+__shfl_up_sync()在mask选中的所有线程中，当前idx号线程可以获得idx－delta号线程中的var变量值，当idx－delta小于0时，则idx线程返回它自己的var变量值。形象地说，这是一种将数据向上平移的操作，将小索引线程的数据传给大索引线程。
+
+\_\_shfl_down_sync()在mask选中的所有线程中，当前idx号线程可以获得idx＋delta号线程中的var变量值，当idx＋delta大于等于width时，则idx线程返回它自己的var变量值。形象地说，这是一种将数据向下平移的操作，将大索引线程的数据传给小索引线程。通常用于线程束内归约，其速度应比\_\_shfl_sync()与\_\_shfl_xor_sync()更快。
+
+\_\_shfl\_xor\_sync()在mask选中的所有线程中，当前idx号线程可以获得idx\^laneMask号线程中的var变量值，这里idx\^laneMask表示两个整数按位异或运算。针对不同的width值和laneMask值，可以取得让线程束内两两线程之间交换数据的效果，实现蝶形寻址模式，例如取laneMask为1时，可让相邻线程之间两两交换数据。
+
+## 线程束矩阵函数
+

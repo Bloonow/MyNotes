@@ -426,7 +426,7 @@ FROM (SELECT Sid, AVG(Sscore) FROM Students GROUP BY Sid) AS TempTable(Sid, Savg
 - 除`Is [Not] Null`外，空值不能满足任何查询条件。
 - 如果Null参与算术运算，则该算术表达式的值为Null。
 - 如果Null参与比较运算，则该结果为FALSE。在SQL-92标准中为Unknown。
-- 如果是 expr θ ALL 子查询 语句种的子查询返回空集（不是空值）时，无论比较谓词是什么，整个式子是TRUE。
+- 如果是 expr θ ALL 子查询 语句种的子查询返回空集（不是空值）时，无论比较断言是什么，整个式子是TRUE。
 - 如果Null参与聚集运算，则除`COUNT(*)`之外，其他聚集运算都忽略有Null的元组。
 - 使用排序`ORDER BY`的情况，NULL值被当作最小值处理。
 - 在使用`DISTINCT`、`GROUP BY`的情况下，空值NULL被看作相同，即一个取值处理，从而只保留一个或只形成一个分组。
@@ -720,7 +720,7 @@ CLOSE 数据库名;
 - S，请求主体（用户）
 - O，访问对象，表、数据项等，粒度可大可小
 - T，访问权利，增删改查创等
-- P， 谓词，访问条件
+- P， 断言，访问条件
 
 自主安全性机制可以通过存储矩阵、视图等手段实现，视图机制、审计、数据加密等。
 
@@ -804,7 +804,7 @@ DENY 权限 ON 对象名 TO 用户ID;
 完整性约束的一般形式，Integrity Constraint ::= (O, P, A, R)
 
 - O，数据集合，约束的对象
-- P，谓词条件，什么样的约束
+- P，断言条件，什么样的约束
 - A，触发条件，什么时候触发
 - P，响应动作，不满足怎么办
 
@@ -887,10 +887,10 @@ sp_unbindrule [@objname=] 'object_name' [,'futrueonly'];  -- 解绑定
 2. **使用断言来定义约束**
 
 ```sql
-CREATE ASSERTION 断言名/约束名 CHECK(谓词条件);
+CREATE ASSERTION 断言名/约束名 CHECK(断言条件);
 ```
 
-- 谓词条件可以是一个条件表达式，或者一个Select-From-Where等。
+- 断言条件可以是一个条件表达式，或者一个Select-From-Where等。
 - 表约束和列约束就一一些特殊的断言。
 - 使用断言来定义约束，在每次更新是，DBMS自动检查断言。但过多断言会降低效率，故谨慎使用。
 
