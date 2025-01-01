@@ -165,9 +165,9 @@ struct __device_builtin__ cudaAccessPolicyWindow {
 
 ```c++
 enum __device_builtin__  cudaAccessProperty {
-    cudaAccessPropertyNormal = 0,       // Normal cache persistence.
-    cudaAccessPropertyStreaming = 1,    // Streaming access is less likely to persit from cache.
-    cudaAccessPropertyPersisting = 2    // Persisting access is more likely to persist in cache.
+    cudaAccessPropertyNormal = 0,       // Normal cache persistence
+    cudaAccessPropertyStreaming = 1,    // Streaming access is less likely to persit from cache
+    cudaAccessPropertyPersisting = 2    // Persisting access is more likely to persist in cache
 };
 ```
 
@@ -231,7 +231,7 @@ int main(int argc, char* argv[]) {
 
 ## 异步栅障
 
-CUDA线程是执行计算或访存操作的最低级别的抽象。CUDA异步编程模型定义了异步栅障（asynchronous barrier）的行为，用于CUDA线程之间的同步，该模型还定义并解释了在GPU上计算时如何使用cuda::memcpy_async()从全局内存中异步移动数据。从计算能力8.0（Ampere架构）设备开始，GPU设备支持异步的内存操作，并由异步编程模型定义了异步操作相对于CUDA线程的行为。
+CUDA线程是执行计算或访存操作的最低级别的抽象。CUDA异步编程模型定义了异步栅障（asynchronous barrier）的行为，用于CUDA线程之间的同步，该模型还定义并解释了在GPU上计算时如何使用memcpy_async()从全局内存中异步移动数据。从计算能力8.0（Ampere架构）设备开始，GPU设备支持异步的内存操作，并由异步编程模型定义了异步操作相对于CUDA线程的行为。
 
 在cuda/barrier头文件中，CUDA标准库引入了std::barrier栅障的GPU版本实现cuda::barrier，并扩展以允许用户指定barrier栅障对象的范围。计算能力8.0（Ampere架构）或者更高版本的设备，可以为barrier栅障操作提供硬件层面的加速，并将这些barrier栅障与memcpy_async()异步内存复制功能集成。
 
@@ -241,18 +241,18 @@ CUDA线程是执行计算或访存操作的最低级别的抽象。CUDA异步编
 
 ```c++
 __global__ void simple_sync_kernel(int iteration_count) {
-    cooperative_groups::thread_block this_block = cooperative_groups::this_thread_block();
+    cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
     
     for (int curr_iter = 0; curr_iter < iteration_count; ++curr_iter) {
-        // 1. Code before arrive.
-        // 2. Wait for all threads to arrive here.
-        this_block.sync();
-        // 3. Code after wait.
+        // 1. Code before arrive
+        // 2. Wait for all threads to arrive here
+        block.sync();
+        // 3. Code after wait
     }
 }
 ```
 
-在这种模式中，线程在同步点this_block.sync()处被阻塞，直到所有线程都到达同步点。这能够保证在同一个线程块中，同步点之前发生的内存更新，对同步点之后的所有线程可见，即等效于atomic_thread_fence(memory_order_seq_cst, thread_scope_block)内存栅栏。
+在这种模式中，线程在同步点block.sync()处被阻塞，直到所有线程都到达同步点。这能够保证在同一个线程块中，同步点之前发生的内存更新，对同步点之后的所有线程可见，即等效于atomic_thread_fence(memory_order_seq_cst, thread_scope_block)内存栅栏。
 
 此模式分三个阶段：(1)同步点之前的代码执行内存更新，该更新会在同步点之后读取；(2)同步点；(3)同步点之后的代码，此时同步点之前的内存更新已经可见。
 
@@ -266,28 +266,28 @@ __device__ void compute_operation(float* data, int curr_iteration) { }
 __global__ void split_arrive_wait_kernel(float* data, int iteration_count) {
     using block_barrier_t = cuda::barrier<cuda::thread_scope_block>;
     __shared__ block_barrier_t barrier;
-    cooperative_groups::thread_block this_block = cooperative_groups::this_thread_block();
+    cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
 
-    if (this_block.thread_rank() == 0) {
+    if (block.thread_rank() == 0) {
         // Initialize the barrier with expected arrival count (All threads in a block)
-        init(&barrier, this_block.size());  // cuda::__4::init() as a friend of barrier
+        init(&barrier, block.size());  // cuda::__4::init() as a friend of barrier
     }
-    this_block.sync();
+    block.sync();
 
     for (int curr_iter = 0; curr_iter < iteration_count; ++curr_iter) {
-        // 1. Code before arrive.
+        // 1. Code before arrive
         // 2. This thread arrives. Arrival does not block a thread.
         block_barrier_t::arrival_token token = barrier.arrive();
-        // 3. Code between arrive and wait.
+        // 3. Code between arrive and wait
         compute_operation(data, curr_iter);
-        // 4. Wait for all threads participating in the barrier to complete barrier.arrive() function.
+        // 4. Wait for all threads participating in the barrier to complete barrier.arrive() function
         barrier.wait(std::move(token));
-        // 5. Code after wait.
+        // 5. Code after wait
     }
 }
 ```
 
-在这种模式中，同步点this_block.sync()被拆分为到达点barrier.arrive()和等待点barrier.wait(std::move(token))两部分。线程第一次调用barrier.arrive()时开始参与cuda::barrier栅障同步，当线程调用barrier.wait(std::move(token))时会被阻塞，直到所有参与线程完成barrier.arrive()调用，所有参与线程的数目在使用init()初始化时指定。对于所有参与线程能够保证，在barrier.arrive()之前发生的内存更新，对barrier.wait(std::move(token))之后的所有线程可见。值得注意的是，对barrier.arrive()的调用不会阻塞线程，它可以继续进行其它工作，这些工作不依赖于其它参与线程调用barrier.arrive()之前发生的内存更新。
+在这种模式中，同步点block.sync()被拆分为到达点barrier.arrive()和等待点barrier.wait(std::move(token))两部分。线程第一次调用barrier.arrive()时开始参与cuda::barrier栅障同步，当线程调用barrier.wait(std::move(token))时会被阻塞，直到所有参与线程完成barrier.arrive()调用，所有参与线程的数目在使用init()初始化时指定。对于所有参与线程能够保证，在barrier.arrive()之前发生的内存更新，对barrier.wait(std::move(token))之后的所有线程可见。值得注意的是，对barrier.arrive()的调用不会阻塞线程，它可以继续进行其它工作，这些工作不依赖于其它参与线程调用barrier.arrive()之前发生的内存更新。
 
 此模式分五个阶段：(1)到达点之前的代码执行内存更新，该更新会在等待点之后读取；(2)等效于atomic_thread_fence(memory_order_seq_cst, thread_scope_block)内存栅栏的，具有隐式内存栅栏的到达点；(3)到达点和等待点之间的代码，可以执行不依赖于内存更新的计算；(4)等待点；(5)等待点之后的代码，此时到达点之前的内存更新已经可见。
 
@@ -310,10 +310,10 @@ __device__ void producer_task(
     block_barrier_t empty_barrier[2], block_barrier_t filled_barrier[2], float* in, float* buffer, int N, int buf_len
 ) {
     for (int i = 0; i < N / buf_len; ++i) {
-        // 1. Wait for buffer[i % 2] to be ready to be filled.
+        // 1. Wait for buffer[i % 2] to be ready to be filled
         empty_barrier[i % 2].arrive_and_wait();
-        // 2. Code to produce data and fill in buffer[i % 2].
-        // 3. buffer[i % 2] is filled.
+        // 2. Code to produce data and fill in buffer[i % 2]
+        // 3. buffer[i % 2] is filled
         block_barrier_t::arrival_token token = filled_barrier[i % 2].arrive();
     }
 }
@@ -321,14 +321,14 @@ __device__ void producer_task(
 __device__ void consumer_task(
     block_barrier_t empty_barrier[2], block_barrier_t filled_barrier[2], float* out, float* buffer, int N, int buf_len
 ) {
-    // Initialize buffer to be emtpy and ready for fill.
+    // Initialize buffer to be emtpy and ready for fill
     block_barrier_t::arrival_token token0 = empty_barrier[0].arrive();
     block_barrier_t::arrival_token token1 = empty_barrier[1].arrive();
     for (int i = 0; i < N / buf_len; ++i) {
-        // 1. Wait for buffer[i % 2] to be filled.
+        // 1. Wait for buffer[i % 2] to be filled
         filled_barrier[i % 2].arrive_and_wait();
-        // 2. Code to consume the data in buffer[i % 2].
-        // 3. buffer[i % 2] is ready to be re-filled.
+        // 2. Code to consume the data in buffer[i % 2]
+        // 3. buffer[i % 2] is ready to be re-filled
         block_barrier_t::arrival_token token = empty_barrier[i % 2].arrive();
     }
 }
@@ -338,15 +338,15 @@ __global__ void producer_consumer_pattern_kernel(float* in, float* out, int N, i
     extern __shared__ float buffer[];
     __shared__ block_barrier_t empty_barrier[2];
     __shared__ block_barrier_t filled_barrier[2];
-    cooperative_groups::thread_block this_block = cooperative_groups::this_thread_block();
+    cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
 
-    if (this_block.thread_rank() < 2) {
-        init(&empty_barrier[this_block.thread_rank()], this_block.size());
-        init(&filled_barrier[this_block.thread_rank()], this_block.size());
+    if (block.thread_rank() < 2) {
+        init(&empty_barrier[block.thread_rank()], block.size());
+        init(&filled_barrier[block.thread_rank()], block.size());
     }
-    this_block.sync();
+    block.sync();
 
-    if (this_block.thread_rank() < warpSize) {
+    if (block.thread_rank() < warpSize) {
         producer_task(empty_barrier, filled_barrier, in, buffer, N, buf_len);   // The first Warp do producer task
     } else {
         consumer_task(empty_barrier, filled_barrier, out, buffer, N, buf_len);  // The remaining Warp do consumer task
@@ -354,7 +354,7 @@ __global__ void producer_consumer_pattern_kernel(float* in, float* out, int N, i
 }
 ```
 
-在此示例中，第一个Warp作为生产者，剩余的其它Warp作为消费者，所有生产者线程和消费者线程都参与四个cuda::barrier中的每一个，因此预期的参与线程的数目为this_block.size()。
+在此示例中，第一个Warp作为生产者，剩余的其它Warp作为消费者，所有生产者线程和消费者线程都参与四个cuda::barrier中的每一个，因此预期的参与线程的数目为block.size()。
 
 生产者线程等待消费者线程发出信号，表明共享内存缓冲区已为空可以被填充，为了等待cuda::barrier，生产者线程必须首先执行empty_barrier.arrive()到达以获取token，然后使用该token执行empty_barrier.wait(token)等待。为简化代码，生产者线程使用empty_barrier.arrive_and_wait()组合了这些操作。消费者线程首先发出信号，表明两个缓冲区都已准备好填充，消费者线程此时不会等待，而是等待此迭代的缓冲区被填充，即filled_barrier.arrive_and_wait()等待。在消费者线程使用缓冲区后，它们会发出信号，表明缓冲区又已经准备好再次填充，即empty_barrier.arrive()到达，然后等待下一次迭代的缓冲区被填充。
 
@@ -368,12 +368,12 @@ __device__ bool condition_check() {}
 __global__ void early_exit_kernel(int iteration_count) {
     using block_barrier_t = cuda::barrier<cuda::thread_scope_block>;
     __shared__ block_barrier_t barrier;
-    cooperative_groups::thread_block this_block = cooperative_groups::this_thread_block();
+    cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
 
-    if (this_block.thread_rank() == 0) {
-        init(&barrier , this_block.size());
+    if (block.thread_rank() == 0) {
+        init(&barrier , block.size());
     }
-    this_block.sync();
+    block.sync();
 
     for (int curr_iter = 0; curr_iter < iteration_count; ++curr_iter) {
         if (condition_check()) {

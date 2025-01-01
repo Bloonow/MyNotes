@@ -17,6 +17,10 @@ lscpu              # 列出CPU信息
 cat /proc/cpuinfo  # 详细的CPU信息
 ```
 
+可以使用hwinfo工具查看更多硬件信息，使用sudo apt install hwinfo安装，使用hwinfo命令可列出当前硬件状态，使用诸如--cpu和--memory选项指定硬件，使用lshw命令列出所有硬件。
+
+可以使用lm-sensors工具监测系统中各个硬件的传感器数据，主要是温度数据和风扇转速，使用sudo apt install lm-sensors安装，使用sudo sensors-detect配置所要探测的传感器（保持默认设置即可），之后即可使用sensors命令显示各个传感器温度。工具s-tui（Stress Terminal UI）是lm-sensors工具的一个现代化界面补充，是一个基于终端的实时监控界面，能直观展示CPU负载、温度及频率。
+
 使用wget命令可以从网络上下载文件，并保存到当前目录中，使用--continue选项可进行断点续传，即从上次下载中断的位置继续下载。
 
 ```shell
