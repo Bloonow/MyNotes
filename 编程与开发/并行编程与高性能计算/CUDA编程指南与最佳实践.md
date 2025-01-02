@@ -46,6 +46,8 @@ Warp没有准备好执行下一条指令的另一个原因是它正在等待某�
 
 # 编程模型
 
+二进制库[libcu++(libcudacxx)](https://nvidia.github.io/cccl/libcudacxx/)提供了基本且惯用的C++抽象，以及CUDA C++的基础抽象，例如cuda::atomic线程块范围、cuda::memcpy_async接口等。
+
 ## 线程块簇
 
 随着NVIDIA设备计算能力9.0（Hopper架构）引入，CUDA编程模型提供一个可选的线程层次，称为**线程块簇（Threadblock Cluster）**，由线程块组成。线程块可以保证其中的线程在一个流多处理器上协同调度，线程块簇也保证其中的线程块在一个GPU处理簇（GPU Processing Cluster，CPC）上协同调度。
@@ -114,8 +116,6 @@ CUDA Runtime运行时环境在cudart库中实现，使用CUDA的应用程序都�
 CUDA运行时API构建在更低级别的API之上，即CUDA驱动程序，驱动程序API通过公开更低级别的概念来提供额外的控制，例如，CUDA Context上下文（设备的主机进程模拟），CUDA Module模块（设备的动态加载库的模拟）。在使用CUDA运行时环境时，上下文和模块的管理是隐式的，这可以产生更简洁的代码。
 
 CUDA运行时的所有函数都以cuda为前缀，这些函数用于分配和释放设备内存、在主机内存和设备内存之间传输数据、管理具有多个设备的系统等。
-
-【！！！！驱动API！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#driver-api
 
 在CUDA 12.0之前，函数cudaSetDevice()并不会初始化CUDA运行时，应用程序通常会使用cudaFree(0)函数以初始化CUDA运行时环境。而自CUDA 12.0以来，cudaInitDevice()调用或cudaSetDevice()调用都会初始化特定设备的CUDA运行时以及主上下文环境（primary context），若没有手动执行该初始化调用，CUDA运行时会使用编号为0的GPU设备，并在执行其它运行时API时执行自初始化。在统计API时间或分析第一次调用错误时，需要注意这一点。
 
@@ -389,9 +389,208 @@ __global__ void early_exit_kernel(int iteration_count) {
 
 ## 异步内存复制
 
-CUDA线程是执行计算或访存操作的最低级别的抽象。CUDA异步编程模型定义了异步栅障（asynchronous barrier）的行为，用于CUDA线程之间的同步，该模型还定义并解释了在GPU上计算时如何使用cuda::memcpy_async()从全局内存中异步移动数据。从计算能力8.0（Ampere架构）设备开始，GPU设备支持异步的内存操作，并由异步编程模型定义了异步操作相对于CUDA线程的行为。
+CUDA线程是执行计算或访存操作的最低级别的抽象。CUDA异步编程模型定义了异步栅障（asynchronous barrier）的行为，用于CUDA线程之间的同步，该模型还定义并解释了在GPU上计算时如何使用memcpy_async()从全局内存中异步移动数据。从计算能力8.0（Ampere架构）设备开始，GPU设备支持异步的内存操作，并由异步编程模型定义了异步操作相对于CUDA线程的行为。
 
-【！！！！异步数据复制！！！！】https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#asynchronous-data-copies
+CUDA 11引入了memcpy_async()异步数据复制，以允许显式管理数据的异步复制，使得CUDA内核能够将计算与数据移动重叠。有多个memcpy_async()接口在cuda/barrier头文件、cuda/pipeline头文件、cooperative_groups/memcpy_async.h头文件中提供。其中，cuda::memcpy_async()与cuda::barrier和cuda::pipeline同步原语一起使用，而cooperative_groups::memcpy_async()则与coopertive_groups::wait()同步一起使用。这些API接口具有非常相似的语义，将对象从src异步复制到dst，并在复制完成后，使用cuda::barrier和cuda::pipeline进行同步，或使用coopertive_groups::wait()进行同步。
+
+CUDA应用程序的主要操作即是计算和访存，并且会通过共享内存暂存数据，即，(1)从全局内存获取数据；(2)将数据存储到共享内存；(3)对共享内存数据执行计算，并将结果写回全局内存。如果不使用异步复制，则从全局内存复制数据到共享内存，需要使用中间寄存器进行搬运。
+
+```c++
+__device__ void compute_and_stg(float* smem_buf, float* batched_block_out) {
+    cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
+    // Computes using all values of current batch from shared memory
+    float result = compute(smem_buf[block.thread_rank()]);
+    // Stores this thread's result back to global memory
+    batched_block_out[block.thread_rank()] = result;
+}
+
+__global__ void simple_copy_kernel(float* in, float* out, int N, int batch_size) {
+    extern __shared__ float smem_buf[];
+    cooperative_groups::grid_group grid = cooperative_groups::this_grid();
+    cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
+
+    // [NEXT][batch] = block_offset + grid.size()
+    int block_offset = grid.block_rank() * block.size();
+    for (int batch = 0; batch < batch_size; ++batch) {
+        // 1. Read data from global memory and write data to shared memory (via register)
+        smem_buf[block.thread_rank()] = in[block_offset + block.thread_rank()];
+        // 2. Wait for all copies to complete
+        block.sync();
+        // 3. Compute and write result to global memory
+        compute_and_stg(smem_buf, out + block_offset);
+        // 4. Wait for compute using shared memory to finish
+        block.sync();
+        block_offset += grid.size();
+    }
+}
+```
+
+可以看到，每个线程块都需要在smem_buf赋值之后进行同步，以确保在计算阶段开始之前完成对共享内存的所有写入。线程块还需要在计算阶段之后再次同步，以防止在所有线程完成计算之前覆盖共享内存。
+
+### 使用memcpy_async()
+
+在计算能力8.0（Ampere架构）及之后的设备上，从全局内存到共享内存的memcpy_async()传输可以从硬件加速中受益，从而避免使用中间寄存器传输数据。
+
+使用cooperative_groups::memcpy_async()异步数据复制的代码如下所示。
+
+```c++
+__global__ void memcpy_async_kernel(float* in, float* out, int N, int batch_size) {
+    extern __shared__ float smem_buf[];
+    cooperative_groups::grid_group grid = cooperative_groups::this_grid();
+    cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
+
+    // [NEXT][batch] = block_offset + grid.size()
+    int block_offset = grid.block_rank() * block.size();
+    for (int batch = 0; batch < batch_size; ++batch) {
+        // 1. Whole thread-group cooperatively copies whole batch to shared memory
+        cooperative_groups::memcpy_async(block, smem_buf, in + block_offset, block.size() * sizeof(float));
+        // 2. Joins all threads, thread-group wait all previously submitted memcpy_async() to complete
+        cooperative_groups::wait(block);
+        // 3. Compute and wait to finish
+        compute_and_stg(smem_buf, out + block_offset);
+        block.sync();
+        block_offset += grid.size();
+    }
+}
+```
+
+异步复制cooperative_groups::memcpy_async()以另一个线程执行的方式发生，该辅助线程在复制完成之后，与调用cooperative_groups::wait()的当前线程进行同步。在复制操作完成之前，修改全局数据或读取或写入共享内存数据会导致数据争用。
+
+cuda::memcpy_async()支持使用cuda::barrier栅障对象来同步异步数据传输，这会使得异步复制操作就像绑定到cuda::barrier栅障的另一个线程一样，即在创建时递增cuda::barrier当前阶段的预期到达线程计数，并在复制操作完成时递减它。这样，仅当参与栅障的所有线程都已到达，并且绑定到屏障当前阶段的所有异步cuda::memcpy_async()都已经完成时，cuda::barrier栅障才能够进入到下一阶段。
+
+```c++
+__global__ void memcpy_async_kernel(float* in, float* out, int N, int batch_size) {
+    extern __shared__ float smem_buf[];
+    __shared__ cuda::barrier<cuda::thread_scope_block> barrier;
+    cooperative_groups::grid_group grid = cooperative_groups::this_grid();
+    cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
+
+    // Create a cuda::barrier synchronization object
+    if (block.thread_rank() == 0) {
+        init(&barrier, block.size());
+    }
+    block.sync();
+
+    // [NEXT][batch] = block_offset + grid.size()
+    int block_offset = grid.block_rank() * block.size();
+    for (int batch = 0; batch < batch_size; ++batch) {
+        // 1. Whole thread-group cooperatively copies whole batch to shared memory
+        cuda::memcpy_async(block, smem_buf, in + block_offset, block.size() * sizeof(float), barrier);
+        // 2. Waits for all copies to complete
+        barrier.arrive_and_wait();
+        // 3. Compute and wait to finish
+        compute_and_stg(smem_buf, out + block_offset);
+        block.sync();
+        block_offset += grid.size();
+    }
+}
+```
+
+### 使用cuda::pipeline
+
+CUDA提供了名为cuda::pipeline流水线的协作机制，可以将诸如异步复制的异步操作，转换为流水线阶段，用于管理异步数据移动和计算操作的重叠。实际上，cooperative_groups::memcpy_async()接口和cuda::memcpy_async()接口在实现时，都使用了cuda::pipeline流水线对象，并自动管理。
+
+流水线对象是一个具有头和尾的双端N阶段队列，它按照FIFO先进先出的顺序处理工作。线程按照一定步骤与流水线对象交互：(1)获取（acquire）流水线阶段；(2)将一些操作提交（commit）到阶段；(3)等待（wait）之前提交的操作完成；(4)释放（release）流水线阶段。
+
+```c++
+template <cuda::thread_scope Scope>
+class cuda::pipeline {
+public:
+    __host__ __device__ void producer_acquire();
+    __host__ __device__ void producer_commit();
+    __host__ __device__ void consumer_wait();
+    __host__ __device__ void consumer_release();
+    __host__ __device__ bool quit();
+};
+```
+
+producer_acquire()用于从流水线的内部队列中获取一个可用的阶段，该函数会阻塞当前线程，直到返回下一个可用的流水线阶段。
+
+producer_commit()用于将当前线程在调用producer_acquire()之后发出的异步操作提交到当前流水线阶段。
+
+consumer_wait()会阻塞当前线程，直到流水线队列中最旧的一个阶段完成其上提交的所有异步操作的执行。
+
+consumer_release()用于释放流水线队列中最旧的一个阶段，以供之后重用。
+
+在使用cuda::pipeline流水线时，通常会使用一些辅助类和函数。模板类cuda::pipeline_shared_state<Scope,N_stage>对象用于在共享内存上存储一个N阶段流水线的状态，以协调参与流水线的各个线程。函数cuda::make_pipeline()方法用于初始化一个pipeline_shared_state类对象。流水线可以是统一的（unified），此时，所有参与线程既是生产者又是消费者；流水线也可以是划分的（partitioned），此时，一个线程要么是生产者要么是消费者。在使用make_pipeline()初始化一个pipeline_shared_state对象时，可以通过传入cuda::pipeline_role枚举类的值来指定当前线程的角色。
+
+在上一小节使用memcpy_async()进行异步数据复制的示例中，线程在发起异步复制之后立即等待直到共享内存的数据传输完成，这可以避免使用中间寄存器，但是计算操作和异步数据移动并没有重叠。这里，使用一个双阶段cuda::pipeline流水线对象，来实现将异步数据移动与计算重叠，示例代码如下。
+
+```c++
+// Pipeline with stages_count stages
+template <int stages_count = 2>
+__global__ void memcpy_async_kernel(float* in, float* out, int N, int batch_size) {
+    extern __shared__ float smem_buf[];  // 2 * block.size() float for double buffer
+    cooperative_groups::grid_group grid = cooperative_groups::this_grid();
+    cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
+
+    int shared_offset[stages_count]; for (int i = 0; i < stages_count; ++i) shared_offset[i] = i * block.size();
+    auto global_offset = [&](int batch) -> int { return grid.block_rank() * block.size() + grid.size() * batch; };
+
+    // Allocate shared storage for a two-stage cuda::pipeline
+    __shared__ cuda::pipeline_shared_state<cuda::thread_scope_block, stages_count> pipeline_state;
+    cuda::pipeline<cuda::thread_scope_block> pipeline = cuda::make_pipeline(block, &pipeline_state);
+    // Pipelined `fetch` and `compute` along with batch dimension
+    // The outer loop iterates over the computation of the batches
+    for (int compute_batch = 0, fetch_batch = 0; compute_batch < batch_size; ++compute_batch) {
+        // This inner loop iterates over the memory transfers, making sure that the pipeline is always full
+        for (; fetch_batch < batch_size && fetch_batch < (compute_batch + stages_count); ++fetch_batch) {
+            // 1. Collectively acquire the pipeline head stage from all producer threads
+            pipeline.producer_acquire();
+            // 2. Submit async copies to the pipeline's head stage to be computed in the next loop iteration
+            cuda::memcpy_async(
+                block, smem_buf + shared_offset[fetch_batch % stages_count], in + global_offset(fetch_batch), 
+                block.size() * sizeof(float), pipeline
+            );
+            // 3. Collectively commit (advance) the pipeline's head stage
+            pipeline.producer_commit();
+        }
+        // 4. Collectively wait for the operations committed to the previous `compute` stage to complete
+        pipeline.consumer_wait();
+        // 5. Computation overlapped with the memcpy_async of the `copy` stage
+        compute_and_stg(smem_buf + shared_offset[compute_batch % stages_count], out + global_offset(compute_batch));
+        // 6. Collectively release the stage resources
+        pipeline.consumer_release();
+    }
+}
+```
+
+可以看到，在使用cuda::make_pipeline()创建并初始化一个流水线对象时，参数可以非常灵活，线程块中任何任意线程子集都可以参与流水线，所参与的线程中任何子集都可以是生产者、消费者，或者两者兼而有之。当所有线程都既是生产者又是消费者时，流水线会执行一些优化，但一般来说，支持流水线所有功能的成本无法完全消除。例如，流水线对象在共享内存中存储，并且会使用一组cuda::barrier栅障进行同步，但如果块中的所有线程都参与流水线，则这实际上并不是真正必要的。
+
+对于线程块中所有线程都参与流水线的特殊情况，可以使用pipeline<thread_scope_thread>和\_\_syncthreads()来优化实现，这种优化实现的性能比使用pipeline<thread_scope_block>直接实现要好，如下代码所示。
+
+```c++
+template <int stages_count = 2>
+__global__ void memcpy_async_kernel(float* in, float* out, int N, int batch_size) {
+    extern __shared__ float smem_buf[];  // 2 * block.size() float for double buffer
+    cooperative_groups::grid_group grid = cooperative_groups::this_grid();
+    cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
+    cooperative_groups::thread_block_tile<1> thread = cooperative_groups::this_thread();
+
+    int shared_offset[stages_count]; for (int i = 0; i < stages_count; ++i) shared_offset[i] = i * block.size();
+    auto global_offset = [&](int batch) -> int { return grid.block_rank() * block.size() + grid.size() * batch; };
+
+    // No cuda::pipeline_shared_state needed
+    cuda::pipeline<cuda::thread_scope_thread> pipeline = cuda::make_pipeline();
+    // Pipelined `fetch` and `compute` along with batch dimension
+    for (int compute_batch = 0, fetch_batch = 0; compute_batch < batch_size; ++compute_batch) {
+        for (; fetch_batch < batch_size && fetch_batch < (compute_batch + stages_count); ++fetch_batch) {
+            pipeline.producer_acquire();
+            // The copy is performed by a single `thread` and the size of the batch is now that of a single element
+            cuda::memcpy_async(
+                thread, smem_buf + shared_offset[fetch_batch % stages_count] + block.thread_rank(),
+                in + global_offset(fetch_batch) + block.thread_rank(), sizeof(float), pipeline
+            );
+            pipeline.producer_commit();
+        }
+        pipeline.consumer_wait();
+        // __syncthreads(): All memcpy_async of all threads in the block for this stage have completed here
+        block.sync();
+        compute_and_stg(smem_buf + shared_offset[compute_batch % stages_count], out + global_offset(compute_batch));
+        pipeline.consumer_release();
+    }
+}
+```
 
 # 异步并发执行
 

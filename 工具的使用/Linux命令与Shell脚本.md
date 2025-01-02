@@ -17,9 +17,11 @@ lscpu              # 列出CPU信息
 cat /proc/cpuinfo  # 详细的CPU信息
 ```
 
-可以使用hwinfo工具查看更多硬件信息，使用sudo apt install hwinfo安装，使用hwinfo命令可列出当前硬件状态，使用诸如--cpu和--memory选项指定硬件，使用lshw命令列出所有硬件。
+使用lshw命令列出所有硬件，使用sudo apt install lshw安装。
 
-可以使用lm-sensors工具监测系统中各个硬件的传感器数据，主要是温度数据和风扇转速，使用sudo apt install lm-sensors安装，使用sudo sensors-detect配置所要探测的传感器（保持默认设置即可），之后即可使用sensors命令显示各个传感器温度。工具s-tui（Stress Terminal UI）是lm-sensors工具的一个现代化界面补充，是一个基于终端的实时监控界面，能直观展示CPU负载、温度及频率。
+使用hwinfo工具查看更多硬件信息，使用sudo apt install hwinfo安装，使用hwinfo命令可列出当前硬件状态，使用诸如--cpu和--memory选项指定硬件。
+
+使用lm-sensors工具监测系统中各个硬件的传感器数据，主要是温度数据和风扇转速，使用sudo apt install lm-sensors安装，使用sudo sensors-detect配置所要探测的传感器（保持默认设置即可），之后即可使用sensors命令显示各个传感器温度。工具s-tui（Stress Terminal UI）是lm-sensors工具的一个现代化界面补充，是一个基于终端的实时监控界面，能直观展示CPU负载、温度及频率。
 
 使用wget命令可以从网络上下载文件，并保存到当前目录中，使用--continue选项可进行断点续传，即从上次下载中断的位置继续下载。
 
@@ -983,7 +985,7 @@ bln:x:1000:1000:bln,,,:/home/bln:/bin/bash
 
 /etc/passwd文件存储用户信息的七个字段，包括：用户名、密码、UID、所属组编号GID、文本描述备注、主目录路径、默认shell程序。该文件是一个标准文本文件，可使用任何文本编辑器手动进行用户管理（例如增删改用户），但直接修改极其危险，一旦导致文件损坏，系统就无法读取它的内容，从而导致用户无法登录（即使是root用户）。
 
-在/etc/passwd文件中，用户密码字段统一设置为x，而真正的用户密码被单独加密存储在/etc/shadow文件中，只有特定程序（例如登录程序）才能访问这个文件。
+在/etc/passwd文件中，用户密码字段统一设置为x，而真正的用户密码被单独加密存储在/etc/shadow文件中，只有特定程序（如登录程序）才能访问该文件。
 
 ```shell
 cat /etc/shadow
