@@ -23,7 +23,7 @@ for (int i = 0; i < M; i++) {
 >
 > l2cache_latency: 194 cyclel
 >
-> 1cache_latency: 28 cycle
+> l1cache_latency: 28 cycle
 >
 > smem_bandwidth: 115.35 Byte/cycle
 >
@@ -790,7 +790,7 @@ CUTLASS沿用C++标准库的基本类型，可用于主机端代码与设备端�
 | half_t     | _hf        | IEEE半精度浮点数；尾数10位，指数5位    |
 | bfloat16_t | _bf16      | BFloat16类型；尾数7位，指数8位         |
 | tfloat32_t | _tf32      | Tensor Float 32类型；尾数10位，指数8位 |
-| int4_4     | _s4        | 有符号4位整型                          |
+| int4_t     | _s4        | 有符号4位整型                          |
 | uint4_t    | _u4        | 无符号4位整型                          |
 | bin1_t     | _b1        | 一位二进制位                           |
 

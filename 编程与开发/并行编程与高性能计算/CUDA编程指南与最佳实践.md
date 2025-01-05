@@ -654,7 +654,7 @@ int main(int argc, char* argv[]) {
 
 应用程序可以通过流来管理并发的操作，**CUDA流（Stream）是按顺序执行的一系列命令，可能由不同的主机线程发出**。另一方面，不同的流会并发地执行它们的命令，不同流中操作的执行顺序无法保证。当满足命令的所有依赖项时，对流发出一个命令可能会被执行，依赖项可以是在同一流上以前启动的命令，也可以是来自其它流的依赖项。使用cudaStream_t类型表示一个CUDA流，使用cudaStreamCreate()函数创建一个流，使用cudaStreamDestroy()函数销毁一个流。如果在CUDA API函数接口中未指定任何流，等效于将stream参数设置为0流（等价于空的NULL流），则会使用默认流。
 
-如果使用--default-stream legacy编译选项（默认编译选项），则默认流是一个称为0流（NULL流）的特殊流（会导致隐式同步），每个设备具有一个用于所有主机线程的0流（NULL流）。如果使用--default-stream per-thread编译选项，或者在包含cuda.h和cuda_runtime.h头文件之前定义CUDA_API_PER_THREAD_DEFAULT_STREAM宏为1，则默认流是常规流，每个主机线程都有自己的默认流。
+如果使用--default-stream legacy编译选项（默认编译选项），则默认流是一个称为0流（NULL流）的特殊流（会导致隐式同步），每个设备具有一个用于所有主机线程的0流（NULL流）。如果使用--default-stream per-thread编译选项，或者在包含cuda.h头文件和cuda_runtime.h头文件之前定义CUDA_API_PER_THREAD_DEFAULT_STREAM宏为1，则默认流是常规流，每个主机线程都有自己的默认流。
 
 有多种方法可以显式地将流彼此同步。cudaDeviceSynchronize()会等待，直到所有主机线程的所有流中的所有操作都已完成。cudaStreamSynchronize()接收一个流作为参数，并等待给定流中所有之前的操作完成，可用于与特定流进行同步，从而允许其它流继续在设备上执行。cudaStreamWaitEvent()接收一个流和事件作为参数，使得给定流上的所有后续操作等待，直到给定事件完成。cudaStreamQuery()可以查询某个流中之前的操作是否都已经执行完成。
 
@@ -1116,4 +1116,38 @@ __shfl_up_sync()在mask选中的所有线程中，当前idx号线程可以获得
 \_\_shfl\_xor\_sync()在mask选中的所有线程中，当前idx号线程可以获得idx\^laneMask号线程中的var变量值，这里idx\^laneMask表示两个整数按位异或运算。针对不同的width值和laneMask值，可以取得让线程束内两两线程之间交换数据的效果，实现蝶形寻址模式，例如取laneMask为1时，可让相邻线程之间两两交换数据。
 
 ## 线程束矩阵函数
+
+在计算能力7.0（Volta架构）或更高版本的设备上，线程束矩阵函数利用Tensor Core硬件加速形如D＝A×B＋C的矩阵运算，这些操作支持使用混合精度的浮点数据。这需要一个Warp中所有线程的协作，若在条件分支代码中，只有一个完整的Warp中的所有线程都执行同一个分支路径时，才允许在条件代码中执行这些操作，否则代码执行可能会挂起。
+
+相关的函数和类型定义都位于mma.h头文件中，并在nvcuda::wmma命名空间中提供，如下所示。此外，在nvcuda::wmma::experimental命名空间中提供一些可能在将来版本中会变化的实验性的功能，例如，支持不足一个字节数据的操作，这种数据称为亚字节（sub-byte）数据，如类型int4_t表示一个4位的整数。
+
+```c++
+struct row_major; struct col_major;  struct matrix_a;  struct matrix_b;  struct accumulator;
+enum layout_t { mem_row_major, mem_col_major };
+template<typename Use, int m, int n, int k, typename T, typename Layout=void> class fragment;
+
+void load_matrix_sync(fragment<...>& frag, const T* mptr, unsigned ldm);
+void load_matrix_sync(fragment<...>& frag, const T* mptr, unsigned ldm, layout_t layout);
+void store_matrix_sync(T* mptr, const fragment<...>& frag, unsigned ldm, layout_t layout);
+void fill_fragment(fragment<...>& frag, const T& v);
+void mma_sync(fragment<...>& d, const fragment<...>& a, const fragment<...>& b, const fragment<...>& c, bool satf=false);
+```
+
+fragment是一个模板类，其实例对象包换矩阵的一部分，分布在一个Warp的所有线程中。模板参数Use指定了该fragment如何参与矩阵运算，可以用matrix_a表示第一个输入矩阵A，用matrix_b表示第二个输入矩阵B，用accumulator表示源矩阵C或累加器结果矩阵D。模板参数m,n,k指定了参与该Warp矩阵计算的形状。模板参数T指定了输入矩阵中元素的数据类型，累加器矩阵中元素的数据类型可以参考[Element Types](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#element-types-and-matrix-sizes)表格。模板参数Layout指定了该fragment所表示的输入矩阵在内存当中的存储布局，可以用row_major表示行主序存储，用col_major表示列主序存储，对于accumulator而言该模板参数使用void表示无需指定。
+
+load_matrix_sync()用于从内存（全局内存或共享内存）中加载fragment，该函数会阻塞直到一个Warp中的所有线程都到达才会执行，执行完之后，一个Warp中的所有线程都能够加载到它所负责的fragment数据。参数mptr是指向内存中矩阵的第一个元素的指针，所指向的地址必须是256位（32字节）对齐的。参数ldm是矩阵在内存中存储的主维度轴上的维数，对于\_\_half而言值必须是8的整数倍，对于int而言值必须是4的整数倍，也即必须是16字节的整数倍。参数layout_t用于accumulator累加器的情况，表示矩阵在内存中是按照mem_row_major行主序存储，还是按照mem_col_major列主序存储。
+
+store_matrix_sync()用于向内存（全局内存或共享内存）中存储fragment，该函数会阻塞直到一个Warp中的所有线程都到达才会执行，执行完之后，一个Warp中的所有线程都将它所负责的fragment数据存储到正确的位置。参数mptr是指向内存中矩阵的第一个元素的指针，所指向的地址必须是256位（32字节）对齐的。参数ldm是矩阵在内存中存储的主维度轴上的维数，对于\_\_half而言值必须是8的整数倍，对于int而言值必须是4的整数倍，也即必须是16字节的整数倍。参数layout_t用于指定accumulator累加器的内存布局，表示矩阵在内存中是按照mem_row_major行主序存储，还是按照mem_col_major列主序存储。
+
+fill_fragment()用于填充fragment，由于矩阵元素到每个fragment的映射未指定，因此该函数通常由Warp中的所有线程调用，并且指定相同的v值。
+
+mma_sync()用于执行形如D＝A×B＋C的矩阵运算，该函数会阻塞直到一个Warp中的所有线程都到达才会执行，执行完成之后，一个Warp中的所有线程都持有相应的accumulator累加器的值。参数satf指定是否启用satf（saturate to finite value）模式，为true时可以处理非法数据，如果计算结果为＋infinity正无穷，则累加器执行＋MAX_NORM运算，如果计算结果为－infinity负无穷，则累加器执行－MAX_NORM运算，如果计算结果为NaN非法，则累加器执行＋0运算。
+
+对于一个Warp中的所有线程而言，load_matrix_sync()函数、store_matrix_sync()函数、mma_sync()函数的所有参数都必须是相同的，并且fragment的所有模板参数也必须是相同的，并且必须由一个Warp中共的所有线程调用，否则行为将是未定义的。需要注意的是，由于矩阵元素到每个线程fragment的映射未指定，因此在调用store_matrix_sync()后，必须从内存（全局内存或共享内存）中访问各个矩阵元素。
+
+Tensor Core硬件在计算时需要特殊的数据格式，这种特殊数据格式对于不同计算能力（架构）的设备而言可能是不同的，线程仅持有整个矩阵的一个fragment，这是特定于设备架构的不透明的ABI数据结构。对于参与MMA运算的数据，开发人员不能对各个参数数据如何映射到寄存器作出任何假设。
+
+这导致的一个问题是，由于fragment是特定于架构的，若使用fragment作为形参的不同函数，在编译时使用不同的架构生成目标文件，在链接到一起时可能会导致潜在的错误，例如对于sm_70（Volta架构）和sm_75（Turning架构）而言，其fragment的格式就不相同。当与旧式的库进行链接时，最有可能出现这种链接危险。为避免这类问题，应该总是将矩阵数据使用store_matrix_sync()存储到内存中，并使用数据的地址指针作为函数参数进行传递。
+
+一个示例如下所示，通过16×16×16的WMMA运算，来执行一个单精度-半精度的矩阵乘法运算。
 

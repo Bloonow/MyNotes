@@ -3482,7 +3482,7 @@ struct MyClz {
 };
 
 template <typename Ty>
-struct MyClz<Ty,int> {
+struct MyClz<Ty, int> {
     void operator()() { std::cout << "specialization for int" << std::endl; }
 };
 ```
