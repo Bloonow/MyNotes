@@ -1149,5 +1149,44 @@ Tensor Core硬件在计算时需要特殊的数据格式，这种特殊数据格
 
 这导致的一个问题是，由于fragment是特定于架构的，若使用fragment作为形参的不同函数，在编译时使用不同的架构生成目标文件，在链接到一起时可能会导致潜在的错误，例如对于sm_70（Volta架构）和sm_75（Turning架构）而言，其fragment的格式就不相同。当与旧式的库进行链接时，最有可能出现这种链接危险。为避免这类问题，应该总是将矩阵数据使用store_matrix_sync()存储到内存中，并使用数据的地址指针作为函数参数进行传递。
 
-一个示例如下所示，通过16×16×16的WMMA运算，来执行一个单精度-半精度的矩阵乘法运算。
+一个示例如下所示，执行一个16×16×16的矩阵乘法计算。需要注意的是，此处只是列举示例，真正使用WMMA实现矩阵乘法时，还需考虑各级矩阵划分策略。
+
+```c++
+__global__ void wmma_16x16x16_kernel(const half* A, const half* B, float* C) {
+    // Declare the fragments
+    nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, half, nvcuda::wmma::row_major> a_frag;
+    nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, half, nvcuda::wmma::row_major> b_frag;
+    nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 16, 16, 16, float> c_frag;
+    // Initialize the output to zero
+    nvcuda::wmma::fill_fragment(c_frag, 0);
+    // Load the inputs
+    nvcuda::wmma::load_matrix_sync(a_frag, A, 16);
+    nvcuda::wmma::load_matrix_sync(b_frag, B, 16);
+    // Perform the matrix multiplication
+    nvcuda::wmma::mma_sync(c_frag, a_frag, b_frag, c_frag);
+    // Store the output
+    nvcuda::wmma::store_matrix_sync(C, c_frag, 16, nvcuda::wmma::mem_row_major);
+}
+
+int main(int argc, char *argv[]) {
+    int M = 16, N = 16, K = 16;
+    half* h_A = alloc_host_memory<half>(M * K);
+    half* h_B = alloc_host_memory<half>(K * N);
+    float* h_C = alloc_host_memory<float>(M * N);
+    float *ret_C = alloc_host_memory<float>(M * N);
+    half* d_A = alloc_cuda_memory<half>(M * K, h_A);
+    half* d_B = alloc_cuda_memory<half>(K * N, h_B);
+    float* d_C = alloc_cuda_memory<float>(M * N);
+
+    // Only one single Warp
+    wmma_16x16x16_kernel<<<1, 32>>>(d_A, d_B, d_C);
+    cudaMemcpy(ret_C, d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+
+    host_gemm<row_major, row_major, row_major>(h_A, h_B, h_C, 1, 0, M, N, K, 1);
+    check_same<float>(h_C, ret_C, M * N, 1.e-4);
+
+    free_memory(7, h_A, h_B, h_C, ret_C, d_A, d_B, d_C);
+    return 0;
+}
+```
 
