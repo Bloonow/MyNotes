@@ -1097,12 +1097,6 @@ fill_fragment()用于填充fragment，由于矩阵元素到每个fragment的映�
 
 mma_sync()用于执行形如D＝A×B＋C的矩阵运算，该函数会阻塞直到一个Warp中的所有线程都到达才会执行，执行完成之后，一个Warp中的所有线程都持有相应的accumulator累加器的值。参数satf指定是否启用satf（saturate to finite value）模式，为true时可以处理非法数据，如果计算结果为＋infinity正无穷，则累加器执行＋MAX_NORM运算，如果计算结果为－infinity负无穷，则累加器执行－MAX_NORM运算，如果计算结果为NaN非法，则累加器执行＋0运算。
 
-对于一个Warp中的所有线程而言，load_matrix_sync()函数、store_matrix_sync()函数、mma_sync()函数的所有参数都必须是相同的，并且fragment的所有模板参数也必须是相同的，并且必须由一个Warp中共的所有线程调用，否则行为将是未定义的。需要注意的是，由于矩阵元素到每个线程fragment的映射未指定，因此在调用store_matrix_sync()后，必须从内存（全局内存或共享内存）中访问各个矩阵元素。
-
-Tensor Core硬件在计算时需要特殊的数据格式，这种特殊数据格式对于不同计算能力（架构）的设备而言可能是不同的，线程仅持有整个矩阵的一个fragment，这是特定于设备架构的不透明的ABI数据结构。对于参与MMA运算的数据，开发人员不能对各个参数数据如何映射到寄存器作出任何假设。
-
-这导致的一个问题是，由于fragment是特定于架构的，若使用fragment作为形参的不同函数，在编译时使用不同的架构生成目标文件，在链接到一起时可能会导致潜在的错误，例如对于sm_70（Volta架构）和sm_75（Turning架构）而言，其fragment的格式就不相同。当与旧式的库进行链接时，最有可能出现这种链接危险。为避免这类问题，应该总是将矩阵数据使用store_matrix_sync()存储到内存中，并使用数据的地址指针作为函数参数进行传递。
-
 一个示例如下所示，使用16x16x16的WMMA操作，实现单精度-半精度的矩阵乘法运算。需要注意的是，此处只是列举示例，真正使用WMMA实现矩阵乘法时，还需考虑矩阵的各级划分策略，以及如何使用共享内存来加速实现。
 
 ```c++
@@ -1116,9 +1110,9 @@ using namespace nvcuda;
  * Threadblock Tile : [M, N, K] = [64, 64, 16]
  * Warp Tile : [M, N, K] = [16, 16, 16]
  */
-__global__ void simple_wmma_64x64_16x16x16_kernel(
+__global__ void simple_wmma_m16n16k16_64x64x16_kernel(
     half* A, half* B, const float* C, float* D, float alpha, float beta,
-    uint32_t M, uint32_t N, uint32_t K
+    const uint32_t M, const uint32_t N, const uint32_t K
 ) {
     assert(M % 16 == 0 && N % 16 == 0 && K % 16 == 0);
     uint32_t warp_rid_offset = blockIdx.y * 64 + threadIdx.x / 32 / 4 * 16;
@@ -1144,11 +1138,11 @@ __global__ void simple_wmma_64x64_16x16x16_kernel(
             // Load the inputs
             wmma::load_matrix_sync(a_frag, A_ldg_ptr, K);
             wmma::load_matrix_sync(b_frag, B_ldg_ptr, K);
-            // Perform the matrix multiplication
-            wmma::mma_sync(acc_frag, a_frag, b_frag, acc_frag);
             // ldg pointer for next tile
             A_ldg_ptr += 16;
             B_ldg_ptr += 16;
+            // Perform the matrix multiplication
+            wmma::mma_sync(acc_frag, a_frag, b_frag, acc_frag);
         }
         if (C != nullptr) /* else C[...] = 0 */ {
             const float* C_ldg_ptr = reinterpret_cast<const float*>(C + warp_rid_offset * N + warp_cid_offset);
@@ -1176,7 +1170,7 @@ int main(int argc, char *argv[]) {
 
     const dim3 block_size(512, 1, 1);
     const dim3 grid_size((N + 63) / 64, (M + 63) / 64, 1);
-    simple_wmma_64x64_16x16x16_kernel<<<grid_size, block_size>>>(d_A, d_B, nullptr, d_C, 1, 0, M, N, K);
+    simple_wmma_m16n16k16_64x64x16_kernel<<<grid_size, block_size>>>(d_A, d_B, nullptr, d_C, 1, 0, M, N, K);
     cudaMemcpy(ret_C, d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost);
 
     host_gemm<row_major, col_major, row_major>(h_A, h_B, h_C, 1, 0, M, N, K, 1);
@@ -1186,6 +1180,14 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 ```
+
+对于一个Warp中的所有线程而言，load_matrix_sync()函数、store_matrix_sync()函数、mma_sync()函数的所有参数都必须是相同的，并且fragment的所有模板参数也必须是相同的，并且必须由一个Warp中共的所有线程调用，否则行为将是未定义的。需要注意的是，由于矩阵元素到每个线程fragment的映射未指定，因此在调用store_matrix_sync()后，必须从内存（全局内存或共享内存）中访问各个矩阵元素。
+
+Tensor Core硬件在计算时需要特殊的数据格式，这种特殊数据格式对于不同计算能力（架构）的设备而言可能是不同的，线程仅持有整个矩阵的一个fragment，这是特定于设备架构的不透明的ABI数据结构。对于参与WMMA运算的数据，开发人员不能对各个参数数据如何映射到寄存器作出任何假设。
+
+这导致的一个问题是，由于fragment是特定于架构的，若使用fragment作为形参的不同函数，在编译时使用不同的架构生成目标文件，在链接到一起时可能会导致潜在的错误，例如对于sm_70（Volta架构）和sm_75（Turning架构）而言，其fragment的格式就不相同。当与旧式的库进行链接时，最有可能出现这种链接危险。为避免这类问题，应该总是将矩阵数据使用store_matrix_sync()存储到内存中，并使用数据的地址指针作为函数参数进行传递。
+
+实际上，在计算能力7.0（Volta架构）设备的第一代Tensor Core上，因为是设计初期，其物理设计比较复杂，Tensor Core的数据在寄存器中还需要进行线程分组，同一数据还需要存储两次，非常不简洁。而从计算能力7.5（Turning架构）的设备开始，第二代及之后的Tensor Core的数据在寄存器中的摆放方式就非常规整，具体的摆放方式可以查看官方文档。
 
 # 性能优化指南
 

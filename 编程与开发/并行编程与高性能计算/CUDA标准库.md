@@ -162,10 +162,11 @@ $$
 
 | \<type\>        | \<t\> | Meaning                  |
 | --------------- | ----- | ------------------------ |
-| float           | s, S  | real single-precision    |
-| double          | d, D  | real double-precision    |
-| cuComplex       | c, C  | complex single-precision |
-| cuDoubleComplex | z, Z  | complex double-precision |
+| half            | h, H  | real half precision      |
+| float           | s, S  | real single precision    |
+| double          | d, D  | real double precision    |
+| cuComplex       | c, C  | complex single precision |
+| cuDoubleComplex | z, Z  | complex double precision |
 
 使用Re()表示复数的实部，使用Im()表示复数的虚部，使用小写希腊字母α,β等表示标量，使用小写拉丁字母a,b表示向量，使用大写拉丁字母A,B表示矩阵。
 

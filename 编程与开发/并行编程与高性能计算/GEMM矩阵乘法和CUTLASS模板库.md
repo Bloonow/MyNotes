@@ -460,6 +460,8 @@ $$
 
 <img src="GEMM矩阵乘法和CUTLASS模板库.assets/Thread Layout for LDS at 128x256.png" style="zoom:12%;" />
 
+# 矩阵乘法的Tensor Core实现
+
 # Efficient GEMM in CUDA
 
 朴素地，矩阵乘法可以使用多层嵌套循环实现，在并行编程环境下，可以使用不同的并行资源对多层嵌套的矩阵乘法计算进行Tiling平铺分片，以利用并行硬件的并发性、数据的存储局部性等。CUTLASS将通用矩阵乘法GEMM映射到GPU设备上，并使用CUDA并行编程模型中的并行资源，包括Device设备、Kernel核函数、Threadblock线程块、Warp线程束、Thread线程、Instruction指令等多个层级，对矩阵乘法进行并行分片，伪代码如下所示。
@@ -775,7 +777,7 @@ cutlass  # CUTLASS Template Library
 └── conv       # Implict GEMM for Convolution
 ```
 
-> 在项目结构中，通常文件目录与命名空间的组成方式是一致的，例如，命名空间cutlass::gemm::device对应到cutlass::gemm::device目录。
+> 在项目结构中，通常文件目录与命名空间的组成方式是一致的，例如，命名空间cutlass::gemm::device对应到cutlass/gemm/device目录。
 >
 > 因为CUTLASS模板库的所有代码都位于cutlass根命名空间中，故在介绍时默认省略cutlass::命名空间。
 
