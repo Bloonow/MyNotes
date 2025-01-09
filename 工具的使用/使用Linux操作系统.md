@@ -530,7 +530,7 @@ Host connection_name
   HostName remote_host
   Port port
   User user
-  IdentityFile $HOME/.ssh/id_rsa
+  IdentityFile $UserPath/.ssh/id_rsa
 ```
 
 # FRP

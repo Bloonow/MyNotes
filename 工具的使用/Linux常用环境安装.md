@@ -309,6 +309,7 @@ sudo apt install nvidia-driver-550
 
 ```shell
 sudo apt-get remove --purge nvidia*
+sudo apt autoremove
 ```
 
 首先需要禁用系统自带的Nouveau开源驱动程序，编辑/etc/modprobe.d/blacklist-nouveau.conf配置文件，在最后添加如下几行命令。
@@ -375,6 +376,12 @@ sudo init 5
 ```shell
 sudo /usr/bin/nvidia-uninstall
 ```
+
+需要注意的是，在启用Secure Boot的主板以及较新的Ubuntu系统上安装较新的NVIDIA驱动时，诸如NVIDIA-Linux-x86_64-550.142.run版本，会要求进行内核签名认证。最直接的安装方式，就是进Bios把Secure Boot关掉。
+
+选择Sign the kernel module，即会进行签名。然后选择Generate a new key pair，这就会在/usr/share/nvidia目录下生成一个nvidia\*.der文件和一个nvidia\*.key文件，前者是一个私钥，后者是一个公钥。然后选择No不删除已有的密钥文件。之后是两次Ok确认密钥文件。然后选择Install signed kernel module安装即可，一些配置可以根据具体需求选择。
+
+在安装完成之后，使用modprobe nvidia挂载NVIDIA驱动时会出现权限错误，此时使用sudo mokutil --import /usr/share/nvidia/nvidia*.der命令将密钥添加到内核的信任列表中，并按要求输入两次root密码，完成后使用sudo reboot重启。重启后在进入系统前会出现蓝色界面，选择第二个选项，然后选择Continue，然后选择Yes输入密码，选择Reboot重启。之后重新输入modprobe nvidia挂载NVIDIA驱动。
 
 ## 3. 安装CUDA开发套件
 

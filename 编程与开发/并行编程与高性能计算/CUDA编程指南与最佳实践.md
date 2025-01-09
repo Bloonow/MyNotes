@@ -1110,8 +1110,8 @@ using namespace nvcuda;
  * Threadblock Tile : [M, N, K] = [64, 64, 16]
  * Warp Tile : [M, N, K] = [16, 16, 16]
  */
-__global__ void simple_wmma_m16n16k16_64x64x16_kernel(
-    half* A, half* B, const float* C, float* D, float alpha, float beta,
+__global__ void simple_wmma_hgemm_m16n16k16_64x64x16_kernel(
+    const half* A, const half* B, const float* C, float* D, float alpha, float beta,
     const uint32_t M, const uint32_t N, const uint32_t K
 ) {
     assert(M % 16 == 0 && N % 16 == 0 && K % 16 == 0);
@@ -1119,20 +1119,28 @@ __global__ void simple_wmma_m16n16k16_64x64x16_kernel(
     uint32_t warp_cid_offset = blockIdx.x * 64 + threadIdx.x / 32 % 4 * 16;
 
     // [A|B][NEXT] = [A|B]_ldg_ptr + K_tile;  A is row-major, B is col-major
-    const half* A_ldg_ptr = reinterpret_cast<const half*>(A + warp_rid_offset * K);
-    const half* B_ldg_ptr = reinterpret_cast<const half*>(B + warp_cid_offset * K);
+    const half* A_ldg_ptr = A + warp_rid_offset * K;
+    const half* B_ldg_ptr = B + warp_cid_offset * K;
 
     // Declare the fragments
     wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> a_frag;
     wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::col_major> b_frag;
-    wmma::fragment<wmma::accumulator, 16, 16, 16, float> c_frag;
     wmma::fragment<wmma::accumulator, 16, 16, 16, float> acc_frag;
     // Initialize the output to zero
-    wmma::fill_fragment(c_frag, 0);
     wmma::fill_fragment(acc_frag, 0);
 
     // Bounds checking
     if (warp_rid_offset < M && warp_cid_offset < N) {
+        if (C != nullptr && beta != 0) {
+            // 直接将 beta * C 加到最终结果 acc_frag 上，如此无需再占用额外的 c_frag 寄存器
+            // 为保证最终结果乘以 alpha 之后正确，此处对 beta 值进行缩放修正
+            beta /= alpha;
+            const float* C_ldg_ptr = C + warp_rid_offset * N + warp_cid_offset;
+            wmma::load_matrix_sync(acc_frag, C_ldg_ptr, N, wmma::mem_row_major);
+            #pragma unroll
+            for (uint32_t i = 0; i < acc_frag.num_elements; i++) { acc_frag.x[i] *= beta; }
+        }
+
         // K-Loop, and K_tile is 16
         for (uint32_t num_k_tiles = K / 16; num_k_tiles > 0; --num_k_tiles) {
             // Load the inputs
@@ -1144,16 +1152,11 @@ __global__ void simple_wmma_m16n16k16_64x64x16_kernel(
             // Perform the matrix multiplication
             wmma::mma_sync(acc_frag, a_frag, b_frag, acc_frag);
         }
-        if (C != nullptr) /* else C[...] = 0 */ {
-            const float* C_ldg_ptr = reinterpret_cast<const float*>(C + warp_rid_offset * N + warp_cid_offset);
-            wmma::load_matrix_sync(c_frag, C_ldg_ptr, N, wmma::mem_row_major);
-        }
-        // D = alpha * A * B + beta * C
-        for (int i = 0; i < acc_frag.num_elements; i++) {
-            acc_frag.x[i] = alpha * acc_frag.x[i] + beta * c_frag.x[i];
-        }
+        // Use the alpha to scale acc_frag
+        #pragma unroll
+        for (uint32_t i = 0; i < acc_frag.num_elements; i++) { acc_frag.x[i] *= alpha; }
         // Store the output
-        float* D_stg_ptr = reinterpret_cast<float*>(D + warp_rid_offset * N + warp_cid_offset);
+        float* D_stg_ptr = D + warp_rid_offset * N + warp_cid_offset;
         wmma::store_matrix_sync(D_stg_ptr, acc_frag, N, wmma::mem_row_major);
     }
 }
@@ -1170,7 +1173,7 @@ int main(int argc, char *argv[]) {
 
     const dim3 block_size(512, 1, 1);
     const dim3 grid_size((N + 63) / 64, (M + 63) / 64, 1);
-    simple_wmma_m16n16k16_64x64x16_kernel<<<grid_size, block_size>>>(d_A, d_B, nullptr, d_C, 1, 0, M, N, K);
+    simple_wmma_hgemm_m16n16k16_64x64x16_kernel<<<grid_size, block_size>>>(d_A, d_B, nullptr, d_C, 1, 0, M, N, K);
     cudaMemcpy(ret_C, d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost);
 
     host_gemm<row_major, col_major, row_major>(h_A, h_B, h_C, 1, 0, M, N, K, 1);

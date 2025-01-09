@@ -104,24 +104,24 @@ CUDA-GDB调试器用于在Linux系统上调试CUDA应用程序，它是GDB调试
 使用cuda-gdb命令进行调试，可以使用可执行文件、核心转储、进程编号作为拟调试对象。使用无参数的cuda-gdb命令可进入CUDA-GDB调试环境，键入help可查看命令手册，键入help后跟命令类别查看该类命令，键入quit或q退出调试环境。
 
 ```shell
-gdb [option] executable_file
+cuda-gdb [option] executable_file
 ```
 
 使用--args选项，可以在可执行文件之后为程序指定命令行参数；使用--core=COREFILE选项分析核心转储文件；使用--exec=EXECFILE选项指定可执行文件；使用--pid=PID选项指定要附加到的进程；使用--directory=DIR指定源文件搜索目录。需要注意的是，cuda-gdb不支持--tui选项开启文本用户界面。
 
 CUDA-GDB与GDB的使用方法类似，而且对于主机代码，使用GDB原有命令即可进行调试，对于设备代码，CUDA-GDB额外提供以cuda开头的命令扩展。例如，使用info cuda threads命令可以查看CUDA线程，使用cuda thread #命令可以切换CUDA线程。在CUDA-GDB调试模式下，一些CUDA专有的常用命令如下所示，更详细命令可使用help命令查看，或键入apropos命令以查询与给定字符串相匹配的命令。
 
-| 命令                           | 描述                                                         |
-| ------------------------------ | ------------------------------------------------------------ |
-| info cuda devices, cuda device | 显示可见的GPU设备；切换到给定设备                            |
-| info cuda sms, cuda sm         | 显示使用的SM流多处理器；切换到给定SM流多处理器               |
-| info cuda kernels, cuda kernel | 显示当前正在执行的Kernel核函数；切换到给定Kernel核函数执行   |
-| info cuda blocks, cuda block   | 显示线程块；切换到给定线程块，可使用一维索引n指定，也可使用三维索引[x,y,z]指定 |
-| info cuda threads, cuda thread | 显示线程；切换到给定线程，可使用一维索引n指定，也可使用三维索引[x,y,z]指定 |
-| info cuda warps, cuda warp     | 显示线程束；切换到给定线程束                                 |
-| info cuda lanes, cuda lane     | 显示Warp中的线程；切换到Warp中给定的线程                     |
-| info cuda contexts             | 显示当前的GPU上下文                                          |
-| cuda grid                      | 切换到给定线程网格                                           |
+| 命令                                   | 描述                                                         |
+| -------------------------------------- | ------------------------------------------------------------ |
+| info cuda devices, cuda device #       | 显示可见的GPU设备；切换到给定设备                            |
+| info cuda sms, cuda sm #               | 显示使用的SM流多处理器；切换到给定SM流多处理器               |
+| info cuda kernels, cuda kernel #       | 显示当前正在执行的Kernel核函数；切换到给定Kernel核函数执行   |
+| info cuda blocks, cuda block (#,#,#)   | 显示线程块；切换到给定线程块，可使用一维索引n指定，也可使用三维索引(x,y,z)指定 |
+| info cuda threads, cuda thread (#,#,#) | 显示线程；切换到给定线程，可使用一维索引n指定，也可使用三维索引(x,y,z)指定 |
+| info cuda warps, cuda warp #           | 显示线程束；切换到给定线程束                                 |
+| info cuda lanes, cuda lane #           | 显示Warp中的线程；切换到Warp中给定的线程                     |
+| info cuda contexts                     | 显示当前的GPU上下文                                          |
+| cuda grid                              | 切换到给定线程网格                                           |
 
 在调试CUDA程序的过程中，如果程序挂起或陷入无限循环，可使用CTRL+C手动中断应用程序，此时GPU会暂停且CUDA-GDB会出现提示，用户可自行决定检查、修改、单步执行、恢复或终止程序。此功能仅限于在CUDA-GDB调试器中运行的应用程序。
 
