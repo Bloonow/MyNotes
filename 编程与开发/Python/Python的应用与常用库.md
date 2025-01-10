@@ -842,8 +842,7 @@ conda info
 如果在使用Environment Modules软件管理环境变量的集群上，并且在.bashrc文件中使用诸如module load anaconda命令加载模块，则要按照如下方式激活。因为module load命令会简单地将路径拼接到\$PATH变量之前，而conda activate则会检查\$PATH环境中是否存在已激活的python环境，这将导致可能的逻辑错误。例如，在登录节点加载.bashrc时加载anaconda并激活所需env_name环境，而使用sbatch将任务run.sh提交到计算机点，再次加载.bashrc时，因module load只执行简单拼接，而conda activate会先检查再确定是否激活，这使得anaconda路径被重复拼接到\$PATH变量之前，而目标python环境env_name因已存在于\$PATH路径中不会重复激活，从而导致anaconda的基础base环境覆盖掉所需python环境。
 
 ```shell
-source deactivate
-source activate env_name
+conda deactivate
 conda activate env_name
 ```
 

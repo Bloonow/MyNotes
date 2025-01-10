@@ -131,7 +131,7 @@ CUDA-GDB与GDB的使用方法类似，而且对于主机代码，使用GDB原有
 
 # Nsight Compute
 
-Nsight是NVIDIA面向开发者提供的开发工具套件，能提供深入的跟踪、调试、评测和分析，以优化跨NVIDIA GPU和CPU的复杂计算应用程序。Nsight主要包含Nsight Graphics、Nsight System、Nsight Compute三部分。在连接服务器时，可能会出现https://developer.nvidia.com/nvidia-development-tools-solutions-ERR_NVGPUCTRPERM-permission-issue-performance-counters中所提到的权限错误。
+Nsight是NVIDIA面向开发者提供的开发工具套件，能提供深入的跟踪、调试、评测和分析，以优化跨NVIDIA GPU和CPU的复杂计算应用程序。Nsight主要包含Nsight Graphics、Nsight System、Nsight Compute三部分。在连接服务器时，可能会出现https://developer.nvidia.com/nvidia-development-tools-solutions-ERR_NVGPUCTRPERM-permission-issue-performance-counters中所提到的权限错误，使用root用户在/etc/modprobe.d目录下创建一个.conf后缀的文件，并在其中写入options nvidia NVreg_RestrictProfilingToAdminUsers=0即可，然后在Debian系列系统上使用update-initramfs -u -k all更新内核，并重启。
 
 Nsight Graphics是一个用于调试、评测和分析Microsoft Windows和Linux上的图形应用程序的工具。它允许优化基于Direct3D 11，Direct3D 12，DirectX，Raytracing 1.1，OpenGL，Vulkan和KHR Vulkan Ray Tracing Extension的应程序的性能。
 

@@ -460,7 +460,13 @@ $$
 
 <img src="GEMM矩阵乘法和CUTLASS模板库.assets/Thread Layout for LDS at 128x256.png" style="zoom:12%;" />
 
-# 矩阵乘法的Tensor Core实现
+## 矩阵乘法的Tensor Core实现
+
+因为一个WMMA指令需要一个Warp执行，而一个WMMA指令所用到的数据通常是诸如M×N×K＝16×16×16之类的形状，故一条WMMA指令就会用掉在维度轴K上长达16的数据，因此相比于传统使用CUDA Core的矩阵乘法而言（其K_tile通常为8或者16），使用Tensor Core实现的矩阵乘法往往需要更大的K_tile数据。
+
+若使用K_wmma表示一个WMMA指令所用到的数据在维度轴K上的长度（通常是8或者16），那么在划分A_tile和B_tile时，通常会将K_tile划分成K_wmma的整数倍，可以使用Chunks_K表示具有多少个K_wmma长度的数据，则K_tile＝Chunks_K×K_wmma，其中Chunks_K通常取4或者8，具体取决于设备可以提供多少共享内存的容量。
+
+例如，对于数据类型为half-float且形如m16n16k16的WMMA指令，假设Chunks_K＝8，线程块所划分的数据形状为M_tile,N_tile,K_tile＝128,128,128，那么一个A_tile所需要的共享内存容量是128×128×sizeof(half)＝32KiB，同样B_tile所需要的共享内存容量同样是32KiB，共需要64KiB的共享内存。实际上，为避免共享内存的Bank冲突，A_tile和B_tile需要一定的偏斜（skew）量，因为wmma::load_matrix_sync指令要求内存地址256位（32字节）对齐，故维度轴K上的每一维数都需要Skews_half＝16个half类型元素的偏斜。因此，当Chunks_K取值为8时，所需的实际共享内存容量为144×128×sizeof(half)×2＝72KiB的共享内存容量。若再考虑双缓冲，则需要更多的共享内存容量。
 
 # Efficient GEMM in CUDA
 
