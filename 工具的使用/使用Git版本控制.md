@@ -27,7 +27,7 @@ git config
 在使用Git时首先要设置用户名和电子邮箱，以标识进行操作的用户，如下所示。
 
 ```shell
-git config --global user.name "Bloonow"
+git config --global user.name "Bloonow@PC"
 git config --global user.email "excelbloonow@gmail.com"
 ```
 
