@@ -538,7 +538,7 @@ Build cuda_11.3.r11.3/compiler.29920130_0
 sudo /path/to/cuda-11.3/bin/cuda-uninstaller
 ```
 
-## 4. 安装cuDNN库
+## 4. 安装cuDNN库与cutlass库
 
 选择与所安装CUDA版本对应的cuDNN版本，可从https://developer.nvidia.com/rdp/cudnn-archive下载。如下所示。
 
@@ -565,6 +565,10 @@ sudo chmod a+r $HOME/.B/cuda113/lib64/libcudnn*
 而在Windows平台下，需要将cuDNN目录下的bin/cudnn\*.dll，include/cudnn\*.h，和lib/cudnn\*.lib文件都复制到CUDA相应目录下。
 
 > 值得注意的是，在安装CUDA或PyTorch等其它依赖于cuDNN的第三方库时，如果第三方库会检测并自动安装cuDNN库，则应该使用第三方库所安装的cuDNN库，无需再手动安装cuDNN库并配置环境，以避免与第三方库所依赖的cuDNN冲突。
+
+CUTLASS是CUDA Templates for Linear Algebra Subroutines and Solvers的缩写，是基于CUDA运行时的线性代数例程与求解器的C++模板库，用于实现高性能的矩阵乘法GEMM及其相关计算。除通用矩阵乘法之外，CUTLASS通过隐式GEMM算法实现高性能的卷积操作。
+
+CUTLASS库的源码可在https://github.com/NVIDIA/cutlass网址获得，也可通过git clone git@github.com:NVIDIA/cutlass.git克隆下载。然后将cutlass/include目录下的所有文件（也即cutlass和cute两个子文件夹）复制到CUDA编译器安装路径下的include文件夹中即可，即诸如cuda113/include之类的目录。
 
 # 无图形界面安装Matlab
 
