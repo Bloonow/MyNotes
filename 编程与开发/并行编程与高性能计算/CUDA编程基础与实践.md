@@ -2088,7 +2088,20 @@ __host__ void func_call() {
 
 上述示例中，每个线程块都使用一个float数组和一个double数组，其长度都是线程块维度thread_num，故在核函数的执行配置中，手动指定两个数组总共所占的共享内存空间大小，并在核函数中手动将线程块的总共享内存空间划分给float数组和double数组使用。
 
-此外，无论使用什么GPU进行测试，使用动态共享内存的核函数，与使用静态共享内存的核函数，其在执行时间上几乎没有差别。所以，使用动态共享内存不会影响程序性能，但有时可提高程序的可维护性。
+无论使用什么GPU进行测试，使用动态共享内存的核函数，与使用静态共享内存的核函数，其在执行时间上几乎没有差别。使用动态共享内存不会影响程序性能，但有时可提高程序的可维护性。但需要注意的是，在核函数内声明的固定容量的共享内存会有一个最大值限制，通常是0xC000字节（48KiB），当核函数所需要的共享内存超过48KiB时，就需要使用动态共享内存，并且在调用核函数之前需要使用cudaFuncSetAttribute()为核函数配置所需要的最大共享内存容量，如下。
+
+```c++
+__global__ void my_kernel() {
+    extern __shared__ char smem[];
+}
+
+int main(int argc, char *argv[]) {
+    size_t smem_bytes = 64 * 1024;  // 64 KiB
+    cudaFuncSetAttribute(my_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
+    my_kernel<<<grid_size, block_size, smem_bytes>>>();
+    return 0;
+}
+```
 
 ## （二）使用共享内存进行矩阵转置
 
