@@ -563,13 +563,13 @@ CUTLASS库包括若干组件。在顶层include目录中提供CUTLASS模板库�
 在cutlass/util/device_memory.h头文件中，提供GPU设备全局内存管理函数的C++包装接口DeviceAllocation\<T\>模板类，其使用smart_ptr智能指针对内存空间地址指针进行管理，在模板类的实例对象超出作用域时，会自动释放已分配的设备内存，避免内存泄漏问题。
 
 ```c++
-__global__ void device_alloc_demo_kernel(float *device_ptr) {}
+__global__ void demo_device_alloc_kernel(float *device_ptr) {}
 
-void device_alloc_demo() {
+void demo_device_alloc() {
     int num_of_float = 1024;
     // using allocation = cutlass::DeviceAllocation<T>;
     cutlass::device_memory::allocation<float> device_alloc(num_of_float);
-    device_alloc_demo_kernel<<<128, 128>>>(device_alloc.get());
+    demo_device_alloc_kernel<<<128, 128>>>(device_alloc.get());
     // Device memory is automatically freed when device_alloc goes out of scope
 }
 ```
@@ -631,7 +631,7 @@ public:
 一个示例如下所示，使用单精度列主序存储一个二维矩阵张量，并获得该矩阵的主机内存地址指针与设备内存地址指针，及其TensorRef和TensorView对象。
 
 ```c++
-void tensor_demo() {
+void demo_tensor() {
     int rows = 128;
     int columns = 96;
     cutlass::HostTensor<float, cutlass::layout::ColumnMajor> tensor({rows, columns});
@@ -669,7 +669,7 @@ public:
 在cutlass/util/tensor_view_io.h头文件中，对位于主机端上的TensorView对象重载了流输出运算符operator\<\<()，以方便打印元素数据，如下所示。
 
 ```c++
-void print_demo() {
+void demo_print() {
     int rows = 2;
     int columns = 3;
     cutlass::HostTensor<int, cutlass::layout::ColumnMajorInterleaved<2>> tensor({rows, columns});
@@ -696,7 +696,7 @@ void print_demo() {
 在cutlass/util/reference/host/tensor_fill.h头文件和cutlass/util/reference/device/tensor_fill.h头文件中，提供用于初始化TensorView对象的各种辅助方法，可对主机内存对象或设备内存对象进行指定模式的初始化，包括填充指定值、正则随机初始化、高斯随机初始化等。
 
 ```c++
-void fill_demo() {
+void demo_fill() {
     int rows = 128;
     int columns = 96;
     cutlass::HostTensor<float, cutlass::layout::ColumnMajor> tensor({rows, columns});
@@ -728,7 +728,7 @@ void fill_demo() {
 在cutlass/util/reference/host/gemm.h头文件中，提供主机端GEMM通用矩阵乘法计算的实现，一个使用示例如下所示。
 
 ```c++
-void host_gemm_demo() {
+void demo_host_gemm() {
     int M = 64, N = 32, K = 16;
     cutlass::half_t alpha = 1.5_hf, beta = -1.25_hf;
 
@@ -876,7 +876,7 @@ struct AlignedBuffer {
 AlignedBuffer\<T,N,Align\>是一个固定长度的缓冲区，不会调用所持有类型的构造方法。可使用AlignedBuffer<>::data()方法获得内存空间的地址指针。常用于获取一段以给定字节对齐的连续内存空间，如设备全局内存或共享内存，以用于向量化操作，一个示例如下所示。
 
 ```c++
-__global__ void aligned_buffer_demo_kernel() {
+__global__ void demo_aligned_buffer_kernel() {
     const int kN = 1024;
     __shared__ AlignedBuffer<half_t, kN> smem_buffer;
     AlignedArray<half_t, 8> *ptr = reinterpret_cast<AlignedArray<half_t, 8>*>(smem_buffer.data());
@@ -913,7 +913,7 @@ struct NumericConverter {
 NumericConverter\<T,S\>会尽可能地在目标架构上使用硬件加速，并支持多种舍入模式。此外，NumericArrayConverter\<T,S,N\>支持转换Array数组类型，一个示例如下所示。
 
 ```c++
-void converter_demo() {
+void demo_converter() {
     int const kN = 16;
     Array<int8_t, kN> destination;
     Array<int, kN> source;
@@ -1085,7 +1085,7 @@ public:
 一个使用布局将逻辑坐标映射到存储偏移的示例，如下所示。
 
 ```c++
-void layout_demo() {
+void demo_layout() {
     int64_t ld = 32;
     ColumnMajor col_layout(ld);
     RowMajor    row_layout(ld);
@@ -1169,7 +1169,7 @@ public:
 使用TensorRef或TensorView访问张量元素的示例如下所示。
 
 ```c++
-void tensor_view_demo() {
+void demo_tensor_view() {
     int8_t *ptr = (int8_t*)malloc(sizeof(int8_t) * 16 * 9);
     for (int i = 0; i < 16 * 9; ptr[i++] = i);
     TensorView<int8_t, ColumnMajor> view(ptr, ColumnMajor(16), MatrixCoord(16, 9));
@@ -1584,7 +1584,7 @@ struct Wmma<
 在cutlass/gemm/device目录中，提供设备层级的GEMM接口，用于在GPU设备上启动矩阵乘法的kernel核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。由模板类提供实现，即cutlass::gemm::device::Gemm模板类、cutlass::gemm::device::GemmArray模板类、cutlass::gemm::device::GemmBatched模板类、cutlass::gemm::device::GemmSplitKParallel模板类。一些GEMM计算的示例如下。
 
 ```c++
-void gemm_demo() {
+void demo_gemm() {
     using Gemm = cutlass::gemm::device::Gemm<
         float, cutlass::layout::ColumnMajor,
         float, cutlass::layout::ColumnMajor,
@@ -1595,7 +1595,7 @@ void gemm_demo() {
         {{M, N, K}, {d_A, M}, {d_B, K}, {d_C, M}, {d_C, M}, {alpha, beta}}
     );
 }
-void gemm_batched_demo() {
+void demo_gemm_batched() {
     using GemmBatched = cutlass::gemm::device::GemmBatched<
         float, cutlass::layout::ColumnMajor,
         float, cutlass::layout::ColumnMajor,
@@ -1606,7 +1606,7 @@ void gemm_batched_demo() {
         {{M, N, K}, {d_A, M}, M * K, {d_B, K}, K * N, {d_C, M}, M * N, {d_C, M}, M * N, {alpha, beta}, Batch}
     );
 }
-void gemm_array_demo() {
+void demo_gemm_array() {
     using GemmArray = cutlass::gemm::device::GemmArray<
         float, cutlass::layout::ColumnMajor,
         float, cutlass::layout::ColumnMajor,
@@ -1617,7 +1617,7 @@ void gemm_array_demo() {
         {{M, N, K}, d_A_array, M, d_B_array, K, d_C_array, M, d_C_array, M, {alpha, beta}, Batch}
     );
 }
-void gemm_splitK_demo() {
+void demo_gemm_splitK() {
     using GemmSplitK = cutlass::gemm::device::GemmSplitKParallel<
         float, cutlass::layout::ColumnMajor,
         float, cutlass::layout::ColumnMajor,
@@ -1655,3 +1655,4 @@ cutlass
 └── reduction  # Reduction kernels
 ```
 
+CUTLASS在实现代码的几乎每个层级都提供了以default为前缀的默认配置文件default\_\*.cu，若不清楚每个层级的模板参数如何指定，可以参考这些默认配置。
