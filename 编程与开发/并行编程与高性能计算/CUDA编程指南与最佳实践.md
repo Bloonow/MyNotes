@@ -945,7 +945,7 @@ void __syncwarp(unsigned mask=0xffffffff);
 T __ldg(const T* address);
 ```
 
-缓存暗示的加载函数（Load Functions Using Cache Hints）在加载数据的过程中，会使用相应的缓存操作符，对应着PTX伪汇编代码。
+缓存暗示的加载函数（Load Functions Using Cache Hints）在加载数据的过程中，会使用相应的缓存操作符，对应着PTX虚拟机代码。
 
 ```c++
 T __ldca(const T* address);
@@ -955,7 +955,7 @@ T __ldlu(const T* address);
 T __ldcv(const T* address);
 ```
 
-缓存暗示的存储函数（Store Functions Using Cache Hints）在存储数据的过程中，会使用相应的缓存操作符，对应着PTX伪汇编代码。
+缓存暗示的存储函数（Store Functions Using Cache Hints）在存储数据的过程中，会使用相应的缓存操作符，对应着PTX虚拟机代码。
 
 ```c++
 void __stwb(T* address, T value);
@@ -1089,9 +1089,9 @@ void mma_sync(fragment<...>& d, const fragment<...>& a, const fragment<...>& b, 
 
 fragment是一个模板类，其实例对象包换矩阵的一部分，分布在一个Warp的所有线程中。模板参数Use指定了该fragment如何参与矩阵运算，可以用matrix_a表示第一个输入矩阵A，用matrix_b表示第二个输入矩阵B，用accumulator表示源矩阵C或累加器结果矩阵D。模板参数m,n,k指定了参与该Warp矩阵计算的形状。模板参数T指定了输入矩阵中元素的数据类型，累加器矩阵中元素的数据类型可以参考[Element Types](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#element-types-and-matrix-sizes)表格。模板参数Layout指定了该fragment所表示的输入矩阵在内存当中的存储布局，可以用row_major表示行主序存储，用col_major表示列主序存储，对于accumulator而言该模板参数使用void表示无需指定。
 
-load_matrix_sync()用于从内存（全局内存或共享内存）中加载fragment，该函数会阻塞直到一个Warp中的所有线程都到达才会执行，执行完之后，一个Warp中的所有线程都能够加载到它所负责的fragment数据。参数mptr是指向内存中矩阵的第一个元素的指针，所指向的地址必须是256位（32字节）对齐的。参数ldm是矩阵在内存中存储的主维度轴上的维数，对于\_\_half而言值必须是8的整数倍，对于int而言值必须是4的整数倍，也即必须是16字节的整数倍。参数layout_t用于accumulator累加器的情况，表示矩阵在内存中是按照mem_row_major行主序存储，还是按照mem_col_major列主序存储。
+load_matrix_sync()用于从内存（全局内存或共享内存）中加载fragment，该函数会阻塞直到一个Warp中的所有线程都到达才会执行，执行完之后，一个Warp中的所有线程都能够加载到它所负责的fragment数据。参数mptr是指向内存中矩阵的第一个元素的指针，所指向的地址必须是256位（32字节）对齐的。参数ldm是矩阵在内存中存储的前导维度轴上的维数，对于\_\_half而言值必须是8的整数倍，对于int而言值必须是4的整数倍，也即必须是16字节的整数倍。参数layout_t用于accumulator累加器的情况，表示矩阵在内存中是按照mem_row_major行主序存储，还是按照mem_col_major列主序存储。
 
-store_matrix_sync()用于向内存（全局内存或共享内存）中存储fragment，该函数会阻塞直到一个Warp中的所有线程都到达才会执行，执行完之后，一个Warp中的所有线程都将它所负责的fragment数据存储到正确的位置。参数mptr是指向内存中矩阵的第一个元素的指针，所指向的地址必须是256位（32字节）对齐的。参数ldm是矩阵在内存中存储的主维度轴上的维数，对于\_\_half而言值必须是8的整数倍，对于int而言值必须是4的整数倍，也即必须是16字节的整数倍。参数layout_t用于指定accumulator累加器的内存布局，表示矩阵在内存中是按照mem_row_major行主序存储，还是按照mem_col_major列主序存储。
+store_matrix_sync()用于向内存（全局内存或共享内存）中存储fragment，该函数会阻塞直到一个Warp中的所有线程都到达才会执行，执行完之后，一个Warp中的所有线程都将它所负责的fragment数据存储到正确的位置。参数mptr是指向内存中矩阵的第一个元素的指针，所指向的地址必须是256位（32字节）对齐的。参数ldm是矩阵在内存中存储的前导维度轴上的维数，对于\_\_half而言值必须是8的整数倍，对于int而言值必须是4的整数倍，也即必须是16字节的整数倍。参数layout_t用于指定accumulator累加器的内存布局，表示矩阵在内存中是按照mem_row_major行主序存储，还是按照mem_col_major列主序存储。
 
 fill_fragment()用于填充fragment，由于矩阵元素到每个fragment的映射未指定，因此该函数通常由Warp中的所有线程调用，并且指定相同的v值。
 

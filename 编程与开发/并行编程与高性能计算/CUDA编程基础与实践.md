@@ -173,7 +173,7 @@ CUDA中的核函数与C++中的函数是类似的，但一个显著的差别是�
 
 CUDA程序的源文件用.cu作为扩展名。CUDA程序的编译器NVCC在编译一个CUDA程序时，先将全部源代码分离为主机代码和设备代码，主机代码（纯粹C++代码）交给C++编译器（例如g++或cl）负责编译，而设备代码（剩余部分）则由NVCC负责编译。主机代码完整地支持C++语法，但设备代码只部分地支持C++语法。
 
-对于设备代码，NVCC先将设备代码编译为虚拟的**PTX（Parallel Thread Execution）伪汇编代码**，它是一种中间表示；再将PTX代码编译为二进制的cubin目标代码，可以由机器直接执行的二进制目标代码对应的汇编称为**SASS（Streaming Assembly）流汇编代码**，又称为低级汇编指令（Low-Level Assembly Instruction），它是基于特定GPU架构的。
+对于设备代码，NVCC先将设备代码编译为虚拟的**PTX（Parallel Thread Execution）代码**，它是一种中间表示；再将PTX代码编译为二进制的cubin目标代码，可以由机器直接执行的二进制目标代码对应的汇编称为**SASS（Streaming Assembly）流汇编代码**，又称为低级汇编指令（Low-Level Assembly Instruction），它是基于特定GPU架构的。
 
 在将.cu源代码编译为PTX代码时，需要用编译器选项-arch=compute_XY指定一个虚拟架构的计算能力，用以确定代码中能够使用的CUDA功能。在将PTX代码编译为cubin代码时，需要用选项-code=sm_ZW指定一个真实架构的计算能力，用以确定可执行文件能够使用的GPU设备。真实架构的计算能力必须大于等于虚拟架构的计算能力。如果仅针对一个GPU编译程序，一般情况下建议将以上两个计算能力都指定为目标GPU的计算能力。
 

@@ -106,7 +106,7 @@ SM的Warp调度器（Warp Scheduler）的工作频率是1.5GHz处理器时钟频
 
 高抽象层级的图形语言或编程语言的编译器会生成中间指令，例如DX10向量指令或PTX标量指令，然后对其进行优化并将其转换为二进制的GPU指令。PTX为编译器提供了一个稳定的目标指令集，并提供了对几代GPU的兼容性。优化器很容易将DX10向量指令展开为多个Tesla SM标量指令；而PTX标量指令优化到Tesla SM标量指令大约是一一对应的。由于中间语言使用虚拟寄存器，优化器需要分析数据依赖关系并分配真实寄存器。它消除了死代码，可行时将指令折叠在一起，并优化了SIMT分支发散和收敛点。
 
-> 对于设备代码，NVCC先将设备代码编译为虚拟的**PTX（Parallel Thread Execution）伪汇编代码**，它是一种中间表示；再将PTX代码编译为二进制的cubin目标代码，可以由机器直接执行的二进制目标代码对应的汇编称为**SASS（Streaming Assembly）流汇编代码**，又称为低级汇编指令（Low-Level Assembly Instruction），它是基于特定GPU架构的。
+> 对于设备代码，NVCC先将设备代码编译为虚拟的**PTX（Parallel Thread Execution）代码**，它是一种中间表示；再将PTX代码编译为二进制的cubin目标代码，可以由机器直接执行的二进制目标代码对应的汇编称为**SASS（Streaming Assembly）流汇编代码**，又称为低级汇编指令（Low-Level Assembly Instruction），它是基于特定GPU架构的。
 
 Tesla SM有一个基于寄存器的指令集，包括浮点、整数、位、转换、超越、流程控制、内存加载/存储、纹理操作。
 
@@ -459,7 +459,7 @@ NVIDIA在2018年发布的TU102芯片和TU104芯片中引入了Turing架构，并
 
 在Turing架构中，一个SM中的共享内存和L1数据缓存共用同一个96KB的物理高速缓存，并能配置最高64KB的共享内存容量。
 
-在Turing架构中，第二代张量核心Tensor Core增加了对INT8和INT4精度的支持。
+在Turing架构中，第二代张量核心Tensor Core增加了对INT8和INT4精度的支持。实际上，在Volta架构的第一代Tensor Core上，因为是设计初期，其物理设计比较复杂，Tensor Core的数据在寄存器中还需要进行线程分组，同一数据还需要存储两次，非常不简洁。而从Turning架构开始，第二代及之后的Tensor Core的数据在寄存器中的摆放方式就非常规整，具体的摆放方式可以查看官方文档。
 
 # Ampere Architecture
 

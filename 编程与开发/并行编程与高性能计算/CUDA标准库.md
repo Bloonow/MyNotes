@@ -103,7 +103,7 @@ cuBLAS是CUDA Basic Linear Algebra Subroutine的缩写，是基本线性代数�
 - cuBLASXt API，自CUDA 6.0引入。计算所使用到的数据可位于主机或多个GPU设备内存中，库会基于用户操作将数据传输到合适的GPU设备。
 - cuBLASDx API，属于MathDx库的一部分，需要单独配置。用于在kernel核函数中执行BLAS计算，可进行算子融合。
 
-BLAS库最初是在CPU环境中使用Fortran编程语言实现的，Fortran风格中的的多维数组是列主序存储的，而C风格中的多维数组是行主序存储的。因而，cuBLAS库对于矩阵和向量的存储和计算都是按照列主序的方式进行的，这一点需要特别注意。
+BLAS库最初是在CPU环境中使用Fortran编程语言实现的，Fortran风格中的的多维数组是列主序存储的，而C风格中的多维数组是行主序存储的。因而，cuBLAS库对于矩阵和向量的存储和计算都是按照列主序的方式进行的，这一点需要特别注意。 
 
 按照人类的阅读习惯，符号(M,N)表示M行N列矩阵，符号[rid,cid]表示行索引为rid列索引为cid的相应元素，推广到多维张量时，对应到各给维度轴上。例如，一个2行3列的矩阵A[2,3]，其各个元素的值如下所示。
 $$
@@ -117,6 +117,8 @@ float A_col_major[] = { 0.0, 3.0, 1.0, 4.0, 2.0, 5.0 };  // col-major
 ```
 
 注意，对于一个矩阵来说，若对其底层存储的一维数组，采用逻辑上不同的存储方式进行解释，会得到不同的存储顺序。例如，行主序存储的M行N列的矩阵，也可以看作是列存储的N行M列的矩阵。这种逻辑上的解释方式不同于矩阵转置，矩阵转置不会改变逻辑上对存储方式的解释，只会真正改变矩阵元素在内存中的存储位置。例如行主序存储的M行N列的矩阵，在执行转置操作后，会变为行主序存储的N行M列的矩阵。
+
+在cuBLAS等系列的库中（未出现诸如RowMajor和ColumnMajor的张量布局的情况），对于矩阵和向量数据而言，在底层存储上，是始终将数据解释为列主序存储的。所提供的CUBLAS_OP_T转置操作，会“真正视为”改变矩阵元素在内存中的存储位置，而不是切换逻辑上的解释方式。
 
 ## cuFFT
 
@@ -180,13 +182,13 @@ $$
 
 在cuBLAS库函数中，可能会用到两类标量参数。一是gemm系列函数，使用alpha和beta控制结果的缩放和偏置；二是诸如amax、amin、asum、rotg、rotmg、dot、nrm2之类的函数，它们计算的结果是一个标量值。对于第一类函数，当指针模式设置为CUBLAS_POINTER_MODE_HOST时，标量参数alpha与beta可以位于主机的栈内存或堆内存上，不应该位于托管内存上，此时标量值会随着API调用传递到设备，在调用完成后即可释放标量变量的内存，而无需等待API核函数执行完毕；当指针模式设置为CUBLAS_POINTER_MODE_DEVICE时，标量参数alpha与beta必须位于设备内存上，且它们的值在API核函数执行完毕之前不允许修改。对于第二类函数，当指针模式设置为CUBLAS_POINTER_MODE_HOST时，这些API函数会阻塞CPU，直到GPU完成计算并将标量结果写回主机内存；当指针模式设置为CUBLAS_POINTER_MODE_DEVICE时，API调用会立刻返回不阻塞CPU，但结果需要在API核函数执行完毕后才能访问，因此需要进行同步。无论时哪一类函数，指针模式CUBLAS_POINTER_MODE_DEVICE都允许kernel异步执行，哪怕alpha与beta标量参数是由之前调用的CUDA核函数生成的。
 
-当应用程序存在多个相互独立的任务时，可使用多个CUDA流以重叠多个任务之间的计算。使用cudaStreamCreate()函数创建一个CUDA流，并使用cublasSetStream()函数为每个cuBLAS句柄设置对应的CUDA流。需要注意的是，cublasSetStream()函数会将用户提供的workspace工作缓冲区重置为默认的工作缓冲区池。当执行大量的小矩阵乘法kernel时，无法获得执行大矩阵乘法kernel时的FLOPS。例如，执行$n\times n$的矩阵乘法时，针对$n^2$的输入会执行$n^3$的浮点运算；而执行1024个$\frac{n}{32}\times\frac{n}{32}$的矩阵乘法时，同样是$n^2$的输入，但只会获得$1024\times(\frac{n}{32})^3=\frac{n^3}{32}$的浮点运算。但通过将小的矩阵乘法kernel并行执行，可以尽可能地获得更好的性能。这可以通过使用多个CUDA流来实现，使用cublasSetStream()函数创建相应个数的CUDA流，并在调用gemm系列函数之前，使用cublasSetStream()函数设置所使用的CUDA流。尽管可以创建许多CUDA流，但在实践应用中发现，同时并行执行的CUDA流不太可能超过32个。
+当应用程序存在多个相互独立的任务时，可使用多个CUDA流以重叠多个任务之间的计算。使用cudaStreamCreate()函数创建一个CUDA流，并使用cublasSetStream()函数为每个cuBLAS句柄设置对应的CUDA流。需要注意的是，cublasSetStream()函数会将用户提供的workspace工作缓冲区重置为默认的工作缓冲区池。当执行大量的小矩阵乘法kernel时，无法获得执行大矩阵乘法kernel时的FLOPS。例如，执行$n\times n$的矩阵乘法时，针对$n^2$的输入会执行$n^3$的浮点运算；而执行1024个$\frac{n}{32}\times\frac{n}{32}$的矩阵乘法时，同样是$n^2$的输入，但只会获得$1024\times(\dfrac{n}{32})^3=\dfrac{n^3}{32}$的浮点运算。但通过将小的矩阵乘法kernel并行执行，可以尽可能地获得更好的性能。这可以通过使用多个CUDA流来实现，使用cublasSetStream()函数创建相应个数的CUDA流，并在调用gemm系列函数之前，使用cublasSetStream()函数设置所使用的CUDA流。尽管可以创建许多CUDA流，但在实践应用中发现，同时并行执行的CUDA流不太可能超过32个。
 
 在某些设备上，L1 Cache缓存与共享内存使用相同的硬件资源，可以使用cudaDeviceSetCacheConfig()进行cache配置，或使用cudaFuncSetCacheConfig()为特定函数进行cache配置。因为修改cache配置会影响kernel的并发性，cuBLAS库并未设置任何cache配置首选项，而是使用当前的设置。然而一些cuBLAS API函数，特别是矩阵乘法函数，其性能严重依赖于共享内存的空间，这一点需特别注意。
 
 尤其是当K远大于M和N时，为达到更高的GPU占用率，某些GEMM算法会沿着K维度划分计算，然后将每个划分的部分结果求和归约，以得到最终结果。对于gemmEx系列函数，当计算精度大于输出精度时，求和归约可能会发生数值溢出。而如果所有求和归约以计算精度执行，并在最后转换为输出精度，则不会发生数值溢出，而只有精度舍弃。当计算类型computeType是CUDA_R_32F，而矩阵类型Atype、Btype、Ctype是CUDA_R_16F时，则会导致精度溢出，可使用cublasSetMathMode()函数设置CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION精度模式以控制这种行为。
 
-自GPU Volta架构（计算能力7.0）以来，引入Tensor Core计算核心，可以显著加速矩阵乘法的性能。自cuBLAS 11.0.0版本以来，只要能够获得更好的性能，cuBLAS库就会在条件满足的情况下自动使用Tensor Core计算核心，除非手动使用cublasSetMathMode()函数将cublasMath_t数学模式设置为cublasSetMathMode模式。自cuBLAS 11.0.0版本以来，使用Tensor Core不再具有矩阵维度和内存对齐的限制，然而特定的矩阵维度和内存指针对齐会获得最好的性能。特别是，满足特定条件时，如下所示。
+自GPU Volta架构（计算能力7.0）以来，引入Tensor Core计算核心，可以显著加速矩阵乘法的性能。自cuBLAS 11.0.0版本以来，只要能够获得更好的性能，cuBLAS库就会在条件满足的情况下自动使用Tensor Core计算核心，除非手动使用cublasSetMathMode()函数将cublasMath_t数学模式设置为CUBLAS_PEDANTIC_MATH模式。自cuBLAS 11.0.0版本以来，使用Tensor Core不再具有矩阵维度和内存对齐的限制，然而特定的矩阵维度和内存指针对齐会获得最好的性能。特别是，满足特定条件时，如下所示。
 
 ```
 m % 8 == 0
