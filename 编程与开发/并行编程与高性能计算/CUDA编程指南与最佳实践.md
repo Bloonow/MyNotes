@@ -925,11 +925,11 @@ int __syncthreads_or(int predicate);
 
 \_\_syncthreads()函数将等待线程块中的所有线程到达此同步点，并且这些线程在\_\_syncthreads()之前的所有全局和共享内存操作对线程块中所有线程都可见。
 
-\_\_syncthreads_count()函数执行同步，同时计算线程块的所有线程的predicate断言，并返回predicate计算结果为非零的线程的数目。
+\_\_syncthreads_count()函数执行同步，同时计算线程块的所有线程的predicate谓词，并返回predicate计算结果为非零的线程的数目。
 
-\_\_syncthreads_and()函数执行同步，同时计算线程块的所有线程的predicate断言，当且仅当所有线程的predicate非零时，才返回非零。
+\_\_syncthreads_and()函数执行同步，同时计算线程块的所有线程的predicate谓词，当且仅当所有线程的predicate非零时，才返回非零。
 
-\_\_syncthreads_or()函数执行同步不，同时计算线程块的所有线程的predicate断言，只要存在线程的predicate非零，即返回非零。
+\_\_syncthreads_or()函数执行同步不，同时计算线程块的所有线程的predicate谓词，只要存在线程的predicate非零，即返回非零。
 
 ```c++
 void __syncwarp(unsigned mask=0xffffffff);
@@ -968,7 +968,7 @@ void __stwt(T* address, T value);
 
 ## 地址空间函数
 
-地址空间断言函数（Address Space Predicate Function）可以判断一个指针所指向的内存空间，是否属于给定的内存空间，是则返回1，否则返回0。
+地址空间谓词函数（Address Space Predicate Function）可以判断一个指针所指向的内存空间，是否属于给定的内存空间，是则返回1，否则返回0。
 
 ```c++
 __device__ unsigned int __isGlobal(const void* ptr);
@@ -1012,11 +1012,11 @@ int __any_sync(unsigned mask, int predicate);
 unsigned __ballot_sync(unsigned mask, int predicate);
 ```
 
-\_\_all_sync()在mask选中的所有线程中计算predicate断言，当且仅当所有线程的predicate非零时，才返回非零。
+\_\_all_sync()在mask选中的所有线程中计算predicate谓词，当且仅当所有线程的predicate非零时，才返回非零。
 
-\_\_any_sync()在mask选中的所有线程中计算predicate断言，只要存在线程的predicate非零，即返回非零。
+\_\_any_sync()在mask选中的所有线程中计算predicate谓词，只要存在线程的predicate非零，即返回非零。
 
-\_\_ballot_sync()在mask选中的所有线程中计算predicate断言，如果线程束内idx号线程的predicate值非零，则返回值在[idx]二进制位上值为1，否则值为0，表示idx号线程满足predicate断言。该函数的功能相当于从一个旧的掩码出发，产生一个新的掩码。
+\_\_ballot_sync()在mask选中的所有线程中计算predicate谓词，如果线程束内idx号线程的predicate值非零，则返回值在[idx]二进制位上值为1，否则值为0，表示idx号线程满足predicate谓词。该函数的功能相当于从一个旧的掩码出发，产生一个新的掩码。
 
 ```c++
 unsigned int __match_any_sync(unsigned mask, T value);
@@ -1236,4 +1236,4 @@ Warp没有准备好执行下一条指令的另一个原因是它正在等待某�
 
 通常，使用-ftz=true编译的代码（非规范化浮点数刷新为零）往往比使用-ftz=false编译的代码具有更高的性能，使用-prec-div=false（低精确的除法）编译的代码往往比使用-prec-div=true编译的代码具有更高的性能，使用-prec-sqrt=false（低精确的平方根）编译的代码往往比使用-prec-sqrt=true编译的代码具有更高的性能。NVCC编译器手册中有更详细的描述。
 
-任何流控制指令（if、switch、do、while、for）都可能导致同一Warp的线程发散（即线程具有不同的执行路径），从而显著影响有效指令的吞吐量。如果发生这种情况，则必须串行执行不同的路径，从而增加Warp需要执行的指令总数。有时，编译器可能会展开循环，或者可能会使用分支预测断言来优化短的if块，在这些情况下，任何Warp都不会发散。
+任何流控制指令（if、switch、do、while、for）都可能导致同一Warp的线程发散（即线程具有不同的执行路径），从而显著影响有效指令的吞吐量。如果发生这种情况，则必须串行执行不同的路径，从而增加Warp需要执行的指令总数。有时，编译器可能会展开循环，或者可能会使用分支预测谓词来优化短的if块，在这些情况下，任何Warp都不会发散。

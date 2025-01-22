@@ -937,7 +937,7 @@ struct PredicateVector {
 }
 ```
 
-PredicateVector是一个由预测断言构成的固定长度的向量，也即掩码向量，可以在循环展开代的码段中使用寄存器加速访问。
+PredicateVector是一个由预测谓词构成的固定长度的向量，也即掩码向量，可以在循环展开代的码段中使用寄存器加速访问。
 
 在cutlass/functional.h头文件中，提供一些模板函数的定义，该头文件是模仿C++标准库的functional头文件，一个操作的示例如下所示。
 
