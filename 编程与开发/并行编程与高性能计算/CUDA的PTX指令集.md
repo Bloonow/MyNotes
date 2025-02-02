@@ -494,5 +494,29 @@ setp.lt.s32 p|q, a, b;  // p = (a < b); q = !(a < b);
     </tr>
 </table>
 
-浮点指令（floating-point instruction）对.f32和.f64类型的寄存器操作数和立即值进行操作，一些最常见的指令操作如下所示。
+浮点指令（floating-point instruction）对.f16半精度、.f32单精度、.f64双精度的寄存器和立即值进行操作，其中舍入修饰符.rnd可以指定.rn、.rz、.rm、.rp四种模式之一，且有的指令具有默认舍入模式，而有的指令无默认舍入模式，使用时注意分别。一些最常见的指令操作如下所示。
 
+| 指令     | 语法                     | 语义                        | 备注                                                         |
+| -------- | ------------------------ | --------------------------- | ------------------------------------------------------------ |
+| testp    | testp.op.type p, a;      | p = op(a);                  | .op = { .finite, .infinite, .number, .notanumber, .normal, .subnormal };<br/>.type = { .f32, .f64 }; |
+| copysign | copysign.type d, a, b;   | b.sign = a.sign;<br/>d = b; | .type = { .f32, .f64 };                                      |
+| add      | add.rnd.type d, a, b;    | d = a + b;                  | .type = { .f32, .f32x2, .f64 };                              |
+| sub      | sub.rnd.type d, a, b;    | d = a - b;                  | .type = { .f32, .f32x2, .f64 };                              |
+| mul      | mul.rnd.type d, a, b;    | d = a * b;                  | .type = { .f32, .f32x2, .f64 };                              |
+| fma      | fma.rnd.type d, a, b, c; | d = a * b + c;              | .type = { .f32, .f32x2, .f64 };                              |
+| mad      | mad.rnd.type d, a, b, c; | d = a * b + c;              | .type = { .f32, .f64 };                                      |
+| div      | div.mode.type d, a, b;   | d = a / b;                  | .mode = { .approx, .full, .rnd };  .rnd = { .rn, .rz, .rm, .rp };<br/>.type = { .f32, .f64 }; |
+| neg      | neg.type d, a;           | d = -a;                     | .type = { .f32, .f64 };                                      |
+| abs      | abs.type d, a;           | d = \|a\|;                  | .type = { .f32, .f64 };                                      |
+| min      | min.type d, a, b;        | d = a < b ? a : b;          | .type = { .f32, .f64 };                                      |
+| max      | max.type d, a, b;        | d = a > b ? a : b;          | .tpye = { .f32, .f64 };                                      |
+| rcp      | rcp.mode.type d, a;      | d = 1 / a;                  | .mode = { .approx, .rnd };  .rnd = { .rn, .rz, .rm, .rp };<br/>.tpye = { .f32, .f64 }; |
+| sqrt     | sqrt.mode.type d, a;     | d = sqrt(a);                | .mode = { .approx, .rnd };  .rnd = { .rn, .rz, .rm, .rp };<br/>.tpye = { .f32, .f64 }; |
+| rsqrt    | rsqrt.approx.type d, a;  | d = 1 / sqrt(a);            | .tpye = { .f32, .f64 };                                      |
+| sin      | sin.approx.f32 d, a;     | d = sin(a);                 |                                                              |
+| cos      | cos.approx.f32 d, a;     | d = cos(a);                 |                                                              |
+| tanh     | tanh.approx.f32 d, a;    | d = tanh(a);                |                                                              |
+| lg2      | lg2.approx.f32 d, a;     | d = log~2~(a);              |                                                              |
+| ex2      | ex2.approx.f32 d, a;     | d = 2 ^ a;                  |                                                              |
+
+fp16 👆
