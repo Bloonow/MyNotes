@@ -47,8 +47,6 @@ add.f32 r2, r2, 0.5;          // add 0.5
         <td>.version</td> <td>.visable</td> <td>.weak</td>
     </tr>
 </table>
-
-
 用户定义的标识符（Identifier）遵循扩展的C++规则，它们以字母开头，后跟零个或多个字母、数字、下划线或美元字符，或者，它们以下划线、美元字符或百分号字符开头，后跟一个或多个字母、数字、下划线或美元字符。
 
 ```
@@ -71,6 +69,39 @@ identifier:  [a-zA-Z]{followsym}* | [_$%]{followsym}+
 </table>
 
 PTX支持整数和浮点常量以及常量表达式，这些常量可用于数据初始化，并用作指令的操作数。在PTX中，整数常量可用作谓词，零值为False，非零值为True。
+
+假设存在一个名称为mycode.ptx的PTX模块文件，可以通过cuModuleLoad()方法和cuModuleGetFunction()方法在CUDA C++代码中使用PTX提供的内核函数。需要注意的是，此处使用的以cu前缀开头的API函数，是由CUDA的驱动API提供的，而不是由诸如cudaXXX()的运行时提供的接口，因此在编译时要使用-lcuda链接到相应的库文件。
+
+```c++
+#include <cuda.h>
+
+int main(int argc, char *argv[]) {
+    CUdevice device;
+    CUcontext context;
+    cuInit(0);
+    cuDeviceGet(&device, 0);
+    cuCtxCreate(&context, 0, device);
+
+    CUmodule ptx_module;
+    CUfunction ptx_kernel_function;
+    cuModuleLoad(&ptx_module, "/path/to/mycode.ptx");
+    cuModuleGetFunction(&ptx_kernel_function, ptx_module, "my_kernel");
+
+    float* d_input;  cudaMalloc(&d_input, 128 * sizeof(float));
+    float* d_output; cudaMalloc(&d_output, 128 * sizeof(float));
+    // args是指向实际参数的地址的指针的数组
+    void* args[2] = { &d_input, &d_output };
+    cuLaunchKernel(ptx_kernel_function, 1, 1, 1, 128, 1, 1, 0, nullptr, args, nullptr);
+
+    cuModuleUnload(ptx_module);
+    cuCtxDestroy(context);
+    return 0;
+}
+```
+
+```shell
+nvcc -arch=sm_89 -lcuda demo.cu -o run
+```
 
 # 特殊寄存器
 
@@ -716,78 +747,62 @@ PTX并没有公开堆栈布局、函数调用约定、程序二进制接口ABI�
 }
 ```
 
-对于函数参数，
-
-
-
-
-
-标量参数和向量参数可以使用
-
-
-
-.reg寄存器变量传递，返回值可以直接放入到寄存器变量中，数据类型和大小必须相匹配。
-
-在使用抽象ABI时，作为参数的.reg变量的大小必须至少为32位，在C++/PTX混合编程环境中，在C++中不足32位的数据，在PTX中应该提升为32位寄存器。
-
-
-
-
-
-使用call指令调用一个函数，将控制权转移给函数，并隐式保存返回地址，在函数体的最后使用ret指令将控制权转移给调用者的下一条指令。如下所示。
-
-```
-.func (.reg.u32 %res) func_inc (.reg.u32 %ptr, .reg.u32 %inc) {
-    add.u32 %res, %ptr, %inc;
-    ret;
-}
-
-_start:
-.reg.u32 %r0;
-call (%r0), func_inc, (%r0, 4);
-```
-
-可以使用.param参数状态空间声明字节数组类型的参数，以按值传递大型结构体参数，如下所示。
-
-```
-struct MyStruct { double fp; char ch[4]; };
-
-// alignment is 8 byte for double value in MyStrcut
-.func (.param.b8.align 8 res[4]) func_bar (.reg.s32 var, .param.b8.align 8 arg[12]) {
-    .reg.f64 fp;
-    .reg.b32 c1, c2, c3, c4;
-    
-    ld.param.f64 fp, [arg];
-    ld.param.b8 c1, [arg + 8];
-    ld.param.b8 c2, [arg + 9];
-    ld.param.b8 c3, [arg + 10];
-    ld.param.b8 c4, [arg + 11];
-    // computation using var, fp, c1, c2, c3, c4;
-    st.param.b32 [res], 0;
-    ret;
-}
-
-_start:
-.param.b8.align 8 result[4];
-.param.b8.align 8 struct_arg[12];
-st.param.b64 [struct_arg], %fp;
-st.param.b8  [struct_arg + 8], %r1;
-st.param.b8  [struct_arg + 9], %r2;
-st.param.b8  [struct_arg + 10], %r3;
-st.param.b8  [struct_arg + 11], %r4;
-call (result), func_bar, (%var, myst);
-ld.param.b32 %value, [result];
-```
-
-在此示例中，参数.param存储状态空间的变量以两种方式使用，首先，一个.param变量arg在函数定义中用于表示形式参数，其次，一个.param变量myst在调用者的代码中声明，用于设置传递给func_bar函数的结构体数据。
-
-此处讨论一下在设备函数中，使用.param参数存储状态空间的概念性方法。需要注意的是，.param变量只能用于传递参数和收集返回值，不能他用。对于调用者，.param用于设置传递给函数的参数值，以及从函数接收的返回值；对于被调用者，.param用于接收参数值，并将返回值传递回调用者。对于调用者，形式参数可以是.const常量、.reg变量、.param变量。对于被调用者，形式参数可以是.reg变量或.param变量，对于.reg空间的返回值，可接收基本类型的变量和向量。
-
-如果形参是.reg空间的变量（寄存器大小必须至少为32位），或者形参是.param空间的基本类型的变量或者向量，则实参可以是类型、大小都匹配的.const常量、.reg变量、.param变量。如果形参是.param空间的字节数组，则实参必须也是类型、大型、对齐方式都匹配的.param字节数据，必须在调用者的本地范围内声明.param实参。需要注意的是，在调用者代码中，设置实参的st.param指令必须紧跟在call指令之前，收集返回值的ld.param指令必须紧跟在call指令之后，不得更改任何控制流。用于参数传递的st.param和ld.param指令不能设置条件谓词，否则会启用编译器优化。
+在函数声明时，形式参数可以是.reg变量、.param变量，设置返回值的变量可以是.reg类型、.param类型；在函数调用时，实际参数可以是.const变量、.reg变量、.param变量，接收返回值的变量可以是.reg类型、.param类型。在使用.reg类型的变量时，既支持使用标量也支持使用向量。需要注意的是，在使用抽象ABI时，作为参数的.reg变量的大小必须至少是32位，在C++/PTX混合编程环境中，在C++中不足32位的数据，在PTX中应该提升为32位寄存器。
 
 值得注意的是，为参数传递选择.reg空间或.param空间对参数最终是在物理寄存器中传递还是在堆栈中传递没有影响，参数到物理寄存器或堆栈位置的映射取决于ABI定义以及参数的顺序、大小和对齐方式。
 
-PTX提供alloca指令，允许运行时在每个线程的局部内存堆栈上分配存储空间，并返回地址指针，以共ld.local指令和st.local指令使用。为便于释放使用alloca分配的内存，PTX提供stacksave指令以读取局部变量的堆栈指针的值，以及stackrestore指令用于恢复具有保存值的堆栈指针。
+此处讨论一下在函数中，使用.param参数存储状态空间的概念性方法，.param变量只能用于传递参数和接收返回值，不能他用。对于调用者，.param用于设置传递给函数的参数值，以及在调用之后接收函数返回值；对于被调用者，.param用于接收参数值，并用于向调用者设置函数返回值。在调用者代码中，设置实参的st.param指令必须紧跟在call指令之前，接收返回值的ld.param指令必须紧跟在call指令之后，不得更改任何控制流。用于参数传递的st.param和ld.param指令不能设置条件谓词，否则会启用编译器优化。
+
+如果函数的参数或返回值是诸如大型结构体等非基本数据类型，则可以使用.param存储空间的字节数组作为参数类型或返回值类型，且实际参数必须也是类型、大小、对齐方式都匹配的.param字节数组数据，且必须在调用者的本地范围内声明.param实际参数。
+
+一段示例的CUDA C++代码如下所示。
+
+```c++
+struct arg_t { double value; short alpha; };
+struct ret_t { double value; char pad[2]; };
+
+__device__ __noinline__ ret_t func_bar(arg_t arg, uint2 bias) {
+    ret_t ret;
+    ret.value = arg.value * arg.alpha + bias.x;
+    ret.pad[0] = (char)(bias.y * 2);
+    ret.pad[1] = (char)(bias.y * 4);
+    return ret;
+}
+
+__global__ void my_kernel(const double *input, double* output, const uint32_t length) {
+    if (threadIdx.x > length) return;
+    arg_t arg;
+    arg.value = input[threadIdx.x];
+    arg.alpha = (short)(threadIdx.x);
+    uint2 bias = { length / 2, length / 4 };
+    ret_t ret = func_bar(arg, bias);
+    output[threadIdx.x] = ret.value + ret.pad[0] + ret.pad[1];
+}
+```
+
+上述CUDA C++代码的PTX代码如下所示。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

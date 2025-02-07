@@ -119,7 +119,7 @@ gcc demo.c -o demo.exe -I MPI/Include
 gcc demo.c -o demo.exe -L MPI/Lib/x64
 ```
 
-使用`-l name`为链接器ld（linker）指定要链接的库文件，其参数name就是库名。需要注意的是，库名通常和库文件名并不相同（需要加上前缀或后缀），这是约定命名规则的历史原因造成的。对于库名name来说，在Linux平台下，它对应的库文件名是name.a或libname.a；在Windows平台下，它对应的库文件名是name.lib或libname.lib。我们在生成库文件时也尽量使用这种命名规范。如下一个例子所示，它链接的库文件名是msmpi.lib。
+使用`-l name`为链接器ld（linker）指定要链接的库文件，其参数name就是库名。需要注意的是，库名通常和库文件名并不相同（需要加上前缀或后缀），这是约定命名规则的历史原因造成的。对于库名name来说，在Linux平台下，它对应的库文件名是name.a、libname.a或name.so、libname.so；在Windows平台下，它对应的库文件名是name.lib或libname.lib。我们在生成库文件时也尽量使用这种命名规范。如下一个例子所示，它链接的库文件名是msmpi.lib。
 
 ```shell
 gcc demo.c -o demo.exe -l msmpi

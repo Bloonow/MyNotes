@@ -69,7 +69,7 @@ __global__ void scale_kernel(float *data, const float factor, const uint32_t N) 
 ```
 
 ```c++
-// main.cu
+// program.cu
 #include <stdio.h>
 #include "kernel.cuh"
 int main(int argc, char *argv[]) {
@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
 nvcc -dc kernel.cu -o kernel.o
 nvcc -dc program.cu -o program.o
 nvcc -dlink kernel.o program.o -o gpu.link.o
-g++ kernel.o program.o gpu.link.o -L /path/cuda/libs -l cudart -o run
+g++ kernel.o program.o gpu.link.o -L /path/to/cuda/lib -L /path/to/cuda/lib/stubs -lcudart -lcuda -o run
 ```
 
 上述编译命令等价于下述一行命令。
