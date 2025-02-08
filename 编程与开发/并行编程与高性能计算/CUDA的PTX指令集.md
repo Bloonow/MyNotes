@@ -47,6 +47,7 @@ add.f32 r2, r2, 0.5;          // add 0.5
         <td>.version</td> <td>.visable</td> <td>.weak</td>
     </tr>
 </table>
+
 用户定义的标识符（Identifier）遵循扩展的C++规则，它们以字母开头，后跟零个或多个字母、数字、下划线或美元字符，或者，它们以下划线、美元字符或百分号字符开头，后跟一个或多个字母、数字、下划线或美元字符。
 
 ```
@@ -207,7 +208,7 @@ PTX提供许多预定义的只读变量，这些变量以特殊寄存器的形�
 每个内核函数定义都包含一个可选的参数列表，这些参数是在.param存储状态空间中声明的可寻址的只读变量。可通过mov指令将内核参数的地址移动到寄存器中，生成的地址属于.param存储状态空间，可使用ld.param{::entry}指令访问这些参数变量。一个示例如下所示。
 
 ```
-.entry foo (.param.b32 len, .param.b8.align 8 buffer[64]) {
+.entry foo (.param.b32 len, .param .align 8 .b8 buffer[64]) {
     .reg.u32 %addr;
     .reg.u32 %len1;
     .reg.u32 %len2;
@@ -223,18 +224,18 @@ PTX提供许多预定义的只读变量，这些变量以特殊寄存器的形�
 内核函数参数可以表示正常的数据值，也可以保存常量内存、全局内存、局部内存、共享内存中对象的地址指针。对于地址指针，编译器和运行时系统需要一些信息，来判断哪些参数是地址指针，以及这些指针指向哪个存储状态空间。内核参数的属性指示语句用于在PTX级别提供这些信息。内核函数参数可以使用可选的.ptr属性进行声明，以指示该参数是指向内存的指针，还可以指示所指向的存储状态空间和对齐方式，如下所示。
 
 ```
-.param .type .ptr .space .align N  varname
-.param .type .ptr        .align N  varname
+.param .align N .type .ptr .space varname;
+.param .align N .type .ptr        varname;
 ```
 
-当使用.ptr指示参数为地址指针时，可以使用.space指定存储状态空间，可以是.const、.global、.local、.shared存储状态空间，若未指定则假定指针是指向const、global、local、shared之一的通用地址，对齐值N应是2的整数次幂（单位为字节），若未指定则假定4字节对齐。值得注意的是，可以消除.type、.ptr、.space、.align之间的空格以提高可读性。
+当使用.ptr指示参数为地址指针时，可以使用.space指定存储状态空间，可以是.const、.global、.local、.shared存储状态空间，若未指定则假定指针是指向const、global、local、shared之一的通用地址，对齐值N应是2的整数次幂（单位为字节），若未指定则假定4字节对齐。
 
 ```
 .entry foo (
     .param.u32 arg1,
-    .param.u32.ptr.global.align 16 arg2,
-    .param.u32.ptr.const.align 8 arg3,
-    .param.u32.ptr.align 16 arg4  // generic address pointer
+    .param .align 16 .u32.ptr.global arg2,
+    .param .align 8 .u32.ptr.const arg3,
+    .param .align 16 .u32.ptr arg4  // generic address pointer
 ) { ... }
 ```
 
@@ -244,7 +245,7 @@ PTX 2.0版本将.param参数空间的使用扩展到设备函数参数。最常�
 struct MyStruct { double fp; int val; };
 
 // pass object of type MyStruct, 8 + 4 = 12Byte
-.func foo (.reg.b32 len, .param.b8.align 8 buffer[12]) {
+.func foo (.reg.b32 len, .param .align 8 .b8 buffer[12]) {
     .reg.f64 %fp;
     .reg.s32 %val;
 
@@ -274,6 +275,8 @@ struct MyStruct { double fp; int val; };
 PTX中支持的基本浮点类型具有隐式的位表示形式，即用于存储指数和尾数的位数，例如，类型.f16为指数保留5位，为尾数保留10位。除基本的浮点类型之外，PTX还支持一些其它格式的浮点类型。类型bf16一共16位，8位指数，7位尾数，包含bf16数据的寄存器必须声明为.b16类型；类型e4m3一共8位，4位指数，3位尾数，包含e4m3数据的寄存器必须声明为.b8类型；类型e5m2一共8位，5位指数，2位尾数，包含e5m2数据的寄存器必须声明为.b8类型；类型tf32一共32位，范围与.f32相同，精度降低（仍然大于等于10位），数据的内部布局是基于实现的，包含tf32数据的寄存器必须声明为.b32类型。
 
 某些PTX指令在两组输入上并行运行，并产生两个输出，此类指令可以使用以打包（packed）格式存储的数据。PTX支持将相同标量数据类型的两个值打包到一个更大的值中，打包的值被视为打包数据类型的值。打包数据类型包括.f16x2、.bf16x2、.e4m3x2、.e5m2x2类型。
+
+值得注意的是，在PTX代码中，浮点立即数可以使用不同的前缀，单精度使用`0f`，双精度用`0d`，后面跟对应的十六进制数字，例如，0d3F80000000000000立即数表示的是double类型的双精度浮点数，解析后面的十六进制数据（符号位1位，指数11位，尾数52位），可算出数字是双精度的0.0078125，也即1/128的值。
 
 ## 变量的声明
 
@@ -331,10 +334,12 @@ PTX提供数组声明以允许程序员预留内存空间。声明数组时，�
 
 ```
 // Allocate array at 4-byte aligned address. Elements are bytes.
-.const.b8.align 4 arr[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+.const .align 4 .b8 arr[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
 ```
 
 需要注意的是，所有访存指令都要求访问地址与访问大小的倍数对齐，访存指令的访问大小是内存中访问的总字节数。例如，ld.v4.b32的访问大小为16字节。
+
+> 需注意的是，在语法上，.align N符号需要位于.param等存储空间之后，并位于诸如.b32等数据类型之前，且数字N左右两侧都需要一个空格分隔。
 
 由于PTX支持虚拟寄存器，因此编译器前端生成大量寄存器名称是很常见的，PTX支持创建一组变量的语法，该变量具有通用的前缀字符串，以及附加的整数后缀。此语法糖可用于任何基本类型和任何存储状态空间，并且可以在前面带有对齐方式说明符，但数组变量不能以这种方式声明，也不允许设定初始值。例如，假设一个程序使用大量的寄存器，示例如下所示。
 
@@ -758,31 +763,111 @@ PTX并没有公开堆栈布局、函数调用约定、程序二进制接口ABI�
 一段示例的CUDA C++代码如下所示。
 
 ```c++
-struct arg_t { double value; short alpha; };
-struct ret_t { double value; char pad[2]; };
+struct arg_t {
+    double value;
+    unsigned char byte[2];
+};
 
-__device__ __noinline__ ret_t func_bar(arg_t arg, uint2 bias) {
-    ret_t ret;
-    ret.value = arg.value * arg.alpha + bias.x;
-    ret.pad[0] = (char)(bias.y * 2);
-    ret.pad[1] = (char)(bias.y * 4);
-    return ret;
+struct result_t {
+    double bias;
+    uint4 vec;
+};
+
+__device__ __noinline__ result_t my_device_func(arg_t arg, uint2 pair, double factor) {
+    result_t result;
+    result.bias = arg.value * factor;
+    result.vec = { pair.x + pair.y, pair.x - pair.y, arg.byte[0], arg.byte[1] };
+    return result;
 }
 
-__global__ void my_kernel(const double *input, double* output, const uint32_t length) {
-    if (threadIdx.x > length) return;
-    arg_t arg;
-    arg.value = input[threadIdx.x];
-    arg.alpha = (short)(threadIdx.x);
-    uint2 bias = { length / 2, length / 4 };
-    ret_t ret = func_bar(arg, bias);
-    output[threadIdx.x] = ret.value + ret.pad[0] + ret.pad[1];
+extern "C" __global__ void my_kernel(uint32_t* output) {
+    const uint32_t tid = threadIdx.x;
+    arg_t arg = { (double)(tid), (u_char)(tid % 32), (u_char)(tid % 64) };
+    uint2 pair = { tid * 2, tid / 2 };
+    double factor = (double)(tid) / 128;
+    result_t res = my_device_func(arg, pair, factor);
+    output[tid] = res.vec.x + res.vec.y + res.vec.z + res.vec.w + res.bias;
 }
 ```
 
 上述CUDA C++代码的PTX代码如下所示。
 
+```
+.version 7.8
+.target sm_89
+.address_size 64
 
+.func (.param.align 8 .b8 retval[24]) my_device_func(
+    .param.align 8 .b8 arg[16], .param.align 4 .b8 pair[8], .reg.b64 factor
+) {
+    .reg.f64 value;
+    .reg.u8 byte_0, byte_1;
+    .reg.u32 pair_x, pair_y;
+    .reg.f64 bias;
+    .reg.u32 vx, vy, vz, vw;
+
+    ld.param.f64 value, [arg];
+    ld.param.v2.u8 { byte_0, byte_1 }, [arg + 8];
+    ld.param.v2.u32 { pair_x, pair_y }, [pair];
+    mul.f64 bias, value, factor;
+    add.s32 vx, pair_x, pair_y;
+    sub.s32 vy, pair_x, pair_y;
+    cvt.u32.u8 vz, byte_0;
+    cvt.u32.u8 vw, byte_1;
+    st.param.f64 [retval], bias;
+    st.param.v4.u32 [retval + 8], { vx, vy, vz, vw };
+    ret;
+}
+
+.visible .entry my_kernel(.param.u64.ptr.global output) {   
+    .reg.u64 ptr_output;
+    .reg.u32 tid;
+    .reg.f64 tid_fp;
+    .reg.u8 byte_0, byte_1;
+    .reg.u32 pair_x, pair_y;
+    .reg.f64 factor;
+    .reg.f64 bias;
+    .reg.u32 vx, vy, vz, vw;
+    .reg.u32 tmp_u32;
+    .reg.u64 tmp_u64;
+    .reg.f64 tmp_f64;
+
+    // cvta.to.global.u64 is no longer needed because .param `output` has .ptr.global identifier
+    ld.param.u64 ptr_output, [output];
+    mov.u32 tid, %tid.x;
+    cvt.rn.f64.u32 tid_fp, tid;
+    and.b32 tmp_u32, tid, 31;
+    cvt.u8.u32 byte_0, tmp_u32;
+    and.b32 tmp_u32, tid, 63;
+    cvt.u8.u32 byte_1, tmp_u32;
+    shl.b32 pair_x, tid, 1;
+    shr.u32 pair_y, tid, 1;
+    // div.rn.f64 factor, tid_fp, 128.0;
+    mul.f64 factor, tid_fp, 0d3F80000000000000;
+    {
+        //.reg .b32 temp_param_reg;
+        .param.align 8 .b8 arg[16];
+        .param.align 4 .b8 pair[8];
+        .param.align 8 .b8 retval[24];
+        st.param.f64 [arg], tid_fp;
+        st.param.v2.u8 [arg + 8], { byte_0, byte_1 };
+        st.param.v2.u32 [pair], { pair_x, pair_y };
+        call.uni (retval), my_device_func, (arg, pair, factor);
+        ld.param.f64 bias, [retval];
+        ld.param.v4.b32 { vx, vy, vz, vw }, [retval + 8];
+    }
+    add.u32 tmp_u32, vx, vy;
+    add.u32 tmp_u32, tmp_u32, vz;
+    add.u32 tmp_u32, tmp_u32, vw;
+    cvt.rn.f64.u32 tmp_f64, tmp_u32;
+    add.f64 tmp_f64, tmp_f64, bias;
+    cvt.rzi.u32.f64 tmp_u32, tmp_f64;
+    mul.wide.u32 tmp_u64, tid, 4;
+    add.u64 ptr_output, ptr_output, tmp_u64;
+    st.global.u32 [ptr_output], tmp_u32;
+    ret;
+}
+```
 
 
 
