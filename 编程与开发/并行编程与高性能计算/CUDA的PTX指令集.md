@@ -6,7 +6,7 @@
 
 PTX代码和SASS代码中的标识符都是区分大小写的，但预留关键字并不区分大小写，但通常PTX代码使用小写，SASS代码使用大写。
 
-PTX程序的源文件通常是以.ptx作为后缀的文本文件，其语法具有汇编语言样式的风格。PTX语句可以是指令（instruction），也可以是指示（directive），语句以可选标签（label）开头，以分号`;`结尾，以`\n`表示换行。PTX源文件使用C风格的注释，例如`//`和`/**/`注释。使用C风格的以`#`开头的预处理指令，例如#include、#define、#if、#endif等预处理指令。源文件中所有空白字符都是等效的，并且空格将被忽略，除非它在语言中用于分隔标记。
+PTX程序的源文件（模块）通常是以.ptx作为后缀的文本文件，其语法具有汇编语言样式的风格。PTX语句可以是指令（instruction），也可以是指示（directive），语句以可选标签（label）开头，以分号`;`结尾，以`\n`表示换行。PTX源文件使用C风格的注释，例如`//`和`/**/`注释。使用C风格的以`#`开头的预处理指令，例如#include、#define、#if、#endif等预处理指令。源文件中所有空白字符都是等效的，并且空格将被忽略，除非它在语言中用于分隔标记。
 
 每个PTX文件必须在开头使用.version指示PTX版本，后跟.target指示所假设的目标架构，一个示例代码如下。
 
@@ -696,9 +696,10 @@ mov.u32 %r0, func2;
 call (%ret) %r0, (%x, %y), flist;
 
 // call-via-pointer using .callprototype directive
-.func dispatch (.reg.u32 fptr, .reg.u32 idx) { ... }
+.func foo (.reg.u32 a, .reg.u32 b) { ... }
 fproto: .callprototype _ (.param.u32 _, .param.u32 _);
-call %fptr, (%x, %y), fproto;
+mov.u32 %r0, foo;
+call %r0, (%x, %y), fproto;
 ```
 
 ret指令将程序执行的控制权返回到调用者的环境，默认假定返回是发散的，发散会挂起线程，直到所有线程都准备好返回给调用者，这允许多个发散的ret指令，使用.uni后缀执行返回是非发散的。需要注意的是，在执行ret指令之前，应将函数返回的任何值移动到返回值指定的参数变量中。
@@ -709,9 +710,11 @@ exit指令用于终止线程的执行。当线程退出时，将检查等待所�
 
 堆栈操作指令（stack manipulation instruction）可用于在当前函数的堆栈帧上动态分配和释放内存。
 
-stacksave,stackstore,alloca,
 
-after Directive.
+
+
+
+stacksave,stackstore,alloca,
 
 ## 数据移动和转换指令
 
@@ -754,7 +757,7 @@ PTX并没有公开堆栈布局、函数调用约定、程序二进制接口ABI�
 
 在函数声明时，形式参数可以是.reg变量、.param变量，设置返回值的变量可以是.reg类型、.param类型；在函数调用时，实际参数可以是.const变量、.reg变量、.param变量，接收返回值的变量可以是.reg类型、.param类型。在使用.reg类型的变量时，既支持使用标量也支持使用向量。需要注意的是，在使用抽象ABI时，作为参数的.reg变量的大小必须至少是32位，在C++/PTX混合编程环境中，在C++中不足32位的数据，在PTX中应该提升为32位寄存器。
 
-值得注意的是，为参数传递选择.reg空间或.param空间对参数最终是在物理寄存器中传递还是在堆栈中传递没有影响，参数到物理寄存器或堆栈位置的映射取决于ABI定义以及参数的顺序、大小和对齐方式。
+值得注意的是，为参数传递选择.reg空间或.param空间对参数最终是在物理寄存器中传递还是在堆栈中传递没有影响，参数到物理寄存器或堆栈位置的映射取决于ABI定义以及参数的顺序、大小和对齐方式。更多.param的论述可见之前的关于.param存储状态空间的论述。
 
 此处讨论一下在函数中，使用.param参数存储状态空间的概念性方法，.param变量只能用于传递参数和接收返回值，不能他用。对于调用者，.param用于设置传递给函数的参数值，以及在调用之后接收函数返回值；对于被调用者，.param用于接收参数值，并用于向调用者设置函数返回值。在调用者代码中，设置实参的st.param指令必须紧跟在call指令之前，接收返回值的ld.param指令必须紧跟在call指令之后，不得更改任何控制流。用于参数传递的st.param和ld.param指令不能设置条件谓词，否则会启用编译器优化。
 
@@ -869,33 +872,135 @@ extern "C" __global__ void my_kernel(uint32_t* output) {
 }
 ```
 
+函数参数列表中的最后一个参数可以是.b8类型的.param字节数组，并且不指定数组长度，此时可以将任意参数打包到字节数组中，从而实现可变参数的传递。
 
+```
+.func (.param.u32 retval) foo (.param.u32 N, .param.align 4 .b8 args[]) { ... }
+```
 
+.alias可以定义现有函数符号的别名，该别名仅在一个PTX模块范围内（也即一个PTX文件内）有效。
 
+```
+.alias alias_name, source_name;
+```
 
+其中，符号source_name具有完整的函数定义，且不能使用.weak链接，而符号alias_name是原型与source_name完全匹配的函数声明。
 
+## 控制流指示
 
+.branchtargets指示为之后跳转指令brx.idx声明一个潜在的目标标签列表，使得brx.idx能够跳转到其中一个标签处执行。列表中的标签必须与.branchtargets指示和brx.idx指令位于同一个函数体中，也即只能在同一个函数范围内使用。
 
+```
+tlist_label: .branchtargets list-of-labels;
+```
 
+```
+.func foo () {
+    L1: ...;
+    L2: ...;
+    L3: ...;
+    tlist: .branchtargets L1, L2, L3;
+    
+    mov.u32 %r0, 1;
+    brx.idx %r0, tlist;  // goto tlist[%r0], i.e. tlist[1]
+    ret;
+}
+```
 
+.calltargets指示为之后call指令的间接调用声明一个潜在的目标函数列表，使得call在间接调用时，能够选择其中的一个函数进行调用。
 
+```
+flist_label: .calltargets list-of-functions;
+```
 
+```
+.func (.reg.u32 ret) func1 (.reg.u32 a, .reg.u32 b) { ... }
+.func (.reg.u32 ret) func2 (.reg.u32 a, .reg.u32 b) { ... }
+.func (.reg.u32 ret) func3 (.reg.u32 a, .reg.u32 b) { ... }
 
+// call-via-pointer using .calltargets directive
+flist: .calltargets func1, func2, func3;
+mov.u32 %r0, func2;
+call (%ret) %r0, (%x, %y), flist;
+```
 
+.callprototype指示为之后call指令的间接调用声明一个没有特定名称的函数原型，并与一个标签关联，使得call能够进行间接调用。可以使用.noreturn指示该原型没有返回值，使用`_`作为无意义的参数占位符。
 
+```
+fproto_label: .callprototype (ret-param) _ (param-list);
+```
 
+```
+// call-via-pointer using .callprototype directive
+.func foo (.reg.u32 a, .reg.u32 b) { ... }
+fproto: .callprototype _ (.param.u32 _, .param.u32 _) .noreturn;
+mov.u32 %r0, foo;
+call %r0, (%x, %y), fproto;
+```
 
+## 链接指示
 
+.extern指示声明一个外部符号，告诉编译器该符号是在当前模块文件的外部定义的，无需在编译时解析定义，而需要与其它编译单元进行链接。
 
+```
+.extern identifier;
+```
 
+.visable指示声明一个外部可见的符号，即具有外部链接的符号，其它编译单元在链接时可以获取定义。与C/C++不同，PTX的全局符号默认是内部链接的。
 
+```
+.visible identifier;
+```
 
+.weak指示声明一个外部可见的符号（具有外部链接）。与.visable的不同之处在于，使用.weak指示的外部符号，具有较弱的可见性，即在链接期间，.weak符号会在.visable符号之后选择，当没有相同名称的.visable符号进行解析时，才会选择解析.weak符号。并且，允许多个PTX文件中存在多个相同的.weak外部符号。
 
+```
+.weak identifier;
+```
 
+.common指示声明一个外部可见的符号（具有外部链接）。与.visable的不同之处在于，多个文件中可能声明相同的.common符号，并且它们具有不同的类型和大小，在使用时将解析具有最大大小的.common符号。只有一个PTX文件可以初始化.common符号，并且该PTX文件中的定义必须具有最大大小。需要注意的是，.common只能用于.global变量，无法用于函数或定义不透明的符号。
 
-## 链接指令
+```
+.common.global.type identifier;
+```
 
+## 性能调整指示
 
+PTX提供一种底层的性能优化机制，并使用一些指示将相关信息传递给后端优化编译器。.maxnreg指示指定一个线程能够分配的最大寄存器数目，.maxntid指示指定一个线程块CTA中的最大线程数目，.reqntid指示指定一个线程块CTA中所需的线程数目，.minnctapersm指示一个流式多处理器SM上调度的最少线程块CTA数目。.maxnctapersm指示一个SM上的最多线程块CTA数目，但该指示现已弃用。
 
-## 控制流指令
+```
+.entry foo .maxnreg N { ... }
+.entry foo .maxntid Nx, Ny, Nz { ... }
+.entry foo .reqntid Nx, Ny, Nz { ... }
+.entry foo .minnctapersm Ncta { ... }
+```
 
+使用.minnctapersm指示、.maxntid指示或.reqntid指示，可以权衡线程的寄存器数目和SM的利用率，而无需直接指定最大寄存器数目，当为SM具有不同数目寄存器的不同架构的设备编译PTX代码时，这可能会获得更好的性能。
+
+.noreturn指示一个设备函数没有返回值。
+
+```
+.func foo .noreturn { ... }
+```
+
+.pragma将一些字符串指示传递给后端编译器，这些字符串的解释是特定于实现的，对PTX语义无影响，可用于模块范围、核函数范围、语句范围，如下所示。
+
+```
+// disable unrolling for current kernel
+.entry foo .pragma "nounroll" { ... }
+```
+
+## 簇组指示
+
+.reqnctapercluster指示一个簇组中的线程块CTA数目，.maxclusterrank指示一个簇组中的最大线程块CTA数目。
+
+```
+.entry foo .reqnctapercluster Nx, Ny, Nz { ... }
+.entry foo .maxclusterrank N { ... }
+```
+
+.explicitcluster指示一个内核函数，必须在明确指定簇组配置的情况下启动，否则将出现运行错误。
+
+```
+.entry foo .explicitcluster { ... }
+```
