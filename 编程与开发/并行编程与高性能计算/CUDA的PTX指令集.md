@@ -706,17 +706,72 @@ ret指令将程序执行的控制权返回到调用者的环境，默认假定�
 
 exit指令用于终止线程的执行。当线程退出时，将检查等待所有线程的栅障，以查看退出线程是否阻碍了栅障，如果退出线程阻碍了栅障，则释放栅障。
 
-## 堆栈操作指令
+## 栈操作指令
 
-堆栈操作指令（stack manipulation instruction）可用于在当前函数的堆栈帧上动态分配和释放内存。
+栈操作指令（stack manipulation instruction）可用于在当前函数的栈帧（stack frame）上动态分配和释放内存。
 
+stacksave指令用于保存栈帧的当前栈顶指针到一个寄存器当中，stackrestore指令使用一个寄存器的值并将其设置为当前的栈顶指针，在stacksave指令和stackrestore指令之间，修改保存栈顶指针的寄存器的值，会导致无法恢复到正确的栈顶指针，破坏栈中的数据。
 
+```
+stacksave.type d;     // d = stackptr;
+// Code that may modify stack pointer using `alloca` instruction. Register d cannot be modified.
+stackrestore.type d;  // stackptr = d;
 
+.type = { .u32, .u64 };
+```
 
+alloca指令用于在当前函数的栈帧上动态分配一块内存区域，并相应地更新栈顶指针到正确位置，返回所分配内存区域的地址。所分配的内存区域实际上是线程的局部内存区域，可以使用ld.local和st.local指令进行访问。分配size字节的内存区域，并按照immAlign字节对齐（默认8字节），返回ptr指向所分配内存。
 
-stacksave,stackstore,alloca,
+```
+alloca.type ptr, size;
+alloca.type ptr, size, immAlign;
+
+.type = { .u32, .u64 };
+```
+
+如果没有足够的内存用于栈上的分配，则执行alloca可能会导致堆栈溢出，此时尝试访问分配的内存将导致未定义的程序行为。使用alloca分配的内存，将按照以下情况释放：(1)函数退出时，函数栈帧自动释放；(2)使用stackrestore指令恢复之前保存的栈顶指针。
+
+```
+.reg.u32 stackptr, ptr;
+stacksave.u32 stackptr;
+alloca ptr, 128, 8,
+st.local.u32 [ptr], %value;
+stackrestore.u32 stackptr;
+```
 
 ## 数据移动和转换指令
+
+数据移动和转换指令（data movement and conversion instruction）可以将数据从一个地方复制到另一个地方，从一个存储状态空间复制到另一个存储状态空间，可能还会将数据从一种格式转换为另一种格式。一些指令诸如ld、st、suld、sust支持可选的缓存运算符。
+
+### 缓存策略
+
+PTX 2.0版本为加载指令ld和存储指令st引入了可选的缓存运算符（cache operator），这种缓存运算符仅被用作性能提示，并不会改变程序的内存一致性行为。
+
+| 缓存  | 描述                                                         |
+| ----- | ------------------------------------------------------------ |
+| ld.ca | Cache at all levels, likely to be accessed again. 数据使用所有级别缓存（L1和L2），可能会被再次访问。<br/>ld.ca是加载指令的默认缓存操作，它使用正常的驱逐策略在所有级别缓存（L1和L2）中分配缓存行。全局数据在L2级别是一致性的，但多个SM上的L1缓存对于全局内存数据来说不一定是一致的。如果一个线程通过一个L1缓存将数据存储到全局内存，第二个线程使用ld.ca在其它SM上通过L1加载该地址，则第二个线程可能会获得过时的L1缓存数据，而不是第一个线程存储的数据。NVIDIA驱动程序必须使得网格依赖线程之间的L1缓存行失效，如此才能强迫其它具有数据依赖的线程从全局内存中获取到正确数据，并更新自己所在SM的L1缓存。 |
+| ld.cg | Cache at global level (cache in L2 and below, not L1). 数据在全局内存级别缓存（在L2及以下级别而非L1缓存）。<br/>使用ld.cg仅在读取全局内存时使用缓存，并且仅将数据缓存到L2缓存行中，而绕过L1缓存。 |
+| ld.cs | Cache streaming, likely to be accessed once or twice. 数据使用流式缓存，即可能仅被访问一次或两次。<br/>使用ld.cs访问全局内存时，会在L1和L2缓存中分配具有优先驱逐（evict-first）策略的缓存行，以避免可能仅访问一两次的流式数据对缓存造成长时间污染。当使用指令ld.cs访问位于局部窗口的局部地址时，它会执行ld.lu操作。 |
+| ld.lu | Last use. 最后一次使用。<br/>编译器或程序员在恢复溢出寄存器（即从局部内存中读取溢出的寄存器值）或弹出函数栈帧时，可以使用ld.lu读取局部内存，并且该局部地址的该次读取是最后一次使用缓存行，在缓存失效时无需将缓存行写回，从而避免非写回不会再次使用的缓存行。当使用ld.lu指令访问位于全局窗口的全局地址时，它会执行ld.cs操作。 |
+| ld.cv | Don’t cache and fetch again (consider cached system memory lines stale, fetch again). 数据不进行缓存也不再次获取；当系统内存缓存失效时再次获取。<br/>使用ld.cv访问全局内存时，会将已匹配（如果存在）的L2缓存行失效（丢弃），并在每次读取全局内存数据时，都重新配置L2缓存行，并读取。 |
+| st.wb | Cache write-back all coherent levels. 将数据在内存一致性模型中的，所有层级的缓存行写回。<br/>st.wb是存储指令的默认缓存操作，它使用正常的驱逐策略写回一致性缓存中分配缓存行。如果一个线程绕过L1缓存写回到全局内存，第二个线程使用ld.ca指令通过不同SM上的L1缓存加载数据，则有可能会命中过时的数据，而不是从L2缓存中获取第一个线程存储的数据。NVIDIA驱动程序必须使得网格依赖线程之间的L1缓存行失效，如此才能强迫其它具有数据依赖的线程在读取自己的L1时出现缓存缺失（miss），从而需要从全局内存中获取到正确数据，并更新自己所在的L1缓存。 |
+| st.cg | Cache at global level (cache in L2 and below, not L1). 数据在全局内存级别缓存（在L2及以下级别而非L1缓存）。<br/>使用st.cg仅在写入全局内存时使用缓存，并且仅将数据缓存到L2缓存行中，而绕过L1缓存。 |
+| st.cs | Cache streaming, likely to be accessed once or twice. 数据使用流式缓存，即可能仅被访问一次或两次。<br/>使用st.cs访问全局内存时，会在L1和L2缓存中分配具有优先驱逐（evict-first）策略的缓存行，以避免可能仅访问一两次的流式数据对缓存造成长时间污染。 |
+| st.wt | Cache write-through (to system memory). 数据通过缓存直接写入到系统内存。<br/>使用st.wt直接用于全局的系统内存地址，通过L2缓存进行写入。 |
+
+PTX 7.4版本为加载指令ld和存储指令st添加了可选的缓存驱逐策略优先级暗示（cache eviction priority hint），在计算能力7.0（Volta架构）及以上的设备上支持。这种驱逐策略仅被用作性能提示，支持.global存储状态空间的地址指针，以及指向.global地址窗口的通用地址指针。
+
+| 缓存驱逐优先级  | 描述                                                     |
+| --------------- | -------------------------------------------------------- |
+| evict_normal    | 数据的缓存行具有正常的驱逐优先级，这是默认的驱逐优先级。 |
+| evict_first     |                                                          |
+| evict_last      |                                                          |
+| evict_unchanged |                                                          |
+| evict_allocate  |                                                          |
+
+
+
+
 
 ## 并行同步和通信指令
 

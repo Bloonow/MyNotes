@@ -837,6 +837,8 @@ Linux文件系统结构是从Unix文件结构演进过来的，在Linux文件系
 
 常见的目录名均基于文件系统层级标准（filesystem hierarchy standard，FHS），许多Linux发行版都遵循FHS标准。
 
+> 当在诸如bash shell的CLI环境中，键入一条命令或可执行文件时，Linxu会在环境变量PATH所指定的路径中进行搜索，默认包括的路径有：/sbin、/bin、/usr/sbin、/usr/bin、/usr/local/sbin、/usr/local/bin。
+
 ### 文件与目录操作
 
 在登录系统并获得一个shell CLI提示符后，会话将从用户主目录`~`开始，使用pwd命令显式shell会话的当前目录，这个目录被称为当前工作目录。在shell CLI中输入命令时，可通过制表键智能补全文件名称。
