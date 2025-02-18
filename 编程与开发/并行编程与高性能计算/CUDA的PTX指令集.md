@@ -142,7 +142,7 @@ PTX提供许多预定义的只读变量，这些变量以特殊寄存器的形�
 | %aggr_smem_size             | .sreg.u32 %aggr_smem_size;             | 内核的CTA使用的共享内存总大小，包括静态分配和动态分配的，以及系统预留的 |
 | %dynamic_smem_size          | .sreg.u32 %dynamic_smem_size;          | 内核启动时一个CTA动态分配的共享内存大小                      |
 
-一些预定义的线程掩码寄存器，使用32位无符号整数表示一个Warp中的32个线程，从高位到低位以[31:30:29:28:xxx:3:2:1:0]的形式表示对应线程，如下所示。
+一些预定义的线程掩码寄存器，使用32位无符号整数表示一个Warp中的32个线程，从高位到低位以[31:30:29:28:...:3:2:1:0]的形式表示对应线程，如下所示。
 
 | 名称         | 预定义类型              | 描述                                                         |
 | ------------ | ----------------------- | ------------------------------------------------------------ |
@@ -353,7 +353,9 @@ PTX提供数组声明以允许程序员预留内存空间。声明数组时，�
 
 https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#tensors
 
-# 寻址方式
+# 内存系统
+
+## 寻址方式
 
 对于非访存的计算指令，其描述的是ALU等计算单元的工作负载，因此指令的源操作数和目标操作数都必须全部位于.reg寄存器存储状态空间中。而对于涉及访存的指令，诸如ld、st、mov、cvt指令，会将数据从一个位置复制到另一个位置，指令ld会将数据从可寻址存储状态空间中移动到寄存器中，指令st会将数据从寄存器中移动到某个存储状态空间中，指令mov可以在寄存器之间复制数据。不同存储状态空间的操作数会影响操作的速度，寄存器最快，而设备全局内存最慢。
 
@@ -405,16 +407,9 @@ ld.global.v4.f32 {a, b, c, d}, [var2 + 32];
 
 指令中的所有操作数的类型都是已知的，其类型在声明时确定，每个操作数类型必须与指令指示的类型兼容。相同大小的无符号整数和有符号整数兼容，位bit类型与具有相同大小的任何类型兼容，而对于浮点数指令，操作数的类型与大小必须一致。
 
-对于类型转换（convert）指令而言，诸如cvt指令和cvta指令，因为其工作是从几乎任何数据类型转换为任何其他数据类型，所以转换指令会采用各种类型和大小的操作数。从低位转换为高位会进行扩展，从高位转换为低位会进行截取。例如，cvt.s32.u16指令可以将一个u16数据转换为一个s32数据。
+## 内存一致性模型
 
-转换指令可以指定舍入修饰符，在PTX中，有5个浮点舍入修饰符.rn、.rz、.rm、.rp，以及4个整数舍入修饰符.rni、.rzi、.rmi、.rpi。
 
-| 浮点舍入修饰符 | 描述                                                         | 整数舍入修饰符 | 描述                                               |
-| -------------- | ------------------------------------------------------------ | -------------- | -------------------------------------------------- |
-| .rn            | 尾数部分的最低有效位（Least Significant Bit，LSB）舍入到最近的偶数 | .rni           | 舍入到最近的整数，若被舍弃的是中间值，则向偶数舍入 |
-| .rz            | 尾数部分的LSB向零值进行舍入                                  | .rzi           | 在零值方向上进行舍入到最近的整数                   |
-| .rm            | 尾数部分的LSB向负无穷大进行舍入                              | .rmi           | 舍入到负无穷大方向上的最近的整数                   |
-| .rp            | 尾数部分的LSB向正无穷大进行舍入                              | .rpi           | 舍入到正无穷大方向上的最近的整数                   |
 
 # 指令系统
 
@@ -540,7 +535,7 @@ shf.r.mode.b32  d, a, b, c;  // right shift
 ```
 
 ```
-u32 cnt = .mode == .clamp ? min(c, 32): c & 0x1f;
+u32 cnt = .mode == .clamp ? min(c, 32) : c & 0x1f;
 if (shf.direction == shf.l) {
     d = (b << cnt) | (a >> (32 - cnt));
 } else if (shf.direction == shf.r) {
@@ -600,10 +595,10 @@ setp.CmpOp.BoolOp.f16x2 p|q, a, b, {!}c;
 ```
 
 ```
-t[0] = (a[0:15] CmpOp b[0:15]) ? 1 : 0;
-t[1] = (a[16:31] CmpOp b[16:31]) ? 1 : 0;
-p = BoolOp(t[0], c);
-q = BoolOp(t[1], c);
+tp = (a[31:16] CmpOp b[31:16]) ? 1 : 0;
+tq = (a[15:0] CmpOp b[15:0]) ? 1 : 0;
+p = BoolOp(tp, c);
+q = BoolOp(tq, c);
 ```
 
 slct指令根据第三个操作数的符号，选择前两个操作数之中的一个，写入到目标操作数，如下所示。
@@ -743,7 +738,50 @@ stackrestore.u32 stackptr;
 
 数据移动和转换指令（data movement and conversion instruction）可以将数据从一个地方复制到另一个地方，从一个存储状态空间复制到另一个存储状态空间，可能还会将数据从一种格式转换为另一种格式。一些指令诸如ld、st、suld、sust支持可选的缓存运算符。
 
-### 缓存策略
+### 地址映射指令
+
+isspacep指令用于查询一个通用地址是否指向某个存储状态空间的地址窗口内，如果通用地址a位于指定存储空间的地址窗口内，则谓词寄存器p为1，否则为0。
+
+```
+isspacep.space p, a;  // result is .pred
+
+.space = { .const, .global, .local, .shared{::cta, ::cluster}, .param{::entry} };
+```
+
+需要注意的是，isspacep.global为内核函数的.param参数返回1值，因为内核函数的参数存储空间的地址窗口位于.global窗口之中。在使用簇组编程环境时，指令isspacep.shared::cluster为所有可以访问分布式共享内存的线程块返回1，isspacep.shared::cta只为当前共享内存所属的线程块返回1。
+
+cvta指令用于将某个存储状态空间中的地址转换为通用地址，或将通用地址转换为某个存储状态空间中的地址。在将通用地址转换为某个存储空间中的地址时，若通用地址指向的地址窗口不是该存储空间的窗口，则转换得到的地址时未定义的，程序可以使用isspacep来防止此类不正确的行为。该指令的源地址与目标地址的位数大小必须相同，也即必须都是32位地址或64位地址，使用cvt.u64.u32指令或cvt.u32.u64指令可以截断地址或进行零扩展。
+
+```
+cvta.space.size p, a;                  // get generic address of source address in register a
+cvta.space.size p, variable + immOff;  // get generic address of variable with offset (optional)
+cvta.to.space.size p, a;               // convert generic address to const, global, local, or shared address
+
+.space = { .const, .global, .local, .shared{::cta, ::cluster}, .param{::entry} };
+.size  = { .u32, .u64 };
+```
+
+getctarank指令用于获取一个CTA线程块的编号，写入到32位寄存器d中，源操作数可以是共享内存中的一个变量variable，也可以是包含一个共享内存地址的寄存器a，如果指令未指定.shared::cluster修饰符，则a是包含指向共享内存的通用地址的寄存器。该指令主要用于簇组编程，要求计算能力9.0（Hopper架构）及以上的设备。
+
+```
+getctarank.shared::cluster.type d, variable + immOff;  // Get cta rank from shared memory variable with offset (optional)
+getctarank.shared::cluster.type d, a;  // Get cta rank from source shared memory address in register `a`
+getctarank                .type d, a;  // Get cta rank from generic address of shared memory variable in register `a`
+
+.type  = { .u32, .u64 }
+```
+
+mapa指令用于获取某个地址映射到指定CTA中的地址，通常是将簇组中的分布式共享内存的地址，映射到某个具体CTA中的共享内存地址，然后写入到寄存器d当中。操作数b使用一个编号指定CTA线程块，源操作数可以是共享内存中的一个变量variable，也可以是包含一个共享内存地址的寄存器a；如果指令未指定.shared::cluster修饰符，则a是包含指向共享内存的通用地址的寄存器，此时寄存器d中获得的地址也是一个通用地址。
+
+```
+mapa.shared::cluster.type d, variable + immOff, b;  // Maps shared memory variable (with optional offset) into CTA `b`
+mapa.shared::cluster.type d, a, b;  // Maps shared memory address in register `a` into CTA `b`
+mapa                .type d, a, b;  // Maps generic address in register `a` into CTA `b`
+
+.type  = { .u32, .u64 }
+```
+
+### 缓存操作指令
 
 PTX 2.0版本为加载指令ld和存储指令st引入了可选的缓存运算符（cache operator），这种缓存运算符仅被用作性能提示，并不会改变程序的内存一致性行为。
 
@@ -751,12 +789,12 @@ PTX 2.0版本为加载指令ld和存储指令st引入了可选的缓存运算符
 | ----- | ------------------------------------------------------------ |
 | ld.ca | Cache at all levels, likely to be accessed again. 数据使用所有级别缓存（L1和L2），可能会被再次访问。<br/>ld.ca是加载指令的默认缓存操作，它使用正常的驱逐策略在所有级别缓存（L1和L2）中分配缓存行。全局数据在L2级别是一致性的，但多个SM上的L1缓存对于全局内存数据来说不一定是一致的。如果一个线程通过一个L1缓存将数据存储到全局内存，第二个线程使用ld.ca在其它SM上通过L1加载该地址，则第二个线程可能会获得过时的L1缓存数据，而不是第一个线程存储的数据。NVIDIA驱动程序必须使得网格依赖线程之间的L1缓存行失效，如此才能强迫其它具有数据依赖的线程从全局内存中获取到正确数据，并更新自己所在SM的L1缓存。 |
 | ld.cg | Cache at global level (cache in L2 and below, not L1). 数据在全局内存级别缓存（在L2及以下级别而非L1缓存）。<br/>使用ld.cg仅在读取全局内存时使用缓存，并且仅将数据缓存到L2缓存行中，而绕过L1缓存。 |
-| ld.cs | Cache streaming, likely to be accessed once or twice. 数据使用流式缓存，即可能仅被访问一次或两次。<br/>使用ld.cs访问全局内存时，会在L1和L2缓存中分配具有优先驱逐（evict-first）策略的缓存行，以避免可能仅访问一两次的流式数据对缓存造成长时间污染。当使用指令ld.cs访问位于局部窗口的局部地址时，它会执行ld.lu操作。 |
+| ld.cs | Cache streaming, likely to be accessed once or twice. 数据使用流式缓存，即可能仅被访问一次或两次。<br/>使用ld.cs访问全局内存时，会在L1和L2缓存中分配具有优先驱逐（evict first）策略的缓存行，以避免可能仅访问一两次的流式数据对缓存造成长时间污染。当使用指令ld.cs访问位于局部窗口的局部地址时，它会执行ld.lu操作。 |
 | ld.lu | Last use. 最后一次使用。<br/>编译器或程序员在恢复溢出寄存器（即从局部内存中读取溢出的寄存器值）或弹出函数栈帧时，可以使用ld.lu读取局部内存，并且该局部地址的该次读取是最后一次使用缓存行，在缓存失效时无需将缓存行写回，从而避免非写回不会再次使用的缓存行。当使用ld.lu指令访问位于全局窗口的全局地址时，它会执行ld.cs操作。 |
 | ld.cv | Don’t cache and fetch again (consider cached system memory lines stale, fetch again). 数据不进行缓存也不再次获取；当系统内存缓存失效时再次获取。<br/>使用ld.cv访问全局内存时，会将已匹配（如果存在）的L2缓存行失效（丢弃），并在每次读取全局内存数据时，都重新配置L2缓存行，并读取。 |
 | st.wb | Cache write-back all coherent levels. 将数据在内存一致性模型中的，所有层级的缓存行写回。<br/>st.wb是存储指令的默认缓存操作，它使用正常的驱逐策略写回一致性缓存中分配缓存行。如果一个线程绕过L1缓存写回到全局内存，第二个线程使用ld.ca指令通过不同SM上的L1缓存加载数据，则有可能会命中过时的数据，而不是从L2缓存中获取第一个线程存储的数据。NVIDIA驱动程序必须使得网格依赖线程之间的L1缓存行失效，如此才能强迫其它具有数据依赖的线程在读取自己的L1时出现缓存缺失（miss），从而需要从全局内存中获取到正确数据，并更新自己所在的L1缓存。 |
 | st.cg | Cache at global level (cache in L2 and below, not L1). 数据在全局内存级别缓存（在L2及以下级别而非L1缓存）。<br/>使用st.cg仅在写入全局内存时使用缓存，并且仅将数据缓存到L2缓存行中，而绕过L1缓存。 |
-| st.cs | Cache streaming, likely to be accessed once or twice. 数据使用流式缓存，即可能仅被访问一次或两次。<br/>使用st.cs访问全局内存时，会在L1和L2缓存中分配具有优先驱逐（evict-first）策略的缓存行，以避免可能仅访问一两次的流式数据对缓存造成长时间污染。 |
+| st.cs | Cache streaming, likely to be accessed once or twice. 数据使用流式缓存，即可能仅被访问一次或两次。<br/>使用st.cs访问全局内存时，会在L1和L2缓存中分配具有优先驱逐（evict first）策略的缓存行，以避免可能仅访问一两次的流式数据对缓存造成长时间污染。 |
 | st.wt | Cache write-through (to system memory). 数据通过缓存直接写入到系统内存。<br/>使用st.wt直接用于全局的系统内存地址，通过L2缓存进行写入。 |
 
 PTX 7.4版本为加载指令ld和存储指令st添加了可选的缓存驱逐策略优先级暗示（cache eviction priority hint），在计算能力7.0（Volta架构）及以上的设备上支持。这种驱逐策略仅被用作性能提示，支持.global存储状态空间的地址指针，以及指向.global地址窗口的通用地址指针。
@@ -769,17 +807,697 @@ PTX 7.4版本为加载指令ld和存储指令st添加了可选的缓存驱逐策
 | evict_unchanged | 该操作不改变已有缓存行的驱逐策略。                           |
 | evict_allocate  | 不将数据分配到缓存行，适用于流式数据。                       |
 
+prefetch指令和prefetchu指令从一个地址中预取数据，放入到指定级别的缓存行当中，操作数a指定一个存储状态空间中的地址，或者指定一个通用地址。
+
+```
+prefetch{.space}.level                 [a];  // prefetch to data cache
+prefetch.global .L2::eviction_priority [a];  // prefetch to data cache
+
+.space                 = { .global, .local };
+.level                 = { .L1, .L2 };
+.L2::eviction_priority = { .L2::evict_last, .L2::evict_normal };
+```
+
+prefetch还可以指定.tensormap限定符，这会将包含指定地址数据的缓存行移入到.const或.param存储状态空间，以供后续的cp.async.bulk.tensor指令使用。
+
+```
+prefetch{.tensormap_space}.tensormap [a];  // prefetch the tensormap
+
+.tensormap_space = { .const, .param };
+```
+
+prefetchu指令可以将某个地址的数据，预取到统一高速缓存（uniform cache）当中，此时需要使用通用地址，否则是未定义行为。
+
+```
+prefetchu.L1 [a];  // prefetch to uniform cache
+```
+
+applypriority指令用于为某个内存区域对应的缓存行设置驱逐优先级，操作数a指定起始地址，size是一个整数常量，用于指定内存区域的大小，以字节为单位，且size的值必须是128。目前仅支持为[a, a＋size－1]内存区域对应的缓存行设置驱逐策略，且驱逐优先级为evict_normal。
+
+```
+applypriority{.global}.L2::evict_normal [a], size;
+```
+
+discard指令用于使某个内存地址对应的缓存行失效，操作数a指定起始地址，size指定内存区域的大小，以字节为单位，且size的值必须是128。该操作是丢弃某个缓存行，并不会写回缓存行的数据。
+
+```
+discard{.global}{.L2} [a], size;
+```
+
+createpolicy在一个64位寄存器中创建一个不透明的缓存策略对象，用作ld或st等指令的cache_policy操作数，与.L2::cache_hint一起指定缓存行的驱逐策略。
+
+```
+createpolicy.range{.global}.L2::primary_priority{.L2::secondary_priority}.b64 cache_policy, [a], primary_size, total_size;
+createpolicy.fractional    .L2::primary_priority{.L2::secondary_priority}.b64 cache_policy{, fraction};
+createpolicy.cvt.L2.b64 cache_policy, access_property;  // Converting the access property from CUDA APIs
+
+.L2::primary_priority   = { .L2::evict_normal, .L2::evict_first, .L2::evict_last, .L2::evict_unchanged };
+.L2::secondary_priority = { .L2::evict_first, .L2::evict_unchanged };
+```
+
+createpolicy.range指令使用内存地址的范围指定驱逐策略，地址范围[a, a＋primary_size－1]指定的内存区域使用.L2::primary_priority缓存行驱逐策略，地址范围[a＋primary_size, a＋total_size－1]指定的内存区域使用.L2::secondary_priority缓存行驱逐策略，其它地址范围的缓存行驱逐策略未指定。其中，操作数primary_size和total_size都是32位的，用于指定内存区域范围（以字节为单位），primary_size必须小于等于total_size，且total_size最大可以指定4GB的内存区域。如果.L2::secondary_priority未指定，则默认采用.L2::evict_unchanged缓存行驱逐策略。
+
+createpolicy.fractional指令使用分数比例指定内存地址区域的缓存行驱逐策略，操作数fraction是取值范围为(0.0, 1.0]的32位浮点数，缺省时默认值为1.0，这是一个概率参数，表示有fraction的概率使用.L2::primary_priority缓存行驱逐策略，有1－fraction的概率使用.L2::secondary_priority缓存行驱逐策略。
+
+createpolicy.cvt指令用于将一个在CUDA API层面构建的access_property对象转换为一个缓存行驱逐策略对象cache_policy，其中，源操作数access_property是一个64位的不透明寄存器。
+
+### 加载指令
+
+ld指令从可寻址的存储状态空间中加载数据到寄存器变量，操作数a指定一个数据地址，地址的寻址方式和对齐方式见之前所述，操作数d是目标寄存器。值得注意的是，{.vec}.type类型可以指定所读取数据的位数，而目标寄存器d的位数可以大于指令指定的数据位数，多出的高位数据将被扩展填充，对于无符号数据和bit位数据，高位填充为0值，对于有符号数据，高位填充为符号位的值。
+
+```
+ld{.weak}       {.ss}{.cache_op}             {.L2::cache_hint}{.L2::prefetch_size}{.vec}.type d, [a]{.unified}{, cache_policy};
+ld{.weak}       {.ss}{.L1::eviction_priority}{.L2::cache_hint}{.L2::prefetch_size}{.vec}.type d, [a]{.unified}{, cache_policy};
+ld.volatile     {.ss}                                         {.L2::prefetch_size}{.vec}.type d, [a];
+ld.relaxed.scope{.ss}{.L1::eviction_priority}{.L2::cache_hint}{.L2::prefetch_size}{.vec}.type d, [a]{.unified}{, cache_policy};
+ld.acquire.scope{.ss}{.L1::eviction_priority}{.L2::cache_hint}{.L2::prefetch_size}{.vec}.type d, [a]{.unified}{, cache_policy};
+ld.mmio.relaxed.sys{.global}.type d, [a];
+
+.ss                    = { .const, .global, .local, .shared{::cta, ::cluster}, .param{::entry, ::func} };
+.cache_op              = { .ca, .cg, .cs, .lu, .cv };
+.L1::eviction_priority = { .L1::evict_normal, .L1::evict_first, .L1::evict_last, .L1::evict_unchanged, .L1::no_allocate };
+.L2::cache_hint        = { .L2::cache_hint }
+.L2::prefetch_size     = { .L2::64B, .L2::128B, .L2::256B }
+.vec                   = { .v2, .v4 }
+.type                  = { .b8, .b16, .b32, .b64, .b128, .u8, .u16, .u32, .u64, .s8, .s16, .s32, .s64, .f32, .f64 };
+.scope                 = { .cta, .cluster, .gpu, .sys };
+```
+
+内存一致性模型规定了.weak（默认）、.volatile、.relaxed、.acquire四种修饰符，这四种修饰符是互斥的。修饰符.weak表示没有同步的内存指令，只有通过其它方式建立同步时，指令的效果才会对其它线程可见。修饰符.volatile的语义等效于具有.sys范围的.relaxed内存操作，此外还告知编译器，不要拆分或组合.volatile指令，即.volatile指令的数目不会被编译器优化，同时这些.volatile指令不会进行重排序；不过，硬件在发射.volatile指令时可以进行拆分、组合、重排等优化操作。修饰符.relaxed和修饰符.acquire表示具有同步的内存指令，可以直接在.scope指定的线程集上进行同步。
+
+.ss指定操作数a所表示的地址位于哪一个存储状态空间，若未指定.ss则使用通用地址进行寻址。当指定为.shared存储空间时，默认采用::cta子限定符；当指定为.param存储空间时，是使用::entry子限定符还是使用::func子限定符，根据函数是核函数还是设备函数确定。如果数据地址a是（主机内存和设备内存）统一地址，则需要在操作数a之后使用.unified修饰符。
+
+.L1::eviction_priority指定在内存访问期间，缓存行的驱逐策略，详见之前所述。
+
+.L2::cache_hint指示该次访存操作将使用高速缓存器，并使用64位操作数cache_policy指定缓存策略，仅支持.global存储状态空间。当使用cache_policy缓存策略时，必须指定.L2::cache_hint修饰符，它是对缓存系统的一种性能暗示，不会更改程序的内存一致性行为。
+
+.L2::prefetch_size指定在内存访问期间，当需要将数据从内存中放入缓存行中时，同时读取的一个内存块的字节大小，这仅是一种性能暗示。可设置为64字节、128字节、256字节，这些字节中通常包含其它非该次读取所需的数据，不过为充分利用内存事务的位宽，这是一种预取操作。
+
+ld.global.nc指令通过非一致性只读缓存（non-coherent read-only cache）从全局存储状态空间中加载数据到寄存器变量，操作数d是目标寄存器，操作数a指定一个数据地址，可以是.global存储状态空间中的地址，也可以是指向.global空间的通用地址。
+
+```
+ld.global{.cache_op}.nc                        {.L2::cache_hint}{.L2::prefetch_size}{.vec}.type d, [a]{, cache_policy};
+ld.global           .nc{.L1::eviction_priority}{.L2::cache_hint}{.L2::prefetch_size}{.vec}.type d, [a]{, cache_policy};
+
+.cache_op              = { .ca, .cg, .cs };
+.L1::eviction_priority = { .L1::evict_normal, .L1::evict_unchanged, .L1::evict_first, .L1::evict_last, .L1::no_allocate };
+.L2::cache_hint        = { .L2::cache_hint };
+.L2::prefetch_size     = { .L2::64B, .L2::128B, .L2::256B }
+.vec                   = { .v2, .v4 };
+.type                  = { .b8, .b16, .b32, .b64, .b128, .u8, .u16, .u32, .u64, .s8, .s16, .s32, .s64, .f32, .f64 };
+```
+
+非一致性只读缓存指的是纹理缓存，在某些架构上，纹理缓存（texture cache）比全局内存缓存更大、带宽更高、延迟更长，对于具有足够并行度以覆盖较长延迟的程序而言，ld.global.nc应该在此类架构上提供比ld.global更好的性能。
+
+ldu指令从全局存储状态空间中加载只读数据到寄存器变量，操作数d是目标寄存器，操作数a指定一个全局存储状态空间的数据地址，也可以是指向全局存储状态空间的通用地址。与普通ld指令的不同之处在于，一个Warp中的所有线程，使用的地址a都是相同的，即一个Warp中的所有线程都访问同一个地址。
+
+```
+ldu{.global}{.vec}.type d, [a];
+
+.vec  = { .v2, .v4 };
+.type = { .b8, .b16, .b32, .b64, .b128, .u8, .u16, .u32, .u64, .s8, .s16, .s32, .s64, .f32, .f64 };
+```
+
+### 存储指令
+
+st指令将寄存器数据存储到可寻址的存储状态空间中，目标操作数a指定一个数据地址，操作数b是源寄存器。值得注意的是，{.vec}.type类型可以指定所读取数据的位数，而源寄存器b的位数可以大于指令指定的数据位数，多出的高位数据将被截断。
+
+```
+st{.weak}       {.ss}{.cache_op}             {.L2::cache_hint}{.vec}.type [a], b{, cache_policy};
+st{.weak}       {.ss}{.L1::eviction_priority}{.L2::cache_hint}{.vec}.type [a], b{, cache_policy};
+st.volatile     {.ss}                                         {.vec}.type [a], b;
+st.relaxed.scope{.ss}{.L1::eviction_priority}{.L2::cache_hint}{.vec}.type [a], b{, cache_policy};
+st.release.scope{.ss}{.L1::eviction_priority}{.L2::cache_hint}{.vec}.type [a], b{, cache_policy};
+st.mmio.relaxed.sys{.global}.type [a], b;
+
+.ss                    = { .global, .local, .shared{::cta, ::cluster}, .param{::func} };
+.L1::eviction_priority = { .L1::evict_normal, .L1::evict_unchanged, .L1::evict_first, .L1::evict_last, .L1::no_allocate };
+.L2::cache_hint        = { .L2::cache_hint };
+.cache_op              = { .wb, .cg, .cs, .wt };
+.vec                   = { .v2, .v4 };
+.type                  = { .b8, .b16, .b32, .b64, .b128, .u8, .u16, .u32, .u64, .s8, .s16, .s32, .s64, .f32, .f64 };
+.scope                 = { .cta, .cluster, .gpu, .sys };
+```
+
+st.async是一个非阻塞指令，启动异步存储操作，将源寄存器数据b写入到地址a所指定的内存位置，mbar是内存栅障对象的地址。
+
+```
+st.async{.mmio}.release{.scope}{.global}.type [a], b;
+.scope = { .gpu, .sys };
+.type  = { .b8, .b16, .b32, .b64, .u8, .u16, .u32, .u64, .s8, .s16, .s32, .s64, .f32, .f64 };
+
+st.async{.weak}{.cluster}{.shared::cluster}{.complete}{.vec}.type [a], b, [mbar];
+.vec      = { .v2, .v4 };
+.type     = { .b32, .b64, .u32, .u64, .s32, .s64, .f32, .f64 };
+.complete = { .mbarrier::complete_tx::bytes };
+```
+
+.complete指定用于观察异步操作的完成机制（completion mechanism），.mbarrier::complete_tx::bytes表示在异步操作完成之后，对操作数mbar所指定的内存栅障对象执行complete-tx操作，其completeCount参数等于以字节为单位的进行存储的数据量。
+
+st.bulk指令用于对一块内存区域进行初始化，即使用一个初始值填充内存区域，该初始值必须为0，内存区域的起始地址由操作数a指定，且该区域是.shared共享存储状态空间，内存区域的大小由64位整数size指定，以字节为单位，且必须是8的整数倍。
+
+```
+st.bulk{.weak}{.shared::cta} [a], size, initval;  // initval must be zero
+```
+
 ### 数据移动指令
 
+mov指令为目标寄存器d赋值，源操作数a可以是寄存器、特殊寄存器、在可寻址内存空间中具有可选偏移量的变量或函数名称。mov指令可以使用寄存器变量a的值，或者使用立即数为目标寄存器d设置一个值，或者用于获取.local空间、.global空间、.shared空间中变量符号的非通用地址。在使用mov指令获得某个存储状态空间的非通用地址之后，可以使用cvta指令将其转换为通用地址。需要注意的是，如果使用mov指令将设备函数的参数的地址移动到寄存器，则该参数将会被复制到函数栈帧上，并且地址将位于.local局部存储状态空间中。
 
+```
+mov.type  d, a;                  // get value of register
+mov.type  d, variable + immOff;  // get address of variable with offset (optional)
+mov.utype d, func_name;          // get address of device function or kernel function
 
+.type = { .pred, .b16, .b32, .b64, .u16, .u32, .u64, .s16, .s32, .s64, .f32, .f64 };
+.utype = { .u32, .u64 };
+```
 
+mov指令还可以用于将多个标量打包（pack）成一个向量，或将一个向量解包（unpack）成多个标量，如下所示。
 
+```
+mov.type d, a;
 
+.type = { .b16, .b32, .b64, .b128 };
+```
 
+```
+mov.b64 d, { x, y, z, w };  // d = x | y << 16 | z << 32 | w << 48;  where x, y, z, w have type .b16, and d has type .b64
+mov.b32 { x, y }, a;        // x = a[31:16];  y = a[15:0];           where x, y have type .b16, and a has type .b32
+```
 
+shfl.sync指令在一个线程束Warp之内交换寄存器数据，并使用一个32位掩码membermask指定所参与的线程，该指令会阻塞直到所有参与线程完成执行。当前Warp中的每个线程，根据.mode模式，使用操作数b和c来计算要从哪个源线程中获取数据，如果数据源的线程索引未超出范围，则寄存器d获得对应源线程的数据a，谓词p置为True，而如果数据源的线程索引超出范围，则简单地将寄存器d赋值为自己线程的数据a，位置p置为False。
+
+```
+shfl.sync.mode.b32 d[|p], a, b, c, membermask;
+
+.mode = { .up, .down, .bfly, .idx };
+```
+
+操作数b[4:0]指定源线程索引srcLane或源线程的索引偏移offset，具体取决于.mode模式。操作数c包含两个打包的有效值，c[12:8]指定一个用于将Warp拆分为多个子集的掩码segmask，c[4:0]指定一个用于设置索引边界的clamp值，通常取clamp值为0x1F表示范围是整个Warp的线程。该指令的语义如下。
+
+```
+wait_for_specified_threads(membermask);  // wait for all threads in membermask to arrive
+if (isActive(%laneid)) {
+    SourceA[%laneid] = a;                // all active threads set the source value of operand `a`
+}
+
+offset[4:0] = b[4:0];    // lane offset or srcLane
+clamp[4:0] = c[4:0];     // clamp value
+segmask[4:0] = c[12:8];  // sub-segments mask of a Warp
+minLane = (%laneid & segmask);
+maxLane = (%laneid & segmask) | (clamp & ~segmask);
+
+switch (.mode) {
+case .up  :  srcLane = %laneid - offset;  p = (srcLane >= maxLane);  break;
+case .down:  srcLane = %laneid + offset;  p = (srcLane <= maxLane);  break;
+case .bfly:  srcLane = %laneid ^ offset;  p = (srcLane <= maxLane);  break;
+case .idx :  srcLane = minLane | (offset & ~sgemask);  p = (srcLane <= maxLane);  break;
+}
+
+if (p == False) srcLane = %laneid;  // copy from own lane
+d = SourceA[srcLane];               // copy input `a` from lane `srcLane`
+```
+
+参考CUDA提供的\_\_shfl_xx_sync()线程束函数，其使用width表示一个逻辑线程束子集的长度，且width只能取2、4、8、16、32其中的一个才为有效值。而PTX指令shfl.sync中操作数c所指定的segmask掩码，实际上表示的就是warpSize－width的值，可取二进制值11110、11100、11000、10000、00000，分别对应着width取值2、4、8、16、32。可以看出，segmask是一个逆掩码（0有效），这是为了可以直接使用%laneid&segmask操作获得线程子集的索引下界minLane。于是，可以得到相应的索引下界二进制值为XXXX0、XXX00、XX000、X0000、00000。
+
+操作数c所指定的clamp值，用于设置一个线程索引的界限maxLane，若数据源的线程索引超过这个界限，则当前线程就直接使用自己的值，而不再去获取源数据。至于超过界限是指大于maxLane，还是小于maxLane，取决于.mode模式。因为segmask是逆掩码，因此\~segmask即可以表示一个子集中有效索引（低位数据）的最大值，使用clamp&\~segmask操作即可从低位截取一个界限，然后与表示高位的minLane取或，即可得到每个线程子集中的索引界限maxLane。
+
+如下所述的一个示例，指定clamp界限的取值为00111时，在不同witdh情况下，所参与的线程子集的索引范围minLane和maxLane的值。
+
+| width | segmask | minLane = %laneid & segmask | ~segmask | clamp | clamp & ~segmask | maxLane = minLane \| (clamp & ~segmask) |
+| ----- | ------- | --------------------------- | -------- | ----- | ---------------- | --------------------------------------- |
+| 2     | 11110   | XXXX0                       | 00001    | 00111 | 00001            | XXXX1                                   |
+| 4     | 11100   | XXX00                       | 00011    | 00111 | 00011            | XXX11                                   |
+| 8     | 11000   | XX000                       | 00111    | 00111 | 00111            | XX111                                   |
+| 16    | 10000   | X0000                       | 01111    | 00111 | 00111            | X0111                                   |
+| 32    | 00000   | 00000                       | 11111    | 00111 | 00111            | 00111                                   |
+
+prmt指令从一对32位寄存器数据中按照.mode模式重新排列（permute）字节，即从2个32位寄存器a和b中，挑选4个字节，然后重新排列成一个32位的数据，写入到目标寄存器。操作数d是目标寄存器，其4个字节组成为d={d3,d2,d1,d0}。操作数a和b是源数据，组成一个64位的数据，其中a是低32位，b是高32位，即src[63:0]={b,a}={{b7,b6,b5,b4},{b3,b2,b1,b0}}，共8个字节。操作数c用于指定排列方式，当指定.mode时和未指定.mode时，操作数c控制排列的方式不同。
+
+```
+prmt.b32{.mode}  d, a, b, c;
+
+.mode = { .f4e, .b4e, .rc8, .ecl, .ecr, .rc16 };
+```
+
+当指令省略.mode模式未指定时，操作数c使用四个4bit的值控制排列方式，即c[15:12]、c[11:8]、c[7:4]、c[3:0]四个值，分别用于指定目标寄存器中所选择的从高位到低位的4个字节。一个4bit值的LSB低3位指定选择源数据8个字节中的哪一个，最高位MSB指定是否复制符号位，最高位为0表示原封不动地复制源字节8bit值，最高位为1表示使用源字节的最高符号位覆盖目标字节的8bit值，即目标字节8bit全是源字节的符号位。
+
+当指令指定.mode模式时，操作数c仅使用最低2位c[1:0]即可配合.mode控制排列方式，具体的控制方式如下表，其中{d3,d2,d1,d0}列的值是源字节b#的编号。
+
+<table>
+    <tr style="background-color:#F0F0F0">
+        <th rowspan=2>.mode</th> <th rowspan=2>description</th> <th colspan=4>{d3,d2,d1,d0}</th>
+    </tr>
+    <tr style="background-color:#F0F0F0">
+        <th>c[1:0]=00</th> <th>c[1:0]=01</th> <th>c[1:0]=10</th> <th>c[1:0]=11</th>
+    </tr>
+    <tr>
+        <td>.f4e</td> <td>forward 4 extract</td> <td>{3,2,1,0}</td> <td>{4,3,2,1}</td> <td>{5,4,3,2}</td> <td>{6,5,4,3}</td>
+    </tr>
+    <tr>
+        <td>.b4e</td> <td>backward 4 extract</td> <td>{5,6,7,0}</td> <td>{6,7,0,1}</td> <td>{7,0,1,2}</td> <td>{0,1,2,3}</td>
+    </tr>
+    <tr>
+        <td>.rc8</td> <td>replicate 8</td> <td>{0,0,0,0}</td> <td>{1,1,1,1}</td> <td>{2,2,2,2}</td> <td>{3,3,3,3}</td>
+    </tr>
+    <tr>
+        <td>.rc16</td> <td>replicate 16</td> <td>{1,0,1,0}</td> <td>{3,2,3,2}</td> <td>{1,0,1,0}</td> <td>{3,2,3,2}</td>
+    </tr>
+    <tr>
+        <td>.ecl</td> <td>edge clamp left</td> <td>{3,2,1,0}</td> <td>{3,2,1,1}</td> <td>{3,2,2,2}</td> <td>{3,3,3,3}</td>
+    </tr>
+    <tr>
+        <td>.ecr</td> <td>edge clamp right</td> <td>{0,0,0,0}</td> <td>{1,1,1,0}</td> <td>{2,2,1,0}</td> <td>{3,2,1,0}</td>
+    </tr>
+</table>
+
+tensormap.replace指令将张量映射（tensor-map）对象在地址addr位置上的字段替换为新值，新值由参数new_val指定。限定符.tile指定位于地址addr处的tensor-map对象的模式，限定符.b1024表示张量映射对象的大小，为1024位。仅计算能力9.0（Hopper架构）及以上的设备支持。
+
+```
+tensormap.replace.tile.field1{.ss}.b1024.type [addr], new_val;
+tensormap.replace.tile.field2{.ss}.b1024.type [addr], ord, new_val;
+tensormap.replace.tile.field3{.ss}.b1024.type [addr], new_val;
+
+.field1 = { .global_address, .rank };
+.field2 = { .box_dim, .global_dim, .global_stride, .element_stride  };
+.field3 = { .elemtype,  .interleave_layout, .swizzle_mode, .swizzle_atomicity, .fill_mode };
+.ss     = { .global, .shared::cta };
+.type   = { .b32, .b64 };
+```
+
+### 类型转换指令
+
+cvt指令用于将数据从一种类型大小转换成另一种类型大小，操作数都是寄存器变量。数据类型大小的转换，本质上就是对寄存器数据二进制位的重新解读。除下述语法中所展示的常见数据类型大小，cvt指令还支持一些特殊类型的转换，包括.f16x2、.bf16x2、.tf32、.e5m2x2、.e4m3x2、.e3m2x2、.e2m3x2等，具体的数据类型和转换规则，详见NVIDIA PTX ISA文档。
+
+```
+cvt{.irnd}{.ftz}{.sat}.dtype.atype d, a;  // integer rounding
+cvt{.frnd}{.ftz}{.sat}.dtype.atype d, a;  // float-point rounding
+
+.irnd   = { .rni, .rzi, .rmi, .rpi };
+.frnd   = { .rn,  .rz,  .rm,  .rp  };
+.dtype = { .u8, .u16, .u32, .u64, .s8, .s16, .s32, .s64, .bf16, .f16, .f32, .f64 };
+.atype = { .u8, .u16, .u32, .u64, .s8, .s16, .s32, .s64, .bf16, .f16, .f32, .f64 };
+```
+
+在进行浮点数到浮点数转换（目标类型位数小于源类型位数）、浮点数到整数转换、整数到浮点数转换时，需要指定舍入修饰符，如下所示。
+
+| 整数舍入修饰符 | 描述                                               | 浮点舍入修饰符 | 描述                                                         |
+| -------------- | -------------------------------------------------- | -------------- | ------------------------------------------------------------ |
+| .rni           | 舍入到最近的整数，若被舍弃的是中间值，则向偶数舍入 | .rn            | 尾数部分的最低有效位（Least Significant Bit，LSB）舍入到最近的偶数 |
+| .rzi           | 在零值方向上进行舍入到最近的整数                   | .rz            | 尾数部分的LSB向零值进行舍入                                  |
+| .rmi           | 舍入到负无穷大方向上的最近的整数                   | .rm            | 尾数部分的LSB向负无穷大进行舍入                              |
+| .rpi           | 舍入到正无穷大方向上的最近的整数                   | .rp            | 尾数部分的LSB向正无穷大进行舍入                              |
+
+对于浮点数，.ftz修饰符表示支持非规格化数（bubnormal number），.sat修饰符表示将结果限制在[0.0, 1.0]的范围内，NaN被刷新为0。对于整数，.sat修饰符表示将结果限制在[MININT, MAXINT]的范围内，仅在转换结果的范围超出数据范围时可用。
+
+cvt.pack指令将两个32位整数a和b转换为指定类型.convertType，转换后的值会被限制在[MIN(.convertType), MAX(.convertType)]的范围内，然后将两个值进行打包，b在低位，a在高位，可选的c在最高位，存储到32位无符号整数d当中，即d={c,convert(a),convert(b)}。
+
+```
+cvt.pack.sat.convertType.abType d, a, b;
+.convertType = { .u16, .s16 };
+.abType      = { .s32 };
+
+cvt.pack.sat.convertType.abType.cType d, a, b, c;
+.convertType = { .u2, .s2, .u4, .s4, .u8, .s8 };
+.abType      = { .s32 };
+.cType       = { .b32 };
+```
+
+### 异步复制指令
+
+异步复制可以在后台执行底层的数据复制操作，从而允许相关线程执行后续任务。异步复制作可以是对大量数据进行作的整块操作（bulk operation），也可以是对少量数据进行作的非整块操作（non-bulk operation），其中，整块异步操作处理的数据量必须是16字节的倍数。异步复制操作通常可以分解为如下几个阶段的语义：(1)从源位置读取数据；(2)将数据写入目标位置；(3)使得写入结果对执行线程或其它线程是可见的，即标识异步复制已完成。
+
+需要计算能力8.0（Ampere架构）及其以上的设备才能支持异步复制操作。
+
+#### 异步操作的完成机制
+
+线程必须显式等待异步复制作完成之后才能访问操作结果，在异步操作完成之前修改源内存位置或从目标内存位置读取数据，将导致未定义行为。PTX支持两种完成机制（completion mechanism）来实现对异步操作的跟踪（track），这些跟踪机制是特定于指令语句的，一是异步组机制（async-group mechanism），二是基于内存栅障的机制（memory barrier based mechanism）。
+
+使用异步组完成机制时，线程使用提交（commit）操作指定一组异步操作（称为async-group异步组），并使用等待（wait）操作跟踪异步组的完成情况。提交操作会为每个线程创建一个异步组对象，该异步组包含执行线程之前启动的所有异步操作，这些异步操作由该异步组跟踪完成情况；在提交操作之后再启动的异步操作不属于这个的异步组（而属于下一个异步组）。当异步组完成时，属于该组的所有异步操作都已经完成执行，此时启动异步操作的执行线程可以正确读取异步操作的结果。
+
+由执行线程提交的多个不同的异步组始终按照其提交的顺序完成执行，而一个异步组之内的多个异步操作的执行顺序是不确定的。值得注意的是，对于整块bulk异步操作和非整块non-bulk异步操作而言，它们必须使用不同的异步组。
+
+使用异步组完成机制的典型编程模型为：(1)启动异步操作；(2)使用commit将异步操作提交到一个异步组；(3)使用wait等待一个异步组完成执行；(4)在异步组完成之后，即可访问该异步组中所有异步操作的结果。
+
+使用内存栅障机制时，线程可以使用mbarrier栅障对象的当前阶段跟踪异步操作的完成情况，当mbarrier栅障对象的当前阶段完成时，这意味着此阶段跟踪的所有异步操作均已完成，并且参与该mbarrier栅障的所有线程都可以访问异步操作的结果。
+
+用于跟踪异步操作完成情况的mbarrier栅障对象，可以与异步操作一起作为语法的一部分，也可以指定为单独的操作。对于整块bulk异步操作，必须在异步操作中指定mbarrier栅障对象，而对于非整块non-bulk异步操作，可以在异步操作之后指定mbarrier栅障对象。
+
+使用mbarrier内存栅障完成机制的典型编程模型为：(1)启动异步操作；(2)设置mbarrier对象以跟踪当前阶段的异步操作，可以作为异步操作的一部分或着作为单独操作；(3)使用mbarrier.try_wait()或mbarrier.test_wait()方法等待栅障对象完成当前阶段；(4)等待wait返回True之后，即可访问所跟踪的异步操作的结果。
+
+#### 非整块non-bulk异步复制
+
+cp.async指令启动一个非阻塞的异步复制操作，将数据从全局.global存储状态空间的源地址src中，搬运到共享.shared存储状态空间的目标地址dst当中，操作数cp_size是一个整数常量，表示要搬运的数据量大小，以字节为单位，只能是4、8、16值。该指令在内存一致性模型中被视为.weak弱内存操作，.ca限定符表示在所有级别（包括L1和L2）进行数据缓存。
+
+```
+cp.async.ca.shared{::cta}.global{.L2::cache_hint}{.L2::prefetch_size} [dst], [src], cp_size{, src_size}{, cache_policy};
+cp.async.ca.shared{::cta}.global{.L2::cache_hint}{.L2::prefetch_size} [dst], [src], cp_size{, ignore_src}{, cache_policy};
+
+.L2::prefetch_size = { .L2::64B, .L2::128B, .L2::256B };
+cy_size            = { 4, 8, 16 };
+```
+
+cp.size指令允许使用32位整数作为可选的src_size操作数，指定要从src地址复制的数据量的大小，以字节为单位，必须小于等于cp_size。这种情况下，只会从src地址处复制src_size字节的数据到dst地址处，而剩余的cp_size－src_size字节的数据将使用0值进行填充。当src_size大于cp_size时，行为未定义。cp.size指令还允许使用.pred谓词作为ignore_src操作数，指定是否完全忽略来自src源地址的数据，缺省默认为False值，如果忽略则使用0值填充dst地址处数据。可选的src_size操作数和ignore_src操作数允许程序在PTX指令层面，正确处理数据加载过程中的边界问题。
+
+必须的.async限定符指示cp指令将启动异步内存复制操作，并且程序的控制权在复制作完成之前就会返回给执行线程。然后，执行线程可以使用异步组完成机制，即cp.async.wait_group指令或cp.async.wait_all指令，来等待异步复制操作的完成。或者，执行线程使用mbarrier内存栅障完成机制，即mbarrier指令，来等待异步复制操作的完成。
+
+cp.async.commit_group指令将之前启动的所有未提交的异步操作提交（commit）到一个异步组async-group当中。该指令的提交操作会为每个线程创建一个新的异步组，其中包含之前启动的所有未提交的异步操作，这些异步操作由该异步组跟踪完成情况。
+
+```
+cp.async.commit_group;
+```
+
+cp.async.wait_all指令会等待之前启动的所有异步操作完成执行，即使这些异步操作并未提交到某个异步组当中。cp.async.wait_group指令会等待之前提交的异步组完成，即等待异步组中的所有异步操作执行完成。假设有若干个异步组需要等待执行完成，则cp.async.wait_group N指令会等待，直到至多还有N个异步组没有执行完成，当N等于0时，表示等待之前提交的所有异步组完成执行，此时该指令等价于cp.async.wait_all指令。
+
+```
+cp.async.wait_all;
+cp.async.wait_group N;
+```
+
+cp.async.wait_all和cp.async.wait_group不为除cp.async之外的任何其他内存操作提供任何执行顺序和可见性的保证。
+
+#### 整块bulk异步复制
+
+> 该小节描述的整块bulk异步复制指令需要计算能力9.0（Ampere架构）及以上的设备才能支持。
+
+cp.async.bulk指令启动一个非阻塞的异步复制操作，将数据从一个存储状态空间的源地址srcMem中，搬运到另一个存储状态空间的目标地址dstMem当中，地址srcMem和dstMem必须是按照16字节对齐的。操作数size是一个32位整数，表示要搬运的数据量大小，以字节为单位，必须是16的整数倍。源内存范围[srcMem, srcMem＋size－1]和目标内存范围[dstMem, dstMem＋size－1]不能使内存空间的地址溢出，否则会导致未定义行为。
+
+```
+// .global --> .shared::cta
+cp.async.bulk.dst.src.complete{.L2::cache_hint} [dstMem], [srcMem], size, [mbar]{, cache_policy};
+.dst.src  = { .shared::cta.global };
+.complete = { .mbarrier::complete_tx::bytes };
+
+// .shared::cta --> .global
+cp.async.bulk.dst.src.complete{.L2::cache_hint}{.cp_mask} [dstMem], [srcMem], size{, cache_policy}{, byteMask};
+.dst.src  = { .global.shared::cta };
+.complete = { .bulk_group };
+
+// .global --> .shared::cluster
+cp.async.bulk.dst.src.complete{.multicast::cluster}{.L2::cache_hint} [dstMem], [srcMem], size, [mbar]{, ctaMask}{, cache_policy};
+.dst.src  = { .shared::cluster.global };
+.complete = { .mbarrier::complete_tx::bytes };
+
+// .shared::cta --> .shared::cluster
+cp.async.bulk.dst.src.complete [dstMem], [srcMem], size, [mbar];
+.dst.src  = { .shared::cluster.shared::cta };
+.complete = { .mbarrier::complete_tx::bytes };
+```
+
+修饰符.complete指定异步操作的完成机制（completion mechanism），用于标识异步操作已经完成执行。使用.mbarrier::complete_tx::bytes是基于mbarrier内存栅障的完成机制，会在由mbar操作数指定的栅障对象上执行complete-tx操作。使用.bulk_group是基于异步组的完成机制。
+
+如果指定.cp_mask修饰符，则必须使用16位宽的byteMask操作数，操作数的第i位上的值，指定每16个字节数据中的第i个字节是否复制到目标位置，若该位为1则表示复制对应的字节，否则不复制。
+
+可选修饰符.multicast::cluster允许将数据从全局内存中复制到簇组中的多个CTA的共享内存当中，16位宽的ctaMask操作数用于指定簇组中的目标CTA，每个二进制位对应着目标CTA的线程块编号%ctaid，即第0位置对应着0号线程块。在多个CTA共享内存中使用与dstMem相同的CTA相对偏移量。
+
+cp.reduce.async.bulk指令启动一个非阻塞的异步操作，读取srcMem指定的数组数据，与dstMem指定的数组数据，根据.redOp指定的操作进行归约，结果写入到dstMem指定的内存地址处。由srcMem地址指定的数组数据的字节量，和由dstMem地址指定的数组数据的字节量，必须是相同的，由操作数size指定。
+
+```
+// .shared::cta --> .shared::cluster
+cp.reduce.async.bulk.dst.src.complete.redOp.type [dstMem], [srcMem], size, [mbar];
+.dst.src  = { .shared::cluster.shared::cta };
+.complete = { .mbarrier::complete_tx::bytes };
+.redOp    = { .and, .or, .xor, .add, .inc, .dec, .min, .max };
+.type     = { .b32, .u32, .s32, .b64, .u64 };
+
+// .shared::cta --> .global
+cp.reduce.async.bulk.dst.src.complete{.L2::cache_hint}.redOp.type [dstMem], [srcMem], size{, cache_policy};
+.dst.src  = { .global.shared::cta };
+.complete = { .bulk_group };
+.redOp    = { .and, .or, .xor, .add, .inc, .dec, .min, .max };
+.type     = { .f16, .bf16, .b32, .u32, .s32, .b64, .u64, .s64, .f32, .f64 };
+
+// .shared::cta --> .global
+cp.reduce.async.bulk.dst.src.complete{.L2::cache_hint}.add.noftz.type [dstMem], [srcMem], size{, cache_policy};
+.dst.src  = { .global.shared::cta };
+.complete = { .bulk_group };
+.type     = { .f16, .bf16 };
+```
+
+cp.async.bulk.prefetch指令启动一个非阻塞的异步操作，从全局内存空间中预取数据到L2缓存之中。
+
+```
+cp.async.bulk.prefetch.L2.global{.L2::cache_hint} [srcMem], size{, cache_policy};
+```
+
+#### 张量Tensor异步复制
+
+> 该小节描述的张量Tensor异步复制指令需要计算能力9.0（Ampere架构）及以上的设备才能支持。
 
 ## 并行同步和通信指令
+
+### 栅障对象与同步
+
+barrier{.cta}指令，也可以说是barrier{.cta}.arrive指令，用于指定一个栅障对象，并在执行线程到达barrier栅障时发出达到信号（arrival signal），并使已到达的线程等待同一Warp中的所有未退出线程到达并发出达到信号，然后标记该Warp已到达barrier栅障。此外，barrier{.cta}.sync指令和barrier{.cta}.red指令除了向barrier发出达到信号之外，还会使已到达的线程等待所有Warp中的参与barrier栅障的未退出线程到达（arrival），由此可以实现同步（synchronization）功能。而barrier{.cta}.arrive指令仅标记当前Warp已到达，不会阻塞等待其它Warp中的参与线程到达栅障。
+
+当一个barrier栅障完成时，所有等待的线程将立即恢复执行，并且该barrier将重新初始化，并立即可以被重新使用。barrier{.cta}.xxx指令可以保证当barrier完成时，栅障之前的所有内存请求的操作结果，对于所有参与线程而言是可见的。barrier{.cta}.sync指令和barrier{.cta}.red指令进一步保证，在barrier栅障完成之前，线程在barrier栅障之后请求的新的内存操作不会被执行。
+
+从内存一致性模型来看，一个要读取的值从内存中传输（transmit）出来时，内存读取操作（例如ld和atom）就已经被执行完成了，并且无法再被参与栅障的其它线程修改；一个要写入的值被参与栅障的其它线程可见时，内存写入操作（例如st、red和atom）就已经被执行完成了，该内存位置的之前值就无法被读取了。
+
+下述语法示例中，操作数a、b、d是32位无符号整数.u32类型，操作数p、c是.pred谓词寄存器。
+
+```
+barrier{.cta}.sync    {.aligned}      a{, b};
+barrier{.cta}.arrive  {.aligned}      a, b;
+barrier{.cta}.red.op  {.aligned}.pred p, a{, b}, {!}c;
+barrier{.cta}.red.popc{.aligned}.u32  d, a{, b}, {!}c;
+
+bar{.cta}.sync         a{, b};
+bar{.cta}.arrive       a, b;
+bar{.cta}.red.op.pred  p, a{, b}, {!}c;
+bar{.cta}.red.popc.u32 d, a{, b}, {!}c;
+
+.op = { .and, .or };
+```
+
+在底层硬件资源实现上，每个CTA实例都具有16个栅障对象，可以使用从0到15的编号指定。操作数a可以是立即数也可以是寄存器，用于指定从0到15的编号，表示使用哪一个逻辑栅障对象。操作数b用于指定参与栅障的线程数目，该数目必须是warpSize＝32的整数倍，若未指定则表示CTA中的所有线程都将参与栅障。需要注意的是，barrier{.cta}.arrive指令需要b指定非零的线程数目。
+
+barrier{.cta}.red指令对该CTA中所有线程的谓词寄存器c或!c的值，执行由.op修饰符或.popc修饰符指定的跨线程归约操作，并将归约结果写入到谓词寄存器p或者目标寄存器d当中。其中，.and操作对所有参与线程执行逻辑与，.or操作对所有参与线程执行逻辑或，.popc操作会统计谓词为True的所有参与线程数目。
+
+修饰符.aligned表示CTA中的所有线程都执行相同的barrier{.cta}指令，在条件分支执行的代码中，仅当已知CTA中的所有线程使用相同的条件谓词时，才能够使用具有.aligned修饰的barrier{.cta}.xxx.aligned指令。bar{.cta}.xxx系列指令等价于barrier{.cta}.xxx.aligned系列指令，并具有相同限制。
+
+不同的Warp可能会使用相同的barrier名称和线程数目来执行不同形式的barrier{.cta}指令。一个混合使用barrier{.cta}.sync和barrier{.cta}.arrive的示例是生产者/消费者模型。生产者线程执行barrier{.cta}.arrive来告知它们到达barrier并继续执行以生成下一个值，而消费者线程执行barrier{.cta}.sync以等待生成资源。然后，使用不同的barrier对象反转角色，其中生产者线程执行barrier{.cta}.sync以等待资源被消耗，而消费者线程则告知资源已被barrier{.cta}.arrive消耗。需要注意的是，在重置barrier之前，必须注意防止Warp执行比预期更多的barrier{.cta}指令，即同一个barrier对象上的barrier{.cta}.arrive指令，以及后跟的任何其它barrier{.cta}指令。
+
+```
+// Producer code places produced value in shared memory.
+st.shared  [smem_addr], tmp;
+bar.arrive 0, 64;
+ld.global  tmp, [gmem_addr];
+bar.sync   1, 64;
+
+// Consumer code, reads value from shared memory
+bar.sync   0, 64;
+ld.shared  val, [smem_addr];
+bar.arrive 1, 64;
+```
+
+bar.warp.sync指令使得执行线程在一个Warp线程束的范围之内进行栅障同步，操作数membermask是一个32位无符号整数掩码，用于指示一个Warp内参与同步的线程编号，从最右侧低位到最左侧高位，依次表示Warp内的0到31号线程，二进制位为1表示参与栅障同步，为0表示不参与同步。
+
+```
+bar.warp.sync membermask;
+```
+
+barrier.cluster指令使得执行线程在一个簇组的范围之内参与barrier栅障对象，可用于簇组内的线程同步和通信。barrier.cluster.arrive用于标记当前Warp已到达栅障，barrier.cluster.wait指令用于等待所有Warp中的参与栅障的未退出线程达到栅障。该指令要求计算能力9.0（Ampere架构）及以上的设备。
+
+```
+barrier.cluster.arrive{.sem}{.aligned};
+barrier.cluster.wait{.acquire}{.aligned};
+
+.sem = { .release, .relaxed };
+```
+
+### 线程之间的协作
+
+atom指令用于执行线程之间的原子操作，首先将地址a处的原始值加载到目标寄存器d中，然后将原始值与操作数b进行.op运算，最后将结果写回到地址a处，覆盖原始值。其中，操作数a指定.global全局存储状态空间或.shared共享存储状态空间中的一个地址，若未提供状态空间则使用通用地址进行访问。原子操作的整个过程都是原子性的，能够保证多个线程在处理同一个地址处的数据时，不会出现数据争用错误。
+
+```
+atom{.sem}{.scope}{.space}.op                 .type d, [a], b, c;
+atom{.sem}{.scope}{.space}.op{.L2::cache_hint}.type d, [a], b{, cache_policy};
+atom{.sem}{.scope}{.space}.cas.b16  d, [a], b, c;
+atom{.sem}{.scope}{.space}.cas.b128 d, [a], b, c{, cache_policy};
+atom{.sem}{.scope}{.space}.exch{.L2::cache_hint}.b128 d, [a], b{, cache_policy};
+atom{.sem}{.scope}{.space}.add.noftz{.L2::cache_hint}.f16   d, [a], b{, cache_policy};
+atom{.sem}{.scope}{.space}.add.noftz{.L2::cache_hint}.f16x2 d, [a], b{, cache_policy};
+
+.sem   = { .relaxed, .acquire, .release, .acq_rel };
+.scope = { .cta, .cluster, .gpu, .sys };
+.space = { .global, .shared{::cta, ::cluster} };
+.op    = { .and, .or, .xor, .cas, .exch, .add, .inc, .dec, .min, .max };
+.type  = { .b32, .b64, .u32, .u64, .s32, .s64, .f32, .f64 };
+```
+
+```
+atom{.sem}{.scope}{.global}.add{.L2::cache_hint}.vec.f32 d, [a], b{, cache_policy};
+
+.sem   = { .relaxed, .acquire, .release, .acq_rel };
+.scope = { .cta, .cluster, .gpu, .sys };
+.vec   = { .v2, .v4 };
+```
+
+red指令用于对全局内存区域中的数据或共享内存区域中的数据执行归约操作，使用地址a处的数据和操作数b进行归约操作，结果写回到地址a处，覆盖原始值。
+
+```
+red{.sem}{.scope}{.space}.op{.L2::cache_hint}.type         [a], b{, cache_policy};
+red{.sem}{.scope}{.space}.add.noftz{.L2::cache_hint}.f16   [a], b{, cache_policy};
+red{.sem}{.scope}{.space}.add.noftz{.L2::cache_hint}.f16x2 [a], b{, cache_policy};
+
+.sem   = { .relaxed, .release };
+.scope = { .cta, .cluster, .gpu, .sys };
+.space = { .global, .shared{::cta, ::cluster} };
+.op    = { .and, .or, .xor, .add, .inc, .dec, .min, .max };
+.type  = { .b32, .b64, .u32, .u64, .s32, .s64, .f32, .f64 };
+```
+
+```
+red{.sem}{.scope}{.global}.add{.L2::cache_hint}.vec.f32 [a], b{, cache_policy};
+
+.sem   = { .relaxed, .release };
+.scope = { .cta, .cluster, .gpu, .sys };
+.op    = { .add, .min, .max };
+.vec   = { .v2, .v4 };
+```
+
+red.async指令执行异步的归约操作，这是一个非阻塞的指令，它启动由.op指定的异步归约操作。
+
+redux.sync指令在一个Warp中执行归约，源操作数是Warp中所有未退出线程的src寄存器，执行结果写入到每个未退出线程的dst目标寄存器当中。当指定.NaN修饰符时，只要有一个线程的src寄存器中是NaN，则归约结果就是NaN；当未指定.NaN修饰符时，则会跳过NaN的情况，也即不考虑为NaN的线程，除非所有线程都是NaN，此时最终结果就是NaN。
+
+```
+redux.sync.op.type dst, src, membermask;
+.op   = { .add, .min, .max };
+.type = { .u32, .s32 };
+
+redux.sync.op.b32 dst, src, membermask;
+.op   = { .and, .or, .xor };
+
+redux.sync.op{.abs}{.NaN}.f32 dst, src, membermask;
+.op   = { .min, .max };
+```
+
+activemask指令用于查询当前Warp中的所有未退出的活动线程，并设置32位整数的线程掩码，从最右侧低位到最左侧高位，依次表示Warp内的0到31号线程。
+
+```
+activemask.b32 d;
+```
+
+vote.sync指令按照同步阻塞的方式，在一个Warp中对谓词a执行投票操作，并将结果写入到目标寄存器d当中，由membermask指定要参与的线程索引编号。当使用.all、.any、.uni操作时，目标操作数d是谓词寄存器；操作.all表示只有所有线程的谓词a为True时，结果d才为True；操作.any表示只要任一线程的谓词a为True时，结果d就为True；.uni表示只有所有线程的谓词a都相同时，结果d才为True。当使用.ballot操作时，目标操作数d是32位寄存器，此时该指令将使用每个线程的谓词a的值，来设置d中的二进制位，当0号线程谓词a为True时，则d中最右侧表示0号线程的二进制位被置为1，依次类推。
+
+```
+vote.sync.mode.pred  d, {!}a, membermask;
+vote.sync.ballot.b32 d, {!}a, membermask;  // `ballot` form, returns bitmask
+
+.mode = { .all, .any, .uni };
+```
+
+match.sync指令按照同步阻塞的方式，在一个Warp中对操作数a进行匹配，并将结果写入到目标寄存器d当中，由membermask指定要参与的线程索引编号，目标操作数d是一个32位整数。当使用.any操作时，一个线程在整个Warp中，匹配与自己a值相同的线程，并将匹配线程的对应二进制位在d中设置为1。当使用.all操作时，只有当Warp中所有未退出线程都具有相同的a值时，才会将d设置为线程编号的掩码，否则设置为0；同时，若能够匹配则将谓词p置为True。
+
+```
+match.any.sync.atype d, a, membermask;
+match.all.sync.atype d[|p], a, membermask;
+
+.atype = { .b32, .b64 };
+```
+
+### 内存栅障对象
+
+mbarrier内存栅障（memory barrier）实际上是在共享内存中创建的cuda::barrier栅障对象，这是C++标准库中std::barrier栅障对象的GPU实现，可用参考CUDA编程中cuda::barrier类型的工作机制，即先arrive到达，再wait等待。mbarrier对象支持：(1)同步CTA中的任意线程子集；(2)一个簇组中跨CTA之间的线程单向同步（one-way synchronization），单向是因为shared::cluster空间中的mbarrier对象只能执行arrive操作，而不能执行wait操作；(3)用于等待线程之前启动的异步内存复制操作完成，并使结果对其它线程可见。
+
+mbarrier对象表示为一个64位的.b64不透明句柄，并且该对象必须存储在.shared共享内存当中，其地址按照8字节对齐。值得注意的是，使用barrier{.cta}指令时，每个CTA中可以访问的栅障资源数目是有限的，而内存mbarrier栅障对象是用户在共享内存中定义的，其可用数目完全取决于内存容量的限制。
+
+一个mbarrier内存栅障对象，可以使用mbarrier.init指令初始化，使用mbarrier.inval指令释放内存，并支持mbarrier.expect_tx操作、mbarrier.arrive操作、mbarrier.arrive_drop操作、mbarrier.try_wait操作、mbarrier.test_wait操作、mbarrier.pending_count操作，以及cp.async.mbarrier.arrive操作。与异步栅障cuda::barrier类型相似，mbarrier对象中也会跟踪一些信息和计数器，包括：mbarrier的当前阶段（current phase）；mbarrier当前阶段的还需要预期到达的线程数目；mbarrier下一阶段预期到达的线程数目；mbarrier当前阶段跟踪的待完成的异步内存复制操作（事务）的计数，也即tx-count计数。
+
+mbarrier栅障对象的阶段使用从0开始递增的编号表示，当mbarrier对象当前阶段的预期到达线程数目归零，并且tx-count归零时，当前阶段即可完成，它会自动重新初始化，以便在下一个阶段立即使用。从当前阶段完成到进入下一阶段，并重新初始化预期到达线程数目，这个过程是原子性的。
+
+mbarrier.init指令在共享内存中初始化一个mbarrier栅障对象，mbar_addr是一个.shared共享内存地址，count是32位无符号整数，表示预期到达线程的数目。默认情况下，tx-count初始化为0值，需要注意的是，tx-count只有在计算能力9.0（Hopper架构）及以上的设备才支持。
+
+```
+mbarrier.init{.shared{::cta}}.b64 [mbar_addr], count;
+```
+
+mbarrier.inval指令用于使一个mbarrier对象失效，并释放其所占用的共享内存位置。
+
+```
+mbarrier.inval{.shared{::cta}}.b64 [mbar_addr];
+```
+
+mbarrier.expect_tx指令为一个mbarrier栅障对象的tx-count计数添加一个txCount值，其中txCount操作数是32位无符号整数。
+
+```
+mbarrier.expect_tx{.relaxed}{.scope}{.space}.b64 [mbar_addr], txCount;
+
+.scope = { .cta, .cluster };
+.space = { .shared{::cta}, .shared::cluster };
+```
+
+mbarrier.complete_tx指令为一个mbarrier栅障对象的tx-count计数减少一个txCount值，其中txCount操作数是32位无符号整数。
+
+```
+mbarrier.complete_tx{.relaxed}{.scope}{.space}.b64 [mbar_addr], txCount;
+.scope = { .cta, .cluster };
+.space = { .shared{::cta}, .shared::cluster };
+```
+
+mbarrier.arrive指令标识当前执行线程已到达，并向mbarrier栅障对象发出一个到达（arrival）信号，将mbarrier当前阶段的预期到达线程数目减少一个32位无符号整数的count值，缺省默认时为1。如果指定可选的.expect_tx修饰符，则表示在线程达到之前，执行mbarrier.expect_tx操作，使用txCount参数，默认count参数为1。当指定.noComplete限定符时，表示当前线程的到达不得导致mbarrier对象完成当前阶段，否则会导致未定义行为。使用一个64位寄存器state，来捕获在执行mbarrier.arrive指令之前的mbarrier栅障对象的阶段信息，state中的内容是特定于实现的，该寄存器state信息通常用于mbarrier栅障的wait指令。
+
+```
+mbarrier.arrive          {.sem}{.scope}{.shared{::cta}}  .b64  state, [mbar_addr]{, count};
+mbarrier.arrive          {.sem}{.scope}{.shared::cluster}.b64      _, [mbar_addr]{, count};
+mbarrier.arrive.expect_tx{.sem}{.scope}{.shared{::cta}}  .b64  state, [mbar_addr], txCount;
+mbarrier.arrive.expect_tx{.sem}{.scope}{.shared::cluster}.b64      _, [mbar_addr], txCount;
+mbarrier.arrive.noComplete{.release}{.cta}{.shared{::cta}}.b64 state, [mbar_addr], count;
+
+.sem   = { .release, .relaxed };
+.scope = { .cta, .cluster };
+```
+
+mbarrier.arrive_drop指令标识当前执行线程已到达，并向mbarrier栅障对象发出一个到达（arrival）信号，将mbarrier当前阶段以及下一个阶段的预期到达线程数目减少一个32位无符号整数的count值，缺省默认时为1。该指令与mbarrier.arrive的区别在于，当线程到达时，mbarrier栅障对象不仅会减少当前阶段的预期达到线程数目，还会减少下一个阶段的预期达到线程数目；于是，当该mbarrier进入下一阶段时，初始化时的预期线程达到数目会比上一阶段更少，这实际上等效于，将当前线程自身从mbarrier栅障对象的所有参与线程中移除，并不再参与后续的mbarrier栅障。
+
+```
+mbarrier.arrive_drop{.sem}{.scope}{.shared{::cta}}.b64 state, [mbar_addr]{, count};
+mbarrier.arrive_drop{.sem}{.scope}{.shared::cluster}.b64   _, [mbar_addr]{, count};
+mbarrier.arrive_drop.expect_tx{.shared{::cta}} {.sem}{.scope}.b64 state, [mbar_addr], tx_count;
+mbarrier.arrive_drop.expect_tx{.shared::cluster}{.sem}{.scope}.b64    _, [mbar_addr], tx_count;
+mbarrier.arrive_drop.noComplete{.release}{.cta}{.shared{::cta}}.b64 state, [mbar_addr], count;
+
+.sem   = { .release, .relaxed };
+.scope = { .cta, .cluster };
+```
+
+cp.async.mbarrier.arrive指令用于为之前启动的所有异步复制操作设置一个触发器，当之前的cp.async异步操作完成之后，系统会对mbarrier内存栅障对象执行mbarrier.arrive操作，使得预期达到计数递减，这是一种异步的执行机制。如果未指定.noinc修饰符，则该指令会对mbarrier栅障对象的预期达到计数递增1，如此才能使得由该触发器导致的mbarrier.arrive操作不会让mbarrier的预期达到计数提前减至0值。如果指定.noinc修饰符，则触发器不会为mbarrier栅障对象递增预期达到计数，这要求用户需要在mbarrier栅障对象初始化时，预先考虑到异步复制操作执行完成时导致预期计数递减的情况，并将预期达到计数初始化为实际参与线程数目与异步操作同步次数之和。
+
+```
+cp.async.mbarrier.arrive{.noinc}{.shared{::cta}}.b64 [mbar_addr];
+```
+
+mbarrier.try_wait指令会阻塞执行并等待，直到一个mbarrier栅障对象的所有未退出的参与线程执行mbarrier.arrive达到，使得mbarrier进入下一个阶段，或者等待阻塞时间超出由32位无符号整数suspendTimeHint指定的限制，该时间限制以纳秒（nanosecond）为单位。谓词寄存器waitComplete是返回值，如果mbarrier栅障对象成功进入下一个阶段，则waitComplete返回True值，如果mbarrier栅障对象当前阶段仍然没有完成，则waitComplete返回False值。
+
+```
+mbarrier.try_wait       {.sem}{.scope}{.shared{::cta}}.b64 waitComplete, [mbar_addr], state{, suspendTimeHint};
+mbarrier.try_wait.parity{.sem}{.scope}{.shared{::cta}}.b64 waitComplete, [mbar_addr], phaseParity{, suspendTimeHint};
+
+.sem   = { .acquire, .relaxed };
+.scope = { .cta, .cluster };
+```
+
+操作数state是由mbarrier.arrive指令返回的64位寄存器，标识在mbarrier.arrive执行之前的阶段信息。如果当前线程不是最后一个未到达的线程，则未进入下一个阶段的mbarrier栅障对象的阶段信息和state阶段是相同的，于是阻塞等待；如果当前线程是最后一个未到达的线程，则会导致mbarrier进入下一个阶段，那么所有参与线程都会发现mbarrier栅障对象的阶段信息不再和state阶段相同，于是继续向后执行。
+
+当使用.parity修饰符时，则会使用mbarrier栅障对象的阶段信息的奇偶校验位标识是否成功进入下一个阶段，奇数阶段的校验位是1，偶数阶段的校验位是0。此时使用phaseParity操作数，指定mbarrier栅障对象的当前阶段的校验位，或紧跟的上一阶段的校验位，用于判断wait时是否已经成功进入下一阶段。需要注意的是，使用.parity修饰符时，需要跟踪mbarrier栅障对象在其整个声明周期中的阶段信息的校验位。
+
+mbarrier.test_wait指令与mbarrier.try_wait指令类似，但mbarrier.test_wait并不会阻塞线程执行，而是会立即将判断结果返回为谓词waitComplete的值。通常情况下，非阻塞的mbarrier.test_wait指令会与诸如@p bra waitLoopLabel的语句一起使用，来构造一个忙等待。
+
+```
+mbarrier.test_wait       {.sem}{.scope}{.shared{::cta}}.b64 waitComplete, [mbar_addr], state;
+mbarrier.test_wait.parity{.sem}{.scope}{.shared{::cta}}.b64 waitComplete, [mbar_addr], phaseParity;
+
+.sem   = { .acquire, .relaxed };
+.scope = { .cta, .cluster };
+```
+
+mbarrier.pending_count指令用于查询一个mbarrier栅障对象当前阶段的预期到达线程数目，并将查询结果写入到32位无符号整数目标寄存器count当中，操作数state是由mbarrier.arrive返回表示阶段信息的64位寄存器。
+
+```
+mbarrier.pending_count.b64 count, state;
+```
 
 ## Warp矩阵乘法累加指令
 
@@ -787,7 +1505,21 @@ PTX 7.4版本为加载指令ld和存储指令st添加了可选的缓存驱逐策
 
 ## 第五代TensorCore指令
 
-## 其它指令（断点、视频、纹理、表面）
+## 其它指令
+
+PTX支持对纹理（texture）和采样器描述符（sampler descriptor）执行以下操作：纹理和采样器描述符的静态初始化；纹理和采样器描述符的模块范围（module-scope）定义和核函数范围（per-entry scope）定义；查询纹理和采样器描述符中的字段。涉及tex、tld4、txq等指令。PTX支持对表面（surface）描述符执行以下操作：表面描述符的静态初始化；表面描述符的模块范围定义和核函数范围定义；查询表面描述符中的字段。涉及suld、sust、sured、suq指令。
+
+PTX支持视频指令（video instruction），包括视频标量指令和视频SIMD指令。涉及vadd、vsub、vabsdiff、vmin、vmax、vshl、vshr、vmad、vset等标量指令，以及vadd2、vadd4、vsub2、vsub4、vavrg2、vavrg4、vabsdiff2、vabsdiff4、vmin2、vmin4、vmax2、vmax4、vset2、vset4等向量化指令。
+
+brkpt;
+
+nanosleep;
+
+pmevent;
+
+trap;
+
+setmaxnreg;
 
 # 指示语句
 

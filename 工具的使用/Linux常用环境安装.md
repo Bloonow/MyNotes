@@ -301,8 +301,6 @@ sudo apt install nvidia-driver-550
 
 下载完成后，在Linux平台下会得到类似于NVIDIA-Linux-x86_64-535.86.05.run的可执行程序，在终端执行sudo sh NVIDIA-Linux-x86_64-535.86.05.run以进入安装过程，根据提示选择所需功能，完成安装即可。下面给出手动安装的步骤。
 
-注意，较旧版本的NVIDIA驱动、CUDA开发套件、cuDNN库是命令行式提示安装的，较新版本的时命令行式交互安装的，但其基本信息一致，注意辨别，根据需求选择即可。
-
 ## 1. 安装前准备
 
 执行以下命令删除可能已安装的NVIDIA驱动，或执行/usr/bin/nvidia-uninstall以卸载NVIDIA驱动。
@@ -382,6 +380,24 @@ sudo /usr/bin/nvidia-uninstall
 选择Sign the kernel module，即会进行签名。然后选择Generate a new key pair，这就会在/usr/share/nvidia目录下生成一个nvidia\*.der文件和一个nvidia\*.key文件，前者是一个私钥，后者是一个公钥。然后选择No不删除已有的密钥文件。之后是两次Ok确认密钥文件。然后选择Install signed kernel module安装即可，一些配置可以根据具体需求选择。
 
 在安装完成之后，使用modprobe nvidia挂载NVIDIA驱动时会出现权限错误，此时使用sudo mokutil --import /usr/share/nvidia/nvidia*.der命令将密钥添加到内核的信任列表中，并按要求输入两次root密码，完成后使用sudo reboot重启。重启后在进入系统前会出现蓝色界面，选择第二个选项，然后选择Continue，然后选择Yes输入密码，选择Reboot重启。之后重新输入modprobe nvidia挂载NVIDIA驱动。
+
+有时，重新启动计算机后，使用nvidia-smi命令会提示NVIDIA驱动程序丢失，如下所示。这是因为由于Linux内核升级，之前的NVIDIA驱动程序与连接不匹配。
+
+> NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver. Make sure that the latest NVIDIA driver is installed and running.
+
+使用DKMS（Dynamic Kernel Module System）可以在内核变化后自动编译模块，并适应新的内核，它允许离散内核模块更新，而无需修改整个内核。此处使用dkms重新安装内核的相应驱动程序，如下所示。
+
+```shell
+sudo apt install dkms
+sudo dkms install -m nvidia -v 560.35.05
+dkms status nvidia
+```
+
+```
+nvidia/560.35.05, 5.15.0-131-generic, x86_64: installed
+```
+
+其中使用到的'-v 560.35.05'版本号，实际上是/usr/src目录下的名为nvidia-560.35.05的文件夹所指示的版本号。
 
 ## 3. 安装CUDA开发套件
 
