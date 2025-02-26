@@ -10,7 +10,7 @@ GPU是英文Graphics Processing Unit的首字母缩写，意为图形处理器�
 
 从硬件的角度来看，一个GPU由若干**图形处理簇（Graphics Processing Cluster，GPC）**构成，每个GPC包含一些诸如光栅化引擎（Raster Engine）等部件。每个GPC由若干**流多处理器（streaming multiprocessor，SM）**构成，每个SM是相对独立的，而每个SM中有若干**流处理器（streaming processor，SP）**，流处理器又称为**CUDA核心**。
 
-GPU计算不是指单独的GPU计算，而是CPU+GPU的异构（heterogeneous）计算。一块单独的GPU是无法独立地完成所有计算任务的，它必须在CPU的调度下才能完成特定任务。在由CPU和GPU构成的异构计算平台中，通常将起控制作用的CPU成为**主机（host）**，将起加速作用的GPU称为**设备（device）**。主机和（非集成）设备都有自己的DRAM内存，它们之间一般由PCIE总线连接。
+GPU计算不是指单独的GPU计算，而是CPU+GPU的异构（heterogeneous）计算。一块单独的GPU是无法独立地完成所有计算任务的，它必须在CPU的调度下才能完成特定任务。在由CPU和GPU构成的异构计算平台中，通常将起控制作用的CPU称为**主机（host）**，将起加速作用的GPU称为**设备（device）**。主机和（非集成）设备都有自己的DRAM内存，它们之间一般由PCIE总线连接。
 
 CUDA（Compute Unified Device Architecture）是显卡厂商NVIDIA推出的运算平台，目前CUDA编程只支持NVIDIA推出的GPU，以下几个系列GPU都支持CUDA编程。
 
