@@ -71,7 +71,7 @@ identifier:  [a-zA-Z]{followsym}* | [_$%]{followsym}+
 
 PTX支持整数和浮点常量以及常量表达式，这些常量可用于数据初始化，并用作指令的操作数。在PTX中，整数常量可用作谓词，零值为False，非零值为True。
 
-假设存在一个名称为mycode.ptx的PTX模块文件，可以通过cuModuleLoad()方法和cuModuleGetFunction()方法在CUDA C++代码中使用PTX提供的内核函数。需要注意的是，此处使用的以cu前缀开头的API函数，是由CUDA的驱动API提供的，而不是由诸如cudaXXX()的运行时提供的接口，因此在编译时要使用-lcuda链接到相应的库文件。
+假设存在一个名称为mycode.ptx的PTX模块文件，可以通过cuModuleLoad()方法和cuModuleGetFunction()方法在CUDA C++代码中加载PTX提供的内核函数，并使用cuLaunchKernel()方法在CUDA C++代码中启动PTX提供的内核函数。需要注意的是，此处使用的以cu前缀开头的API函数，是由CUDA的驱动API提供的，而不是由诸如cudaXXX()的运行时提供的接口，因此在编译时要使用-lcuda链接到相应的库文件。
 
 ```c++
 #include <cuda.h>
