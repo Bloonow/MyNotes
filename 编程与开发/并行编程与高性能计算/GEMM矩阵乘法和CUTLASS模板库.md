@@ -1075,10 +1075,14 @@ public:
     CUTLASS_HOST_DEVICE LongIndex operator()(MatrixCoord const &coord) const {
         return LongIndex(coord.column()) * LongIndex(stride_[0]) + coord.row();
     }
+    // Inverse of layout function, mapping linear offset to logical coordinate
+    MatrixCoord inverse(LongIndex offset) const {
+        return MatrixCoord(Index(offset % stride_[0]), Index(offset / stride_[0]));
+    }
 };
 ```
 
-在cuBLAS库中，存在前导维数的概念，在默认采用列主序存储的矩阵布局时，这意味着矩阵元素{rid,cid}具有值为rid+cid\*ld的偏移，等价于CUTLASS提供的ColumnMajor布局类型；同时CUTLASS也提供RowMajor、RowMajorInterleaved、ColumnMajorInterleaved等布局类型，如下示意图。
+在cuBLAS库中，存在前导维数的概念，在默认采用列主序存储的矩阵布局时，这意味着矩阵元素{rid,cid}具有值为rid+cid\*ld的偏移，等价于CUTLASS提供的ColumnMajor布局类型；同时CUTLASS也提供RowMajor、RowMajorInterleaved、ColumnMajorInterleaved等布局类型，如下示意图所示，索引即是元素在线性内存中的存储顺序。假设RowMajor布局的主维数为ldm，则交错存储RowMajorInterleaved布局的主维数为InterleavedLdm＝ldm×Interleave。
 
 <img src="GEMM矩阵乘法和CUTLASS模板库.assets/Matrix Layout.png" style="zoom: 50%;" />
 
