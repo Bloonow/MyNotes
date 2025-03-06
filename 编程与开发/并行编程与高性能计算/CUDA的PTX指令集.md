@@ -392,9 +392,89 @@ PTX张量操作可以检测和处理边界框在任何维度上越界时的情�
 
 <img src="CUDA的PTX指令集.assets/平铺模式scatter4和gather4示意图.png" style="zoom:20%;" />
 
-### Im2Col模式！！！
+### im2col模式
 
-模式Im2Col支持三维（3D）、四维（4D）、五维（5D）的张量形状，在此模式下，张量数据被视为一批图像数据，这些图像的属性包括：
+模式im2col支持三维（3D）、四维（4D）、五维（5D）的张量形状，在此模式下，张量数据被视为一批图像数据，这些图像的属性包括：一个批量中的图像数目N（Number）；三维图像的维数大小DHW（Depth，Height，Width）；每个图像元素的通道数C（Channel）。这些属性正好与三维、四维、五维张量相关联，即，三维张量表示NWC图像，四维张量表示NHWC图像，五维张量表示NDHWC图像。一个张量在im2col模式下可以使用如下示意图表示。
+
+<img src="CUDA的PTX指令集.assets/张量im2col模式的NDHWC维度.png" style="zoom: 25%;" />
+
+在im2col模式下，边界框是在DHW空间中定义的，而沿其它维度轴的边界是由每列像素数（Pixels-per-Column）和每像素通道数（Channels-per-Pixel）指定的，因此边界框维度要比张量维度少2个维度轴。边界框的维数大小使用下角（Lower Corner）和上角（Upper Corner）定义，下角和上角指定DHW空间中边界框的两个相对的角，下角指定拥有最小坐标的角，上角指定拥有最大坐标的角，值得注意的是，下角和上角使用的是相对于张量空间边角的相对坐标。如下所示。
+
+<img src="CUDA的PTX指令集.assets/张量im2col模式的边界框.png" style="zoom:25%;" />
+
+边界框的下角和上角仅仅是用于框定一个访问范围，并不是指定要访问的元素。真正要访问的元素位置由PTX张量指令中的张量坐标（Tensor Coordinate）和im2col偏移（Offset）指定。在确定元素的访问起始位置之后，真正要访问的元素数目由每列像素数（Pixels-per-Column）指定，每个访问位置上要读取的通道数目由每像素通道数（Channels-per-Pixel）指定。
+
+张量坐标根据张量诸如(N, D, H, W, C)的形状，以维度形状含义如(nIdx, dIdx, hIdx, wIdx, cIdx)的形式指定，张量坐标用于指定卷积核（convolution filter）在张量空间中的起始位置，所谓的位置都是相对于各个维度轴上的0号元素而言的，因此由诸如dIdx、hIdx、wIdx坐标值指定的起始位置也与边界框无关，但所指定的起始位置应必须落在边界框中。im2col偏移指定一个相对于卷积核起始位置的核内元素偏移量，维度形状为(dOffset, hOffset, wOffset)含义，将卷积核的起始位置和核内偏移量相加，即可得到张量空间中真正要访问元素位置。
+
+一个NHWC张量在im2col模式下的访问示例如下所示，二维卷积核采用3×3的大小。
+
+```
+Tensor Size [N, H, W, C] = [64, 14, 9, 64]
+Bounding Box Lower Corner [H, W] = [-1, -1]
+Bounding Box Upper Corner [H, W] = [-1, -1]
+Tensor Coordinate [nIdx, hIdx, wIdx, cIdx] = [7, 7, 4, 0]
+im2col Offset [hOffset, wOffset] = [1, 0]
+Pixels-per-Column = 64
+Channels-per-Pixel = 8
+```
+
+<img src="CUDA的PTX指令集.assets/张量im2col模式的访问元素.png" style="zoom:25%;" />
+
+与tile平铺模式不同，在im2col模式下，遍历跨步（Traversal Stride）仅在DHW维度轴上指定，并且遍历跨步不会影响需要访问的元素的总数，真正要访问的元素数目仍然由每列像素数（Pixels-per-Column）指定。一个NHWC张量在im2col模式下的访问示例如下所示，二维卷积核采用3×3的大小。
+
+```
+Tensor Size [N, H, W, C] = [64, 9, 8, 64]
+Bounding Box Lower Corner [H, W] = [0, 0]
+Bounding Box Upper Corner [H, W] = [0, 0]
+Tensor Coordinate [nIdx, hIdx, wIdx, cIdx] = [7, 2, 5, 0]
+im2col Offset [hOffset, wOffset] = [1, 1]
+Traversal Stride [hStride, wStride] = [2, 2]
+Pixels-per-Column = 20
+Channels-per-Pixel = 8
+```
+
+<img src="CUDA的PTX指令集.assets/张量im2col模式的跨步访问.png" style="zoom:25%;" />
+
+在im2col模式下，当Pixels-per-Column指定的NDHW空间中请求的元素数目超过该批量图像中的可用的元素数目时，则执行越界访问。与平铺模式类似，可以指定零填充（zero fill mode）或无效数据填充（OOB-NaN fill mode）。
+
+### im2col::w模式
+
+此外，对于形如NDHWC等维度的张量，还存在一种在D维度和H维度上保持不变而只沿着W维度访问元素的模式，即im2col::w模式。
+
+这种im2col::w模式的边界框在D维度和H维度上的维数大小都固定为1，边界框的下角（Lower Corner W）和上角（Upper Corner W）用于指定在W维度上的维数大小。张量坐标仍然以(nIdx, dIdx, hIdx, wIdx, cIdx)的形式指定，但此时表示的不再是卷积核在张量空间中的起始位置，而是要访问的元素在张量空间中的起始位置。在im2col::w模式下访问的元素数目由Pixels-per-Column字段指定，而im2col::w::128模式又进一步将访问元素的数目固定为128个。
+
+同样的是，使用遍历跨步（Traversal Stride W）指定在W维度上访问元素时的跨步长度。不同的是，在PTX张量复制指令中，可以使用一个wOffset偏移参数同时调整边界框的位置和张量坐标的位置，即使用调整后的W＋wOffset作为边界框的下角和上角坐标，使用调整后的wIdx＋wOffset作为张量坐标。因为在卷积计算中，沿着W维度的相同元素可能会被重复应用到卷积核的不同位置，根据wOffset偏移可以在不同共享内存缓存区中的不同位置加载某个元素。
+
+```
+Tensor Size [N, H, W, C] = [64, #, 7, 64]
+Bounding Box Lower Corner [W] = [-1]
+Bounding Box Upper Corner [W] = [-1]
+Tensor Coordinate [nIdx, hIdx, wIdx, cIdx] = [7, #, -1, 0]
+Traversal Stride [wStride] = [3]
+Pixels-per-Column = 64
+Channels-per-Pixel = 8
+wOffset = [0] or [1] or [2]
+```
+
+<img src="CUDA的PTX指令集.assets/张量im2col-w模式的访问方式.png" style="zoom:25%;" />
+
+与im2col模式的一大不同之处在于，im2col::w模式下的PTX张量指令允许指定一个wHalo值，表示在加载完由Pixels-per-Column指定的元素数目之后，再在末尾紧接着向后加载wHalo个紧跟元素。一个取wHalo值为2的示例如下图所示。
+
+<img src="CUDA的PTX指令集.assets/张量im2col-w模式的wHalo访问方式.png" style="zoom:25%;" />
+
+而在im2col::w::128模式下，则每加载完32个元素之后，再加载wHalo个紧跟元素，则对于总的128个访问元素，一共加载4×wHalo个紧跟元素，但需要注意的是，在存储到共享内存中时，所有的128个元素存储在一起，每个紧跟元素存储在一起。一个取wHalo值为2的示例如下图所示。
+
+<img src="CUDA的PTX指令集.assets/张量im2col-w-128模式的wHalo访问方式.png" style="zoom:25%;" />
+
+### 交叉布局！！！
+
+张量数据支持交错布局（Interleave Layout），
+
+
+
+
+
+
 
 # 内存系统
 
