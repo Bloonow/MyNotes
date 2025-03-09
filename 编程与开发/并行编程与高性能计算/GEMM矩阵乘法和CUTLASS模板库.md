@@ -1659,4 +1659,4 @@ cutlass
 └── reduction  # Reduction kernels
 ```
 
-CUTLASS在实现代码的几乎每个层级都提供了以default为前缀的默认配置文件default\_\*.cu，若不清楚每个层级的模板参数如何指定，可以参考这些默认配置。
+CUTLASS在实现代码的几乎每个层级都提供了以default为前缀的默认配置default_xxx.cu，若不清楚每个层级的模板参数如何指定，可以参考这些默认配置。
