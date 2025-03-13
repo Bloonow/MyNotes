@@ -55,7 +55,7 @@ HTML属性是可以在元素中添加附加信息。HTML元素一般在开始标
 - `style`，规定元素的行内样式（inline style）。
 - `title`，描述了元素的额外信息 （作为工具条使用）。
 
-## （三）HTML样式 CSS
+## （三）HTML样式CSS
 
 CSS（Cascading Style Sheets，层叠样式表）是在 HTML 4 开始使用的，为了更好的渲染HTML元素。CSS 可以通过内联样式、内部样式表、外部引用添加到HTML文档中。CSS属性的形式是`name:value;`类似的名值对和半角分号。
 

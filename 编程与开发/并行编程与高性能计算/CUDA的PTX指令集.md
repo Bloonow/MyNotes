@@ -1292,30 +1292,30 @@ prmt.b32{.mode}  d, a, b, c;
 当指令指定.mode模式时，操作数c仅使用最低2位c[1:0]即可配合.mode控制排列方式，具体的控制方式如下表，其中{d3,d2,d1,d0}列的值是源字节b#的编号。
 
 <table>
-    <tr style="background-color:#F0F0F0">
-        <th rowspan=2>.mode</th> <th rowspan=2>description</th> <th colspan=4>{d3,d2,d1,d0}</th>
-    </tr>
-    <tr style="background-color:#F0F0F0">
-        <th>c[1:0]=00</th> <th>c[1:0]=01</th> <th>c[1:0]=10</th> <th>c[1:0]=11</th>
-    </tr>
-    <tr>
-        <td>.f4e</td> <td>forward 4 extract</td> <td>{3,2,1,0}</td> <td>{4,3,2,1}</td> <td>{5,4,3,2}</td> <td>{6,5,4,3}</td>
-    </tr>
-    <tr>
-        <td>.b4e</td> <td>backward 4 extract</td> <td>{5,6,7,0}</td> <td>{6,7,0,1}</td> <td>{7,0,1,2}</td> <td>{0,1,2,3}</td>
-    </tr>
-    <tr>
-        <td>.rc8</td> <td>replicate 8</td> <td>{0,0,0,0}</td> <td>{1,1,1,1}</td> <td>{2,2,2,2}</td> <td>{3,3,3,3}</td>
-    </tr>
-    <tr>
-        <td>.rc16</td> <td>replicate 16</td> <td>{1,0,1,0}</td> <td>{3,2,3,2}</td> <td>{1,0,1,0}</td> <td>{3,2,3,2}</td>
-    </tr>
-    <tr>
-        <td>.ecl</td> <td>edge clamp left</td> <td>{3,2,1,0}</td> <td>{3,2,1,1}</td> <td>{3,2,2,2}</td> <td>{3,3,3,3}</td>
-    </tr>
-    <tr>
-        <td>.ecr</td> <td>edge clamp right</td> <td>{0,0,0,0}</td> <td>{1,1,1,0}</td> <td>{2,2,1,0}</td> <td>{3,2,1,0}</td>
-    </tr>
+<tr style="background-color:#F0F0F0">
+    <th rowspan=2>.mode</th> <th rowspan=2>description</th> <th colspan=4>{d3,d2,d1,d0}</th>
+</tr>
+<tr style="background-color:#F0F0F0">
+    <th>c[1:0]=00</th> <th>c[1:0]=01</th> <th>c[1:0]=10</th> <th>c[1:0]=11</th>
+</tr>
+<tr>
+    <td>.f4e</td> <td>forward 4 extract</td> <td>{3,2,1,0}</td> <td>{4,3,2,1}</td> <td>{5,4,3,2}</td> <td>{6,5,4,3}</td>
+</tr>
+<tr>
+    <td>.b4e</td> <td>backward 4 extract</td> <td>{5,6,7,0}</td> <td>{6,7,0,1}</td> <td>{7,0,1,2}</td> <td>{0,1,2,3}</td>
+</tr>
+<tr>
+    <td>.rc8</td> <td>replicate 8</td> <td>{0,0,0,0}</td> <td>{1,1,1,1}</td> <td>{2,2,2,2}</td> <td>{3,3,3,3}</td>
+</tr>
+<tr>
+    <td>.rc16</td> <td>replicate 16</td> <td>{1,0,1,0}</td> <td>{3,2,3,2}</td> <td>{1,0,1,0}</td> <td>{3,2,3,2}</td>
+</tr>
+<tr>
+    <td>.ecl</td> <td>edge clamp left</td> <td>{3,2,1,0}</td> <td>{3,2,1,1}</td> <td>{3,2,2,2}</td> <td>{3,3,3,3}</td>
+</tr>
+<tr>
+    <td>.ecr</td> <td>edge clamp right</td> <td>{0,0,0,0}</td> <td>{1,1,1,0}</td> <td>{2,2,1,0}</td> <td>{3,2,1,0}</td>
+</tr>
 </table>
 
 tensormap.replace指令将张量映射（tensor-map）对象在地址addr位置上的字段替换为新值，新值由参数new_val指定。限定符.tile指定位于地址addr处的tensor-map对象的模式，限定符.b1024表示张量映射对象的大小，为1024位。仅计算能力9.0（Hopper架构）及以上的设备支持。
