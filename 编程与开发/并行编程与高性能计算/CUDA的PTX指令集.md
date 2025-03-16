@@ -1817,7 +1817,7 @@ mma.xxx系列指令允许使用.kind修饰符来执行具有块缩放（block sc
 
 在PTX代码中，一个线程使用形如{r0, r1, r2, r3}的寄存器向量来表示所持有的一个fragment片段，具体使用几个几位的寄存器，则取决于wmma矩阵的形状和数据类型。例如，当.m32n8k16形状使用.u8类型时，对于输入矩阵A而言，一个线程负责16个元素，则会使用4个.b32寄存器，对于输入矩阵B而言，一个线程负责4个元素，则会使用1个.b32寄存器。例如，当.m32n8k16形状使用.s32类型时，对于累加器矩阵C或D而言，一个线程负责8个元素，则会使用8个.s32寄存器。
 
-更详细的配置如下表，其中，CC表示设备计算能力，Shape表示wmma矩阵形状，\_fragment表示片段的数据类型和所需寄存器，寄存器的类型尽量匹配。在wmma.xxx系列指令中，类型.atype和.btype必须是相同的，而类型.ctype和.btype可以相互组合。
+更详细的配置如下表，其中，CC表示设备计算能力，Shape表示wmma矩阵形状，\_fragment表示片段的数据类型和所需寄存器，寄存器的类型尽量匹配。在wmma.xxx系列指令中，若支持多个类型，则类型.atype和.btype必须是相同的，而类型.ctype和.btype可以相互组合。
 
 <table>
     <tr style="background-color:#F0F0F0">
@@ -1828,9 +1828,9 @@ mma.xxx系列指令允许使用.kind修饰符来执行具有块缩放（block sc
         <td colspan=2>C_fragment</td>
         <td colspan=2>D_fragment</td>
     </tr>
-    <tr style="background-color:#EFFEFF">
+    <tr>
         <td rowspan=3 style="background-color:#FEEFEF">sm_70</td>
-        <td>.m16n16k16</td>
+        <td style="background-color:#EFFEFF">.m16n16k16</td>
         <td rowspan=3 style="background-color:#DAFEEF">.f16</td>
         <td rowspan=3 style="background-color:#DAFEEF">8个32位寄存器</td>
         <td rowspan=3 style="background-color:#DAFEEF">.f16</td>
@@ -1841,91 +1841,32 @@ mma.xxx系列指令允许使用.kind修饰符来执行具有块缩放（block sc
         <td rowspan=3 style="background-color:#EFEEFE">4个/8个32位寄存器</td>
     </tr>
     <tr>
-        <td style="background-color:#EFFFEF">.m32n8k16</td>
+        <td style="background-color:#EFFFEF">.m8n32k16</td>
     </tr>
     <tr>
-        <td style="background-color:#EFFEFF">.m8n32k16</td>
+        <td style="background-color:#EFFEFF">.m32n8k16</td>
     </tr>
-    <tr style="background-color:#EFFFEF">
-        <td rowspan=6 style="background-color:#FFFEDD">sm_72</td>
-        <td rowspan=2>.m16n16k16</td>
-        <td>.u8</td>
-        <td rowspan=2>2个32位寄存器</td>
-        <td>.u8</td>
-        <td rowspan=2>2个32位寄存器</td>
-        <td rowspan=6 style="background-color:#DAFEEF">.s32</td>
-        <td rowspan=6 style="background-color:#DAFEEF">8个32位寄存器</td>
-        <td rowspan=6 style="background-color:#DAFEEF">.s32</td>
-        <td rowspan=6 style="background-color:#DAFEEF">8个32位寄存器</td>
-    </tr>
-    <tr style="background-color:#EFFFEF">
-        <td>.s8</td>
-        <td>.s8</td>
-    </tr>
-    <tr style="background-color:#EFFEFF">
-        <td rowspan=2>.m8n32k16</td>
-        <td>.u8</td>
-        <td rowspan=2>1个32位寄存器</td>
-        <td>.u8</td>
-        <td rowspan=2>4个32位寄存器</td>
-    </tr>
-    <tr style="background-color:#EFFEFF">
-        <td>.s8</td>
-        <td>.s8</td>
-    </tr>
-    <tr style="background-color:#EFFFEF">
-        <td rowspan=2>.m32n8k16</td>
-        <td>.u8</td>
-        <td rowspan=2>4个32位寄存器</td>
-        <td>.u8</td>
-        <td rowspan=2>1个32位寄存器</td>
-    </tr>
-    <tr style="background-color:#EFFFEF">
-        <td>.s8</td>
-        <td>.s8</td>
-    </tr>
-    <tr style="background-color:#EFFEFF">
-        <td rowspan=3 style="background-color:#FEEFEF">sm_73</td>
-        <td>.m8n8k128</td>
-        <td>.b1</td>
-        <td rowspan=3 style="background-color:#DAFEEF">1个32位寄存器</td>
-        <td>.b1</td>
-        <td rowspan=3 style="background-color:#DAFEEF">1个32位寄存器</td>
-        <td rowspan=3 style="background-color:#EFEEFE">.s32</td>
-        <td rowspan=3 style="background-color:#EFEEFE">2个32位寄存器</td>
-        <td rowspan=3 style="background-color:#EFEEFE">.s32</td>
-        <td rowspan=3 style="background-color:#EFEEFE">2个32位寄存器</td>
-    </tr>
-    <tr style="background-color:#EFFFEF">
-        <td rowspan=2>.m8n8k32</td>
-        <td>.u4</td>
-        <td>.u4</td>
-    </tr>
-    <tr style="background-color:#EFFFEF">
-        <td>.s4</td>
-        <td>.s4</td>
-    </tr>
-    <tr style="background-color:#EFFEFF">
+        <tr>
         <td rowspan=5 style="background-color:#FFFEDD">sm_80</td>
-        <td>.m16n16k16</td>
+        <td style="background-color:#EFFEFF">.m16n16k16</td>
         <td rowspan=3 style="background-color:#EFEEFE">.bf16</td>
-        <td>4个32位寄存器</td>
+        <td style="background-color:#EFFEFF">4个32位寄存器</td>
         <td rowspan=3 style="background-color:#EFEEFE">.bf16</td>
-        <td>4个32位寄存器</td>
-        <td rowspan=3 style="background-color:#DAFEEF">.f32</td>
-        <td rowspan=3 style="background-color:#DAFEEF">8个32位寄存器</td>
-        <td rowspan=3 style="background-color:#DAFEEF">.f32</td>
-        <td rowspan=3 style="background-color:#DAFEEF">8个32位寄存器</td>
+        <td style="background-color:#EFFEFF">4个32位寄存器</td>
+        <td rowspan=4 style="background-color:#DAFEEF">.f32</td>
+        <td rowspan=4 style="background-color:#DAFEEF">8个32位寄存器</td>
+        <td rowspan=4 style="background-color:#DAFEEF">.f32</td>
+        <td rowspan=4 style="background-color:#DAFEEF">8个32位寄存器</td>
     </tr>
-    <tr style="background-color:#EFFFEF">
-        <td>.m8n32k16</td>
-        <td>2个32位寄存器</td>
-        <td>8个32位寄存器</td>
+    <tr>
+        <td style="background-color:#EFFFEF">.m8n32k16</td>
+        <td style="background-color:#EFFFEF">2个32位寄存器</td>
+        <td style="background-color:#EFFFEF">8个32位寄存器</td>
     </tr>
-    <tr style="background-color:#EFFEFF">
-        <td>.m32n8k16</td>
-        <td>8个32位寄存器</td>
-        <td>2个32位寄存器</td>
+    <tr>
+        <td style="background-color:#EFFEFF">.m32n8k16</td>
+        <td style="background-color:#EFFEFF">8个32位寄存器</td>
+        <td style="background-color:#EFFEFF">2个32位寄存器</td>
     </tr>
     <tr style="background-color:#EFFFEF">
         <td>.m16n16k8</td>
@@ -1933,10 +1874,6 @@ mma.xxx系列指令允许使用.kind修饰符来执行具有块缩放（block sc
         <td>4个32位寄存器</td>
         <td>.tf32</td>
         <td>4个32位寄存器</td>
-        <td>.f32</td>
-        <td>8个32位寄存器</td>
-        <td>.f32</td>
-        <td>8个32位寄存器</td>
     </tr>
     <tr style="background-color:#EFFEFF">
         <td>.m8n8k4</td>
@@ -1949,8 +1886,46 @@ mma.xxx系列指令允许使用.kind修饰符来执行具有块缩放（block sc
         <td>.f64</td>
         <td>2个64位寄存器</td>
     </tr>
+    <tr>
+        <td rowspan=3 style="background-color:#FEEFEF">sm_72</td>
+        <td style="background-color:#EFFFEF">.m16n16k16</td>
+        <td rowspan=3 style="background-color:#DAFEEF">.u8/.s8</td>
+        <td style="background-color:#EFFFEF">2个32位寄存器</td>
+        <td rowspan=3 style="background-color:#DAFEEF">.u8/.s8</td>
+        <td style="background-color:#EFFFEF">2个32位寄存器</td>
+        <td rowspan=3 style="background-color:#EFEEFE">.s32</td>
+        <td rowspan=3 style="background-color:#EFEEFE">8个32位寄存器</td>
+        <td rowspan=3 style="background-color:#EFEEFE">.s32</td>
+        <td rowspan=3 style="background-color:#EFEEFE">8个32位寄存器</td>
+    </tr>
+    <tr>
+        <td style="background-color:#EFFEFF">.m8n32k16</td>
+        <td style="background-color:#EFFEFF">1个32位寄存器</td>
+        <td style="background-color:#EFFEFF">4个32位寄存器</td>
+    </tr>
+    <tr>
+        <td style="background-color:#EFFFEF">.m32n8k16</td>
+        <td style="background-color:#EFFFEF">4个32位寄存器</td>
+        <td style="background-color:#EFFFEF">1个32位寄存器</td>
+    </tr>
+    <tr>
+        <td rowspan=2 style="background-color:#FFFEDD">sm_73</td>
+        <td style="background-color:#EFFEFF">.m8n8k32</td>
+        <td style="background-color:#EFFEFF">.u4/.s4</td>
+        <td rowspan=2 style="background-color:#EFEEFE">1个32位寄存器</td>
+        <td style="background-color:#EFFEFF">.u4/.s4</td>
+        <td rowspan=2 style="background-color:#EFEEFE">1个32位寄存器</td>
+        <td rowspan=2 style="background-color:#DAFEEF">.s32</td>
+        <td rowspan=2 style="background-color:#DAFEEF">2个32位寄存器</td>
+        <td rowspan=2 style="background-color:#DAFEEF">.s32</td>
+        <td rowspan=2 style="background-color:#DAFEEF">2个32位寄存器</td>
+    </tr>
+    <tr>
+        <td style="background-color:#EFFFEF">.m8n8k128</td>
+        <td style="background-color:#EFFFEF">.b1</td>
+        <td style="background-color:#EFFFEF">.b1</td>
+    </tr>
 </table>
-
 
 在内存中存储时，一个矩阵可以按照行主序（row-major）存储或列主序（column-major）存储。在行主序格式中，每行的连续元素都连续存储在内存中，在列主序格式中，每列的连续元素的连续存储在内存中。元素相邻存储的维度轴称为前导维度（leading dimension），连续存储的元素之间跨步为1。前导维度（行或列）的连续实例不需要连续存储在内存中。对于行主序存储的矩阵，每一行之间不必连续，对于列主序存储的矩阵，每一列之间不必连续。
 
@@ -1966,96 +1941,120 @@ wmma.load.a.sync.aligned.row.m16n16k16.f16 {x0, x1, x2, x3, x4, x5, x6, x7}, [pt
 
 ### wmma系列指令
 
-wmma.load指令从内存中加载一个矩阵fragment片段，该指令由一整个Warp中的所有线程协同执行，从地址ptr加载数据到目标寄存器reg当中。寄存器reg是使用大括号括起来的寄存器列表，例如{r0, r1, r2, r3}等形状。地址ptr只能是.global存储状态空间或.shared存储状态空间中的地址，若未指定状态空间，则表示一个通用地址。强制的.sync修饰符表示该指令会使得一个Warp中线程等待，直到该Warp中的所有线程都执行到该wmma.load指令，然后再继续执行。
+wmma.load指令从内存中加载一个矩阵fragment片段，该指令由一整个Warp中的所有线程协同执行，从地址ptr加载数据到目标寄存器reg当中。寄存器reg是使用大括号括起来的寄存器列表，例如{r0, r1, r2, r3}等形状。地址ptr只能是.global存储状态空间或.shared存储状态空间中的地址，若未指定状态空间，则表示一个通用地址。强制的.sync修饰符表示该指令会使得一个Warp中线程等待，直到该Warp中的所有线程都执行到该wmma指令，然后再继续执行。修饰符.layout表示矩阵数据存储方式，支持行主序.row和列主序.col两种存储方式。修饰符.ss指定状态空间，支持.global全局内存和.shared{::cta}共享内存。
 
 ```
-wmma.load.a.sync.aligned.layout.shape{.ss}.atype reg, [ptr]{, stride};
-wmma.load.b.sync.aligned.layout.shape{.ss}.btype reg, [ptr]{, stride};
-wmma.load.c.sync.aligned.layout.shape{.ss}.ctype reg, [ptr]{, stride};
-
-.layout = { .row, .col };
-.shape  = { .m16n16k16, .m8n32k16, .m32n8k16, .m16n16k8, .m8n8k4 };
-.ss     = { .global, .shared{::cta} };
-.atype  = { .u8, .s8, .f16, .bf16, .tf32, .f64 };
-.btype  = { .u8, .s8, .f16, .bf16, .tf32, .f64 };
-.ctype  = { .s32, .f16, .f32, .f64 };
-```
-
-对于亚字节数据类型，矩阵A只允许行主序布局，矩阵B只允许列主序布局，指令语法如下所示。
-
-```
-wmma.load.a.sync.aligned.row   .shape{.ss}.atype reg, [ptr]{, stride};
-wmma.load.b.sync.aligned.col   .shape{.ss}.btype reg, [ptr]{, stride};
-wmma.load.c.sync.aligned.layout.shape{.ss}.ctype reg, [ptr]{, stride};
-.layout = { .row, .col };
-.shape  = { .m8n8k128, .m8n8k32 };
-.ss     = { .global, .shared{::cta} };
-.atype  = { .b1, .u4, .s4 };
-.btype  = { .b1, .u4, .s4 };
-.ctype  = { .s32 };
-```
-
-wmma.store指令将一个矩阵fragment片段存储到内存中，该指令由一整个Warp中的所有线程协同执行，将数据从源寄存器reg当中存储到地址ptr位置。
-
-```
-wmma.store.d.sync.aligned.layout.shape{.ss}.type [ptr], reg{, stride};
-
-.layout = { .row, .col };
-.shape  = { .m16n16k16, .m8n32k16, .m32n8k16, .m16n16k8, .m8n8k4, .m8n8k128, .m8n8k32 };
-.ss     = { .global, .shared{::cta} };
-.type   = { .s32, .f16, .f32, .f64 };
-```
-
-对于上述的wmma.load指令和wmma.store指令的语法，为了简洁将多条指令的修饰符写在了一起，注意参考wmma形状和数据类型是否受PTX指令支持。
-
-wmma.mma指令执行一次矩阵乘加操作，该指令由一整个Warp中的所有线程协同执行。寄存器d、a、b、c都是使用大括号括起来的寄存器列表，分别表示相应矩阵操作数的fragment片段。修饰符.alayout和.blayout表示矩阵A和矩阵B的数据存储方式，除了亚字节数据类型之外，矩阵A和矩阵B都支持行主序存储.row和列主序存储.col两种方式。
-
-```
-// .b1
-wmma.mma.op.popc.sync.aligned.row.col.shape.s32.atype.btype.s32 d, a, b, c;
-.op    = { .and, .xor };
-.shape = { .m8n8k128 };
-.atype = { .b1 };
-.btype = { .b1 };
-```
-
-```
-// .u4 or .s4
-wmma.mma.sync.aligned.row.col.shape.s32.atype.btype.s32{.satfinite} d, a, b, c;
-.shape = { .m8n8k32 };
-.atype = { .u4, .s4 };
-.btype = { .u4, .s4 };
-```
-
-```
-// .u8 or .s8
-wmma.mma.sync.aligned.alayout.blayout.shape.s32.atype.btype.s32{.satfinite} d, a, b, c;
+wmma.load.a.sync.aligned.layout.shape{.ss}.type reg, [ptr]{, stride};
+wmma.load.b.sync.aligned.layout.shape{.ss}.type reg, [ptr]{, stride};
 .shape = { .m16n16k16, .m8n32k16, .m32n8k16 };
-.atype = { .u8, .s8 };
-.btype = { .u8, .s8 };
+.type  = { .f16, .bf16, .u8, .s8 };
+
+wmma.load.a.sync.aligned.layout.shape{.ss}.tf32 reg, [ptr]{, stride};
+wmma.load.b.sync.aligned.layout.shape{.ss}.tf32 reg, [ptr]{, stride};
+.shape = { .m16n16k8 };
+
+wmma.load.a.sync.aligned.layout.shape{.ss}.f64 reg, [ptr]{, stride};
+wmma.load.b.sync.aligned.layout.shape{.ss}.f64 reg, [ptr]{, stride};
+.shape = { .m8n8k4 };
+
+wmma.load.a.sync.aligned.row.shape{.ss}.type reg, [ptr]{, stride};
+wmma.load.b.sync.aligned.col.shape{.ss}.type reg, [ptr]{, stride};
+.shape = { .m8n8k32 };
+.type = { .u4, .s4 };
+
+wmma.load.a.sync.aligned.row.shape{.ss}.b1 reg, [ptr]{, stride};
+wmma.load.b.sync.aligned.col.shape{.ss}.b1 reg, [ptr]{, stride};
+.shape = { .m8n8k128 };
 ```
 
 ```
-// .f16
+wmma.load.c.sync.aligned.layout.shape{.ss}.f16 reg, [ptr]{, stride};
+.shape = { .m16n16k16, .m8n32k16, .m32n8k16 };
+
+wmma.load.c.sync.aligned.layout.shape{.ss}.f32 reg, [ptr]{, stride};
+.shape = { .m16n16k16, .m8n32k16, .m32n8k16, .m16n16k8 };
+
+wmma.load.c.sync.aligned.layout.shape{.ss}.f64 reg, [ptr]{, stride};
+.shape = { .8n8k4 };
+
+wmma.load.c.sync.aligned.layout.shape{.ss}.s32 reg, [ptr]{, stride};
+.shape = { .m16n16k16, .m8n32k16, .m32n8k16, .m8n8k32, .m8n8k128 };
+```
+
+wmma.store指令将一个矩阵fragment片段存储到内存中，该指令由一整个Warp中的所有线程协同执行，将数据从源寄存器reg当中存储到地址ptr位置。修饰符.layout表示矩阵数据存储方式，支持行主序.row和列主序.col两种存储方式。修饰符.ss指定状态空间，支持.global全局内存和.shared{::cta}共享内存。
+
+```
+wmma.store.d.sync.aligned.layout.shape{.ss}.f16 [ptr], reg{, stride};
+.shape = { .m16n16k16, .m8n32k16, .m32n8k16 };
+
+wmma.store.d.sync.aligned.layout.shape{.ss}.f32 [ptr], reg{, stride};
+.shape = { .m16n16k16, .m8n32k16, .m32n8k16, .m16n16k8 };
+
+wmma.store.d.sync.aligned.layout.shape{.ss}.f64 [ptr], reg{, stride};
+.shape = { .m8n8k4 };
+
+wmma.store.d.sync.aligned.layout.shape{.ss}.s32 [ptr], reg{, stride};
+.shape = { .m16n16k16, .m8n32k16, .m32n8k16, .m8n8k32, .m8n8k128 };
+```
+
+wmma.mma指令执行一次矩阵乘加操作，该指令由一整个Warp中的所有线程协同执行。寄存器d、a、b、c都是使用大括号括起来的寄存器列表，分别表示相应矩阵操作数的fragment片段。修饰符.alayout和.blayout表示矩阵A和矩阵B的数据存储方式，支持行主序.row和列主序.col两种存储方式。
+
+Half Floating Point (.f16)：
+
+```
 wmma.mma.sync.aligned.alayout.blayout.shape.dtype.ctype d, a, b, c;
 .shape = { .m16n16k16, .m8n32k16, .m32n8k16 };
-.dtype = { .f16, .f32 };
-.ctype = { .f16, .f32 };
+.dtype = .ctype = { .f16, .f32 };
 ```
 
+Alternate Half Floating Point (.bf16)：
+
 ```
-// .bf16 or .tf32
 wmma.mma.sync.aligned.alayout.blayout.shape.f32.atype.btype.f32 d, a, b, c;
-.shape = { .m16n16k16, .m8n32k16, .m32n8k16, .m16n16k8 };
-.atype = { .bf16, .tf32 };
-.btype = { .bf16, .tf32 };
+.shape = { .m16n16k16, .m8n32k16, .m32n8k16 };
+.atype = .btype = { .bf16 };
 ```
 
+Alternate Floating Point (.tf32)：
+
 ```
-// .f64
-wmma.mma.sync.aligned.alayout.blayout.shape{.rnd}.f64.f64.f64.f64 d, a, b, c;
+wmma.mma.sync.aligned.alayout.blayout.shape.f32.atype.btype.f32 d, a, b, c;
+.shape = { .m16n16k8 };
+.atype = .btype = { .tf32 };
+```
+
+Double Floating Point (.f64)：
+
+```
+wmma.mma.sync.aligned.alayout.blayout.shape{.rnd}.f64.atype.btype.f64 d, a, b, c;
 .shape = { .m8n8k4 };
+.atype = .btype = { .f64 };
 .rnd   = { .rn, .rz, .rm, .rp };
+```
+
+Integer Type (.u8/.s8)：
+
+```
+wmma.mma.sync.aligned.alayout.blayout.shape.s32.atype.btype.s32{.satfinite} d, a, b, c;
+.shape = { .m16n16k16, .m8n32k16, .m32n8k16 };
+.atype = .btype = { .u8, .s8 };
+```
+
+Sub-Type Data (.u4/.s4)：
+
+```
+wmma.mma.sync.aligned.row.col.shape.s32.atype.btype.s32{.satfinite} d, a, b, c;
+.shape = { .m8n8k32 };
+.atype = .btype = { .u4, .s4 };
+```
+
+Single Bit (.b1)：
+
+```
+wmma.mma.op.popc.sync.aligned.row.col.shape.s32.atype.btype.s32 d, a, b, c;
+.shape = { .m8n8k128 };
+.atype = .btype = { .b1 };
+.op    = { .and, .xor };
 ```
 
 一个使用wmma.xxx系列指令执行矩阵乘加运算的示例如下。
