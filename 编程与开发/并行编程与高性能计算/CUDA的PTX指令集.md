@@ -1799,7 +1799,7 @@ PTX提供了两种执行矩阵乘加运算的方法，一是使用wmma.xxx系列
 
 对于wmma.xxx系列指令而言。使用wmma.load指令将矩阵A、B、C从内存加载到寄存器中，每个线程中的目标寄存器将保存已加载矩阵的片段（fragment）。使用wmma.mma指令对所加载的矩阵片段执行矩阵乘加运算，每个线程中的目标寄存器将保存wmma.mma操作返回的结果矩阵D的片段。使用wmma.store指令将该线程所持有的结果矩阵D的片段存储到内存，或者结果矩阵D也可以用作后续wmma.mma指令的参数C。值得注意的是，wmma.load指令和wmma.store指令在从内存中加载片段以及将结果存储回内存时，会隐式地处理矩阵元素的排列布局组织。
 
-对于mma.xxx系列指令而言，也要求一整个Warp中的所有线程协同执行，但是在调用mma操作之前，需要手动在Warp中的不同线程之间完成显式的矩阵元素的排列布局。此外，mma.sp.xxx系列指令还支持对稀疏矩阵的操作。
+对于mma.xxx系列指令而言，也要求一整个Warp中的所有线程协同执行，但是在调用mma操作之前，需要手动在Warp中的不同线程之间完成显式的矩阵元素的排列布局。此外，mma.sp.xxx系列指令还支持对稀疏矩阵的操作。此外，mma.xxx系列指令还允许使用.kind修饰符来执行具有块缩放（block scaling）的矩阵乘加运算，由形如D＝(A×scale_A)×(B×scale_B)＋C的公式定义。
 
 Tensor Core硬件在计算时需要特殊的数据格式，这种特殊数据格式对于不同计算能力（架构）的设备而言可能是不同的，线程仅持有整个矩阵的一个fragment片段。对于wmma.xxx系列指令而言，fragment片段是特定于设备架构的不透明的ABI数据结构，开发人员不能对各个参数数据如何映射到寄存器作出任何假设。例如对于sm_70（Volta架构）和sm_75（Turning架构）而言，其fragment片段的格式就不相同。
 
@@ -1807,17 +1807,11 @@ Tensor Core硬件在计算时需要特殊的数据格式，这种特殊数据格
 
 NVIDIA在计算能力7.5（Turning架构）的设备上设计了第二代Tensor Core硬件单元，与之配套设计的指令即是mma.xxx系列指令，该系列指令也向前兼容计算能力7.0的架构。从第二代Tensor Core硬件单元及其mma.xxx系列指令开始，所需的数据格式（即fragment片段）就比较简洁，矩阵元素在寄存器中的摆放方式非常规整，这允许手动为mma.xxx系列指令显式地排列矩阵元素的布局，从而不再需要诸如wmma.load指令和wmma.store指令的辅助。
 
-### 块缩放的矩阵乘加！！！
-
-mma.xxx系列指令允许使用.kind修饰符来执行具有块缩放（block scaling）的矩阵乘加运算，由形如D＝(A×scale_A)×(B×scale_B)＋C的公式定义。
-
 ### wmma矩阵形状
 
 一个Warp中的每个线程都持有矩阵的一个fragment片段，但片段的具体分布和标识均是未指定的，片段中各个矩阵元素的标识也是未指定的，这取决于设备的体系结构。如果基础矩阵的形状、布局、元素类型都匹配且受支持，则一个wmma操作返回的片段可以用作另一个wmma操作的操作数。
 
-在PTX代码中，一个线程使用形如{r0, r1, r2, r3}的寄存器向量来表示所持有的一个fragment片段，具体使用几个几位的寄存器，则取决于wmma矩阵的形状和数据类型。例如，当.m32n8k16形状使用.u8类型时，对于输入矩阵A而言，一个线程负责16个元素，则会使用4个.b32寄存器，对于输入矩阵B而言，一个线程负责4个元素，则会使用1个.b32寄存器。例如，当.m32n8k16形状使用.s32类型时，对于累加器矩阵C或D而言，一个线程负责8个元素，则会使用8个.s32寄存器。
-
-更详细的配置如下表，其中，CC表示设备计算能力，Shape表示wmma矩阵形状，\_fragment表示片段的数据类型和所需寄存器，寄存器的类型尽量匹配。在wmma.xxx系列指令中，若支持多个类型，则类型.atype和.btype必须是相同的，而类型.ctype和.btype可以相互组合。
+在PTX代码中，一个线程使用形如{r0, r1, r2, r3}的寄存器向量来表示所持有的一个fragment片段，具体使用几个几位的寄存器，则取决于wmma矩阵的形状和数据类型。在wmma.xxx系列指令中，若支持多个类型，则类型.atype和.btype必须是相同的，而类型.ctype和.btype可以相互组合。更详细的配置如下表，其中，CC表示设备计算能力，Shape表示wmma矩阵形状，\_fragment表示片段的数据类型和所需寄存器，寄存器的类型尽量匹配。
 
 <table>
     <tr style="background-color:#F0F0F0">
@@ -1926,6 +1920,7 @@ mma.xxx系列指令允许使用.kind修饰符来执行具有块缩放（block sc
         <td style="background-color:#EFFFEF">.b1</td>
     </tr>
 </table>
+例如，当.m32n8k16形状使用.u8类型时，对于输入矩阵A而言，一个线程负责16个元素，则会使用4个.b32寄存器，对于输入矩阵B而言，一个线程负责4个元素，则会使用1个.b32寄存器。例如，当.m32n8k16形状使用.s32类型时，对于累加器矩阵C或D而言，一个线程负责8个元素，则会使用8个.s32寄存器。
 
 在内存中存储时，一个矩阵可以按照行主序（row-major）存储或列主序（column-major）存储。在行主序格式中，每行的连续元素都连续存储在内存中，在列主序格式中，每列的连续元素的连续存储在内存中。元素相邻存储的维度轴称为前导维度（leading dimension），连续存储的元素之间跨步为1。前导维度（行或列）的连续实例不需要连续存储在内存中。对于行主序存储的矩阵，每一行之间不必连续，对于列主序存储的矩阵，每一列之间不必连续。
 
@@ -1940,6 +1935,8 @@ wmma.load.a.sync.aligned.row.m16n16k16.f16 {x0, x1, x2, x3, x4, x5, x6, x7}, [pt
 从指令中可以看出，矩阵A片段使用8个32为寄存器，一共32字节，跨步stride指定16个元素，一共16×sizeof(.f16)＝32字节，因此要使矩阵的每一行都以片段大小对齐，需要满足ptr地址是32的整数倍，2×stride是32的整数倍。
 
 ### wmma系列指令
+
+#### wmma.load指令
 
 wmma.load指令从内存中加载一个矩阵fragment片段，该指令由一整个Warp中的所有线程协同执行，从地址ptr加载数据到目标寄存器reg当中。寄存器reg是使用大括号括起来的寄存器列表，例如{r0, r1, r2, r3}等形状。地址ptr只能是.global存储状态空间或.shared存储状态空间中的地址，若未指定状态空间，则表示一个通用地址。强制的.sync修饰符表示该指令会使得一个Warp中线程等待，直到该Warp中的所有线程都执行到该wmma指令，然后再继续执行。修饰符.layout表示矩阵数据存储方式，支持行主序.row和列主序.col两种存储方式。修饰符.ss指定状态空间，支持.global全局内存和.shared{::cta}共享内存。
 
@@ -1981,6 +1978,8 @@ wmma.load.c.sync.aligned.layout.shape{.ss}.s32 reg, [ptr]{, stride};
 .shape = { .m16n16k16, .m8n32k16, .m32n8k16, .m8n8k32, .m8n8k128 };
 ```
 
+#### wmma.store指令
+
 wmma.store指令将一个矩阵fragment片段存储到内存中，该指令由一整个Warp中的所有线程协同执行，将数据从源寄存器reg当中存储到地址ptr位置。修饰符.layout表示矩阵数据存储方式，支持行主序.row和列主序.col两种存储方式。修饰符.ss指定状态空间，支持.global全局内存和.shared{::cta}共享内存。
 
 ```
@@ -1996,6 +1995,8 @@ wmma.store.d.sync.aligned.layout.shape{.ss}.f64 [ptr], reg{, stride};
 wmma.store.d.sync.aligned.layout.shape{.ss}.s32 [ptr], reg{, stride};
 .shape = { .m16n16k16, .m8n32k16, .m32n8k16, .m8n8k32, .m8n8k128 };
 ```
+
+#### wmma.mma指令
 
 wmma.mma指令执行一次矩阵乘加操作，该指令由一整个Warp中的所有线程协同执行。寄存器d、a、b、c都是使用大括号括起来的寄存器列表，分别表示相应矩阵操作数的fragment片段。修饰符.alayout和.blayout表示矩阵A和矩阵B的数据存储方式，支持行主序.row和列主序.col两种存储方式。
 
@@ -2062,7 +2063,7 @@ wmma.mma.op.popc.sync.aligned.row.col.shape.s32.atype.btype.s32 d, a, b, c;
 ```
 .global .align 32 .f16 A[256], B[256];
 .global .align 32 .f32 C[256], D[256];
-.reg .b32 a<8> b<8> c<8> d<8>;
+.reg .b32 a<8>, b<8>, c<8>, d<8>;
 
 wmma.load.a.sync.aligned.m16n16k16.global.row.f16 { a0, a1, a2, a3, a4, a5, a6, a7 }, [A];
 wmma.load.b.sync.aligned.m16n16k16.global.col.f16 { b0, b1, b2, b3, b4, b5, b6, b7 }, [B];
