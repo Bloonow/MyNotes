@@ -1487,9 +1487,9 @@ cp.async.bulk.prefetch指令启动一个非阻塞的异步操作，从全局内�
 cp.async.bulk.prefetch.L2.global{.L2::cache_hint} [srcMem], size{, cache_policy};
 ```
 
-#### 张量Tensor异步复制！！！
+#### 张量Tensor异步复制^$
 
-> 该小节描述的张量Tensor异步复制指令需要计算能力9.0（Ampere架构）及以上的设备才能支持。
+> 该小节描述的张量Tensor异步复制指令需要计算能力9.0（Hopper架构）及以上的设备才能支持。
 
 ## 并行同步和通信指令
 
@@ -1787,7 +1787,7 @@ mbarrier.pending_count指令用于查询一个mbarrier栅障对象当前阶段�
 mbarrier.pending_count.b64 count, state;
 ```
 
-## Warp矩阵乘法累加指令！！！
+## Warp矩阵乘法累加指令
 
 矩阵乘法累加（Matrix Multiply Accumulate，MMA）操作执行D＝A×B＋C运算，其中D和C称为累加器（accumulator）矩阵，它们可以指向同一个矩阵。
 
@@ -2075,15 +2075,564 @@ wmma.mma.sync.aligned.m16n16k16.row.col.f32.f32 { d0, d1, d2, d3, d4, d5, d6, d7
 wmma.store.d.sync.aligned.m16n16k16.global.col.f32 [D], { d0, d1, d2, d3, d4, d5, d6, d7 };
 ```
 
-### mma矩阵形状！！！
+### mma矩阵形状
 
 对于mma.xxx系列指令而言，也要求一整个Warp中的所有线程协同执行，但是在调用mma操作之前，需要手动在Warp中的不同线程之间完成显式的矩阵元素的排列布局。对于不同的mma矩阵形状，矩阵元素的排列布局以及线程的排列布局都不尽相同，此小节描述各种mma矩阵形状下的排列布局。
 
-## 异步Warpgroup矩阵乘法累加指令！！！
+在PTX代码中，一个线程使用形如{r0, r1, r2, r3}的寄存器向量来表示所持有的一个fragment片段，具体使用几个几位的寄存器，则取决于mma矩阵的形状和数据类型。对于.m8n8k4形状而言，当.ctype为.f32类型时，则.dtype也必须为.f32类型；对于.m16n8k8形状而言，.atype必须与.btype相同，.ctype必须与.dtype相同。更详细的配置如下表，其中，CC表示设备计算能力，Shape表示wmma矩阵形状，\_fragment表示片段的数据类型和所需寄存器，寄存器的类型尽量匹配。
 
-## 第五代TensorCore指令！！！
+<table>
+    <tr style="background-color:#F0F0F0">
+        <td>CC</td>
+        <td>Shape</td>
+        <td colspan=2>A_fragment</td>
+        <td colspan=2>B_fragment</td>
+        <td colspan=2>C_fragment</td>
+        <td colspan=2>D_fragment</td>
+    </tr>
+    <tr style="background-color:#EFFEFF">
+        <td style="background-color:#FEEFEF">sm_70</td>
+        <td>.m8n8k4</td>
+        <td>.f16</td>
+        <td>2个32位寄存器</td>
+        <td>.f16</td>
+        <td>2个32位寄存器</td>
+        <td>.f16/.f32</td>
+        <td>4个/8个32位寄存器</td>
+        <td>.f16/.f32</td>
+        <td>4个/8个32位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFFEF">
+        <td rowspan=3 style="background-color:#FFFEDD">sm_75</td>
+        <td>.m16n8k8</td>
+        <td>.f16</td>
+        <td>2个32位寄存器</td>
+        <td>.f16</td>
+        <td>1个32位寄存器</td>
+        <td>.f16/.f32</td>
+        <td>2个/4个32位寄存器</td>
+        <td>.f16/.f32</td>
+        <td>2个/4个32位寄存器</td>
+    </tr>
+    <tr>
+        <td style="background-color:#EFFEFF">.m8n8k16</td>
+        <td style="background-color:#EFFEFF">.u8/.s8</td>
+        <td rowspan=2 style="background-color:#DAFEEF">1个32位寄存器</td>
+        <td style="background-color:#EFFEFF">.u8/.s8</td>
+        <td rowspan=2 style="background-color:#DAFEEF">1个32位寄存器</td>
+        <td rowspan=2 style="background-color:#EFEEFE">.s32</td>
+        <td rowspan=2 style="background-color:#EFEEFE">2个32位寄存器</td>
+        <td rowspan=2 style="background-color:#EFEEFE">.s32</td>
+        <td rowspan=2 style="background-color:#EFEEFE">2个32位寄存器</td>
+    </tr>
+    <tr>
+        <td style="background-color:#EFFFEF">.m8n8k32</td>
+        <td style="background-color:#EFFFEF">.u4/.s4</td>
+        <td style="background-color:#EFFFEF">.u4/.s4</td>
+    </tr>
+    <tr style="background-color:#EFFEFF">
+        <td rowspan=13 style="background-color:#FEEFEF">sm_80</td>
+        <td rowspan=2>.m16n8k16</td>
+        <td>.f16</td>
+        <td rowspan=2>4个32位寄存器</td>
+        <td>.f16</td>
+        <td rowspan=2>2个32位寄存器</td>
+        <td>.f16/.f32</td>
+        <td>2个/4个32位寄存器</td>
+        <td>.f16/.f32</td>
+        <td>2个/4个32位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFEFF">
+        <td>.bf16</td>
+        <td>.bf16</td>
+        <td>.f32</td>
+        <td>4个32位寄存器</td>
+        <td>.f32</td>
+        <td>4个32位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFFEF">
+        <td rowspan=2>.m16n8k8</td>
+        <td>.bf16</td>
+        <td>2个32位寄存器</td>
+        <td>.bf16</td>
+        <td>1个32位寄存器</td>
+        <td rowspan=3 style="background-color:#DAFEEF">.f32</td>
+        <td rowspan=3 style="background-color:#DAFEEF">4个32位寄存器</td>
+        <td rowspan=3 style="background-color:#DAFEEF">.f32</td>
+        <td rowspan=3 style="background-color:#DAFEEF">4个32位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFFEF">
+        <td>.tf32</td>
+        <td>4个32位寄存器</td>
+        <td>.tf32</td>
+        <td>2个32位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFEFF">
+        <td>.m16n8k4</td>
+        <td>.tf32</td>
+        <td>2个32位寄存器</td>
+        <td>.tf32</td>
+        <td>1个32位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFFEF">
+        <td>.m8n8k4</td>
+        <td>.f64</td>
+        <td>1个64位寄存器</td>
+        <td>.f64</td>
+        <td>1个64位寄存器</td>
+        <td>.f64</td>
+        <td>2个64位寄存器</td>
+        <td>.f64</td>
+        <td>2个64位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFEFF">
+        <td>.m16n8k16</td>
+        <td>.u8/.s8</td>
+        <td>2个32位寄存器</td>
+        <td>.u8/.s8</td>
+        <td>1个32位寄存器</td>
+        <td rowspan=4 style="background-color:#EFEEFE">.s32</td>
+        <td rowspan=4 style="background-color:#EFEEFE">4个32位寄存器</td>
+        <td rowspan=4 style="background-color:#EFEEFE">.s32</td>
+        <td rowspan=4 style="background-color:#EFEEFE">4个32位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFFEF">
+        <td rowspan=2>.m16n8k32</td>
+        <td>.u8/.s8</td>
+        <td>4个32位寄存器</td>
+        <td>.u8/.s8</td>
+        <td>2个32位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFFEF">
+        <td>.u4/.s4</td>
+        <td>2个32位寄存器</td>
+        <td>.u4/.s4</td>
+        <td>1个32位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFEFF">
+        <td>.m16n8k64</td>
+        <td>.u4/.s4</td>
+        <td>4个32位寄存器</td>
+        <td>.u4/.s4</td>
+        <td>2个32位寄存器</td>
+    </tr>
+    <tr>
+        <td style="background-color:#EFFFEF">.m16n8k128</td>
+        <td rowspan=2 style="background-color:#EFEEFE">.b1</td>
+        <td style="background-color:#EFFFEF">2个32位寄存器</td>
+        <td rowspan=2 style="background-color:#EFEEFE">.b1</td>
+        <td style="background-color:#EFFFEF">1个32位寄存器</td>
+        <td rowspan=2 style="background-color:#DAFEEF">.s32</td>
+        <td rowspan=2 style="background-color:#DAFEEF">4个32位寄存器</td>
+        <td rowspan=2 style="background-color:#DAFEEF">.s32</td>
+        <td rowspan=2 style="background-color:#DAFEEF">4个32位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFEFF">
+        <td>.m16n8k256</td>
+        <td>4个32位寄存器</td>
+        <td>2个32位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFFEF">
+        <td>.m8n8k128</td>
+        <td>.b1</td>
+        <td>1个32位寄存器</td>
+        <td>.b1</td>
+        <td>1个32位寄存器</td>
+        <td>.s32</td>
+        <td>2个32位寄存器</td>
+        <td>.s32</td>
+        <td>2个32位寄存器</td>
+    </tr>
+    <tr>
+        <td rowspan=2 style="background-color:#FFFEDD">sm_89</td>
+        <td style="background-color:#EFFEFF">.m16n8k16</td>
+        <td rowspan=2 style="background-color:#DAFEEF">.e4m3/.e5m2</td>
+        <td style="background-color:#EFFEFF">2个32位寄存器</td>
+        <td rowspan=2 style="background-color:#DAFEEF">.e4m3/.e5m2</td>
+        <td style="background-color:#EFFEFF">1个32位寄存器</td>
+        <td rowspan=2 style="background-color:#EFEEFE">.f32</td>
+        <td rowspan=2 style="background-color:#EFEEFE">4个32位寄存器</td>
+        <td rowspan=2 style="background-color:#EFEEFE">.f32</td>
+        <td rowspan=2 style="background-color:#EFEEFE">4个32位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFFEF">
+        <td>.m16n8k32</td>
+        <td>4个32位寄存器</td>
+        <td>2个32位寄存器</td>
+    </tr>
+    <tr>
+        <td rowspan=3  style="background-color:#FEEFEF">sm_90</td>
+        <td style="background-color:#EFFEFF">.m16n8k4</td>
+        <td rowspan=3 style="background-color:#EFEEFE">.f64</td>
+        <td style="background-color:#EFFEFF">2个64位寄存器</td>
+        <td rowspan=3 style="background-color:#EFEEFE">.f64</td>
+        <td style="background-color:#EFFEFF">1个64位寄存器</td>
+        <td rowspan=3 style="background-color:#DAFEEF">.f64</td>
+        <td rowspan=3 style="background-color:#DAFEEF">4个64位寄存器</td>
+        <td rowspan=3 style="background-color:#DAFEEF">.f64</td>
+        <td rowspan=3 style="background-color:#DAFEEF">4个64位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFFEF">
+        <td>.m16n8k8</td>
+        <td>4个64位寄存器</td>
+        <td>2个64位寄存器</td>
+    </tr>
+    <tr style="background-color:#EFFEFF">
+        <td>.m16n8k16</td>
+        <td>8个64位寄存器</td>
+        <td>4个64位寄存器</td>
+    </tr>
+</table>
 
-## 其它指令！！！
+
+从上表中可以看出，对于计算能力7.0的设备，由于第一代Tensor Core的设计原因，mma矩阵的数据格式比较复杂，所涉及的矩阵元素被多次重复存储，所需要的寄存器数目明显超过之后的设备。此处将计算能力7.0设备上所支持的mma矩阵形状单独阐述，后续会统一阐述更新架构支持的mma矩阵形状。
+
+架构sm_70支持.m8n8k4矩阵形状，矩阵A和B为.f16类型，矩阵C和D为.f16和.f32类型。布局.alayout和.blayout可以使用.row和.col相互组合。需要注意的是，这两条指令针对sm_70架构进行了优化，但在其它架构上运行时，性能可能会大幅度降低。
+
+```
+mma.sync.aligned.m8n8k4.alayout.blayout.f16.f16.f16.f16 d, a, b, c;
+mma.sync.aligned.m8n8k4.alayout.blayout.f32.f16.f16.f32 d, a, b, c;
+```
+
+在sm_70架构上执行上述指令时，一个Warp线程束会执行4次矩阵乘加运算，分别对应着结果矩阵的一部分，这4次MMA运算存在重叠，由32个线程负责。
+
+| MMA Computation   | Thread participating in MMA Computation      |
+| ----------------- | -------------------------------------------- |
+| MMA Computation 1 | %laneid = {0, 1, 2, 3}, {16, 17, 18, 19}     |
+| MMA Computation 2 | %laneid = {4, 5, 6, 7}, {20, 21, 22, 23}     |
+| MMA Computation 3 | %laneid = {8, 9, 10, 11}, {24, 25, 26, 27}   |
+| MMA Computation 4 | %laneid = {12, 13, 14, 15}, {28, 29, 30, 31} |
+
+矩阵A和B的片段使用2个32位寄存器，即4个.f16元素，矩阵C和D的片段使用4个/8个32位寄存器，即8个.f16/.f32元素，这些矩阵元素的排列布局如下图。
+
+<img src="CUDA的PTX指令集.assets/mma形状之sm_70.m8n8k4的布局.png" style="zoom:25%;" />
+
+#### 矩阵A的片段布局
+
+从mma矩阵形状的表格中可以统计出，矩阵A的片段支持多种形状和数据类型，如下表所示。
+
+| M×K    | Shape      | 数据类型                              | 该类型的元素数目 | 所需寄存器         | 计算能力    |
+| ------ | ---------- | ------------------------------------- | ---------------- | ------------------ | ----------- |
+| 8×4    | .m8n8k4    | .f64                                  | 1个              | 1个64位寄存器      | sm_80       |
+| 8×16   | .m8n8k16   | .u8/.s8                               | 4个              | 1个32位寄存器      | sm_75       |
+| 8×32   | .m8n8k32   | .u4/.s4                               | 8个              | 1个32位寄存器      | sm_75       |
+| 8×128  | .m8n8k128  | .b1                                   | 32个             | 1个32位寄存器      | sm_80       |
+| 16×4   | .m16n8k4   | .tf32/.f64                            | 2个              | 2个32位/64位寄存器 | sm_80/sm_90 |
+| 16×8   | .m16n8k8   | .f16/.bf16                            | 4个              | 2个32位寄存器      | sm_75/sm_80 |
+| 16×8   | .m16n8k8   | .tf32/.f64                            | 4个              | 4个32位/64位寄存器 | sm_80/sm_90 |
+| 16×16  | .m16n8k16  | .f16/.bf16                            | 8个              | 4个32位寄存器      | sm_80       |
+| 16×16  | .m16n8k16  | .f64                                  | 8个              | 8个64位寄存器      | sm_90       |
+| 16×16  | .m16n8k16  | .u8/.s8/.e4m3/.e5m2                   | 8个              | 2个32位寄存器      | sm_80/sm_89 |
+| 16×32  | .m16n8k32  | .u4/.s4                               | 16个             | 2个32位寄存器      | sm_80       |
+| 16×32  | .m16n8k32  | .u8/.s8/.e4m3/.e5m2/.e3m2/.e2m3/.e2m1 | 16个             | 4个32位寄存器      | sm_80/sm_89 |
+| 16×64  | .m16n8k64  | .u4/.s4/.e2m1                         | 32个             | 4个32位寄存器      | sm_80/sm_89 |
+| 16×128 | .m16n8k128 | .b1                                   | 64个             | 2个32位寄存器      | sm_80       |
+| 16×256 | .m16n8k256 | .b1                                   | 128个            | 4个32位寄存器      | sm_80       |
+
+<img src="CUDA的PTX指令集.assets/mma形状之矩阵A的片段布局1.png" style="zoom:25%;" />
+
+<img src="CUDA的PTX指令集.assets/mma形状之矩阵A的片段布局2.png" style="zoom:25%;" />
+
+<img src="CUDA的PTX指令集.assets/mma形状之矩阵A的片段布局3.png" style="zoom:25%;" />
+
+<img src="CUDA的PTX指令集.assets/mma形状之矩阵A的片段布局4.png" style="zoom:25%;" />
+
+<img src="CUDA的PTX指令集.assets/mma形状之矩阵A的片段布局5.png" style="zoom:25%;" />
+
+<img src="CUDA的PTX指令集.assets/mma形状之矩阵A的片段布局6.png" style="zoom:25%;" />
+
+<img src="CUDA的PTX指令集.assets/mma形状之矩阵A的片段布局7.png" style="zoom:25%;" />
+
+#### 矩阵B的片段布局
+
+从mma矩阵形状的表格中可以统计出，矩阵B的片段支持多种形状和数据类型，如下表所示。
+
+| K×N   | Shape      | 数据类型                              | 该类型的元素数目 | 所需寄存器         | 计算能力    |
+| ----- | ---------- | ------------------------------------- | ---------------- | ------------------ | ----------- |
+| 4×8   | .m8n8k4    | .f64                                  | 1个              | 1个64位寄存器      | sm_80       |
+| 4×8   | .m16n8k4   | .tf32/.f64                            | 1个              | 1个32位/64位寄存器 | sm_80/sm_90 |
+| 8×8   | .m16n8k8   | .f16/.bf16                            | 2个              | 1个32位寄存器      | sm_75/sm_80 |
+| 8×8   | .m16n8k8   | .tf32/.f64                            | 2个              | 2个32位/64位寄存器 | sm_80/sm_90 |
+| 16×8  | .m8n8k16   | .u8/.s8                               | 4个              | 1个32位寄存器      | sm_75       |
+| 16×8  | .m16n8k16  | .f16/.bf16                            | 4个              | 2个32位寄存器      | sm_80       |
+| 16×8  | .m16n8k16  | .f64                                  | 4个              | 4个64位寄存器      | sm_90       |
+| 16×8  | .m16n8k16  | .u8/.s8/.e4m3/.e5m2                   | 4个              | 1个32位寄存器      | sm_80/sm_89 |
+| 32×8  | .m8n8k32   | .u4/.s4                               | 8个              | 1个32位寄存器      | sm_75       |
+| 32×8  | .m16n8k32  | .u4/.s4                               | 8个              | 1个32位寄存器      | sm_80       |
+| 32×8  | .m16n8k32  | .u8/.s8/.e4m3/.e5m2/.e3m2/.e2m3/.e2m1 | 8个              | 2个32位寄存器      | sm_80/sm_89 |
+| 64×8  | .m16n8k64  | .u4/.s4/.e2m1                         | 16个             | 2个32位寄存器      | sm_80/sm_89 |
+| 128×8 | .m8n8k128  | .b1                                   | 32个             | 1个32位寄存器      | sm_80       |
+| 128×8 | .m16n8k128 | .b1                                   | 32个             | 1个32位寄存器      | sm_80       |
+| 256×8 | .m16n8k256 | .b1                                   | 64个             | 2个32位寄存器      | sm_80       |
+
+<img src="CUDA的PTX指令集.assets/mma形状之矩阵B的片段布局1.png" style="zoom:25%;" />
+
+<img src="CUDA的PTX指令集.assets/mma形状之矩阵B的片段布局2.png" style="zoom:25%;" />
+
+<img src="CUDA的PTX指令集.assets/mma形状之矩阵B的片段布局3.png" style="zoom:25%;" />
+
+#### 矩阵CD的片段布局
+
+从mma矩阵形状的表格中可以统计出，矩阵CD的片段支持多种形状和数据类型，如下表所示。
+
+| M×N  | Shape                                                   | 数据类型 | 该类型的元素数目 | 所需寄存器    |
+| ---- | ------------------------------------------------------- | -------- | ---------------- | ------------- |
+| 8×8  | .m8n8k4                                                 | .f64     | 2个              | 2个64位寄存器 |
+| 8×8  | .m8n8k16、.m8n8k32、.m8n8k128                           | .s32     | 2个              | 2个32位寄存器 |
+| 16×8 | .m16n8k8、.m16n8k16、.m16n8k32                          | .f16     | 4个              | 2个32位寄存器 |
+| 16×8 | .m16n8k4、.m16n8k8、.m16n8k16、.m16n8k32、.m16n8k64     | .f32     | 4个              | 4个32位寄存器 |
+| 16×8 | .m16n8k4、.m16n8k8、.m16n8k16                           | .f64     | 4个              | 4个64位寄存器 |
+| 16×8 | .m16n8k16、.m16n8k32、.m16n8k64、.m16n8k128、.m16n8k256 | .s32     | 4个              | 4个32位寄存器 |
+
+<img src="CUDA的PTX指令集.assets/mma形状之矩阵CD的片段布局.png" style="zoom:15%;" />
+
+### mma系列指令
+
+#### mma指令
+
+mma指令执行一次矩阵乘加操作，该指令由一整个Warp中的所有线程协同执行。寄存器d、a、b、c都是使用大括号括起来的寄存器列表，分别表示相应矩阵操作数的fragment片段。强制的.sync修饰符表示该指令会使得一个Warp中线程等待，直到该Warp中的所有线程都执行到该mma指令，然后再继续执行。
+
+Half Floating Point (.f16)：
+
+```
+mma.sync.aligned.shape.row.col.dtype.f16.f16.ctype d, a, b, c;
+.shape = { .m8n8k4, .m16n8k8, .m16n8k16 };
+.dtype = .ctype = { .f16, .f32 };
+```
+
+Alternate Half Floating Point (.bf16)：
+
+```
+mma.sync.aligned.shape.row.col.f32.atype.btype.f32 d, a, b, c;
+.shape = { .m16n8k8, .m16n8k16 };
+.atype = .btype = { .bf16 };
+```
+
+Alternate Floating Point (.tf32)：
+
+```
+mma.sync.aligned.shape.row.col.f32.atype.btype.f32 d, a, b, c;
+.shape = { .m16n8k4, .m16n8k8 };
+.atype = .btype = { .tf32 };
+```
+
+Alternate Floating Point (.e4m3/.e5m2)：
+
+```
+mma.sync.aligned.shape.row.col.dtype.atype.btype.ctype d, a, b, c;
+.shape = { .m16n8k16, .m16n8k32 };
+.atype = .btype = { .e4m3, .e5m2 };
+.dtype = .ctype = { .f16, .f32 };
+```
+
+Alternate Floating Point (.e4m3/.e5m2/.e3m2/.e2m3/.e2m1)：
+
+```
+mma.sync.aligned.shape.row.col.kind.dtype.atype.btype.ctype d, a, b, c;
+.shape = { .m16n8k32 };
+.kind  = { .kind::f8f6f4 };
+.atype = .btype = { .e4m3, .e5m2, .e3m2, .e2m3, .e2m1 };
+.dtype = .ctype = { .f16, .f32 };
+```
+
+Double Floating Point (.f64)：
+
+```
+mma.sync.aligned.shape.row.col.f64.atype.btype.f64 d, a, b, c;
+.shape = { .m8n8k4, .m16n8k4, .m16n8k8, .m16n8k16 };
+.atype = .btype = { .f64 };
+```
+
+Integer Type (.u8/.s8)：
+
+```
+mma.sync.aligned.shape.row.col{.satfinite}.s32.atype.btype.s32 d, a, b, c;
+.shape = { .m8n8k16, .m16n8k16, .m16n8k32 };
+.atype = .btype = { .u8, .s8 };
+```
+
+Sub-Type Data (.u4/.s4)：
+
+```
+mma.sync.aligned.shape.row.col{.satfinite}.s32.atype.btype.s32 d, a, b, c;
+.shape = { .m8n8k32, .m16n8k32, .m16n8k64 };
+.atype = .btype = { .u4, .s4 };
+```
+
+Single Bit (.b1)：
+
+```
+mma.sync.aligned.shape.row.col.s32.b1.b1.s32.bitOp.popc d, a, b, c;
+.shape = { .m8n8k128, .m16n8k128, .m16n8k256 };
+.bitOp = { .and, .xor };
+```
+
+上述指令执行M×N×K的矩阵乘加运算D＝A×B＋C，其中矩阵A形状为M×K，矩阵B形状为K×N，矩阵C和矩阵D形状为M×N。
+
+一个使用mma指令执行矩阵乘加运算的示例如下。
+
+```
+.reg .b32 a<2>, b<2>, c<4>, d<8>;
+mma.sync.aligned.m8n8k4.row.col.f32.f16.f16.f16 { d0, d1, d2, d3, d4, d5, d6, d7 }, { a0, a1 }, { b0, b1 }, { c0, c1, c2, c3 };
+
+.reg .b32 a<4>, b<2>, c<4>, d<4>;
+mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32 { d0, d1, d2, d3 }, { a0, a1, a2, a3 }, { b0, b1 }, { c0, c1, c2, c3 };
+```
+
+#### ldmatrix指令
+
+ldmatrix指令从共享内存地址ptr中加载一个或多个矩阵的数据到目标寄存器reg当中，以用作mma运算的操作数，该指令由一整个Warp中的所有线程协同执行。强制的.sync修饰符表示该指令会使得一个Warp中线程等待，直到该Warp中的所有线程都执行到该ldmatrix指令，然后再继续执行。
+
+```
+ldmatrix.sync.aligned.shape.num{.trans}{.ss}.type reg, [ptr];
+.shape = { .m8n8, m16n16 };
+.type  = { .b16, .b8 };
+.num   = { .x1, .x2, .x4 };
+.ss    = { .shared{::cta} };
+
+ldmatrix.sync.aligned.m8n16 .num      {.ss}.dst_fmt.src_fmt reg, [ptr];
+ldmatrix.sync.aligned.m16n16.num.trans{.ss}.dst_fmt.src_fmt reg, [ptr];
+.dst_fmt = { .b8x16 };
+.src_fmt = { .b6x16_p32, .b4x16_p64 };
+```
+
+其中，.shape指示要加载矩阵的维数形状，.type指定一个元素的类型（也即占用的二进制位数），.dst_fmt和.src_fmt指定元素的类型。需要注意的是，矩阵的维数形状.m8n16、.m16n16，以及元素类型.b8、.dst_fmt、.src_fmt都要求在sm_100计算能力（Hopper架构）及更新的设备上才受支持。
+
+| .shape  | Matrix Shape | 元素类型               | 一个元素占用的二进制位 | 计算能力 |
+| ------- | ------------ | ---------------------- | ---------------------- | -------- |
+| .m8n8   | 8×8          | .b16                   | 16-bit                 | sm_75    |
+| .m16n16 | 16×16        | .b8                    | 8-bit                  | sm_100   |
+| .m8n16  | 8×16         | .b4x16_p64、.b6x16_p32 | 4-bit、6-bit           | sm_100   |
+| .m16n16 | 16×16        | .b4x16_p64、.b6x16_p32 | 4-bit、6-bit           | sm_100   |
+
+在ldmatrix指令中，地址ptr只能是.shared存储状态空间中的地址，若未指定状态空间，则表示一个通用地址。矩阵数据的每一行元素不必在内存中连续存储。
+
+对于.m8n8形状和.m8n16形状的矩阵而言，一个矩阵的8行数据需要8个地址来指定，由8个线程提供，每个地址即是所对应行的起始地址。若.num取值为复数，则需要更多的线程来指定矩阵的行地址，例如，0\~7号线程指定第1个矩阵的8个行地址，8\~15号线程指定第2个矩阵的8个行地址，依次类推，如下表所示。
+
+| .num | 第1个矩阵地址，Thread 0~7 | 第2个矩阵地址，Thread 8~15 | 第3个矩阵地址，Thread 16~23 | 第4个矩阵地址，Thread 24~31 |
+| ---- | ------------------------- | -------------------------- | --------------------------- | --------------------------- |
+| .x1  | addr0 ~ addr7             |                            |                             |                             |
+| .x2  | addr0 ~ addr7             | addr8 ~ addr15             |                             |                             |
+| .x4  | addr0 ~ addr7             | addr8 ~ addr15             | addr16 ~ addr23             | addr23 ~ addr31             |
+
+> 需要注意的是，对于sm_75计算能力及更低的设备而言，所有线程都必须包含有效地址，否则将是未定义行为。于是，对于.num取值为.x1或.x2时，可以将较低编号的线程中包含的地址复制到较高编号的线程中，以实现预期行为。
+
+对于.m16n16形状的矩阵而言，一个矩阵的16行数据需要16个地址来指定，由16个线程提供，每个地址即是所对应行的起始地址。若.num取值为复数，则需要更多的线程来指定矩阵的行地址，例如，0\~15号线程指定第1个矩阵的16个行地址，16\~31号线程指定第2个矩阵的16个行地址，如下表所示。因此当矩阵形状为.m16n16时，修饰符.num只能取.x1和.x2其中之一。
+
+| .num | 第1个矩阵地址，Thread 0~15 | 第2个矩阵地址，Thread 16~31 |
+| ---- | -------------------------- | --------------------------- |
+| .x1  | addr0 ~ addr15             |                             |
+| .x2  | addr0 ~ addr15             | addr16 ~ addr31             |
+
+在ldmatrix指令中，寄存器reg是使用大括号括起来的寄存器列表，可以是1个、2个、4个32位寄存器，例如{r0, r1, r2, r3}等形状。寄存器列表reg中的每一个寄存器分量，都持有所加载矩阵的相应fragment片段。修饰符.num表示加载的矩阵数目，取值可以是.x1、.x2、.x4，分别表示加载1个、2个、4个矩阵。
+
+对于.m8n8形状和.b16类型而言，.num取值即是所需的32位寄存器的数目，这是因为，当一整个Warp的32个线程负责8×8形状的一个矩阵时，每个线程负责2个.b16数据，也即一个32位寄存器，于是，加载几个矩阵，就需要几个32位寄存器。
+
+在读取.m8n8形状和.b16类型的矩阵时，一整个Warp共32个线程分为8组，一组4个连续线程负责一行元素的16个字节，一个线程负责自己的4字节矩阵片段，矩阵地址必须自然对齐。当.num取值为复数时，线程的第1个寄存器加载第1个矩阵，线程的第2个寄存器加载第2个矩阵，依次类推。如下图左侧所示。
+
+对于.m8n16形状和.b8、.b6、.b4类型而言，亚字节数据类型会被填充到一个字节，.num取值即是所需的32位寄存器的数目，这是因为，当一整个Warp的32个线程负责8×16形状的一个矩阵时，每个线程负责4个.b8数据，也即一个32位寄存器，于是，加载几个矩阵，就需要几个32位寄存器。
+
+在读取.m8n16形状和.b8、.b6、.b4类型的矩阵时，一整个Warp共32个线程分为8组，一组4个连续线程负责一行元素的16个字节，一个线程负责自己的4字节矩阵片段，矩阵地址必须自然对齐。当.num取值为复数时，线程的第1个寄存器加载第1个矩阵，线程的第2个寄存器加载第2个矩阵，依次类推。如下图右侧所示。
+
+<img src="CUDA的PTX指令集.assets/ldmatrix的片段布局1.png" style="zoom:25%;" />
+
+对于.m16n16形状和.b8类型而言，所需的32位寄存器的数目是.num取值的2倍，这是因为，当一整个Warp的32个线程负责16×16形状的一个矩阵时，每个线程负责8个.b8数据，也即2个32位寄存器，于是，加载几个矩阵，就需要2倍数目的32位寄存器。由于寄存器reg最多使用4个32位寄存器，于是，当使用.m16n16形状和.b8类型时，.num的取值只能是.x1和.x2其中之一。
+
+在读取.m16n16形状和.b8类型的矩阵时，一整个Warp共32个线程分为8组，一组4个连续线程负责2行元素的共32个字节，一个线程负责自己的2个4字节片段，矩阵地址必须自然对齐。线程的第1个寄存器加载第1个矩阵的第1部分，线程的第2个寄存器加载第1个矩阵的第1部分，当.num取值为.x2复数时，线程的第3个寄存器加载第2个矩阵的第1部分，线程的第4个寄存器加载第2个矩阵的第2部分。如下图所示。
+
+<img src="CUDA的PTX指令集.assets/ldmatrix的片段布局2.png" style="zoom:25%;" />
+
+可选的修饰符.trans表示矩阵按照列主序的格式加载，片段的排列布局将是列主序的。对于.m16n16形状的矩阵而言，修饰符.trans是必需的。
+
+一些使用ldmatrix指令加载矩阵数据的示例如下所示。
+
+```
+// Load a single 8x8 matrix
+.reg .b32 d<1>;
+ldmatrix.sync.aligned.m8n8.x1.shared.b16 { d0 }, [addr];
+
+// Load four 8x8 matrices in column-major format
+.reg .b32 d<4>;
+ldmatrix.sync.aligned.m8n8.x4.trans.shared.b16 { d0, d1, d2, d3 }, [addr];
+
+// Load one 16x16 matrices of 64-bit elements and transpose them
+.reg .b32 d<2>;
+ldmatrix.sync.aligned.m16n16.x1.trans.shared.b8 { d0, d1 }, [addr];
+
+// Load two 16x16 matrices of 6-bit elements and transpose them
+.reg .b32 d<4>;
+ldmatrix.sync.aligned.m16n16.x2.trans.shared.b8x16.b6x16_p32 { d0, d1, d2, d3 }, [addr];
+```
+
+#### stmatrix指令
+
+stmatrix指令将一个或多个矩阵的数据存储到共享内存当中，该指令由一整个Warp中的所有线程协同执行。强制的.sync修饰符表示该指令会使得一个Warp中线程等待，直到该Warp中的所有线程都执行到该stmatrix指令，然后再继续执行。
+
+```
+stmatrix.sync.aligned.shape.num{.trans}{.ss}.type [ptr], reg;
+
+.shape = { .m8n8, .m16n8 };
+.num   = { .x1, .x2, .x4 };
+.ss    = { .shared{::cta} };
+.type  = { .b16, .b8 };
+```
+
+在stmatrix指令中，地址ptr只能是.shared存储状态空间中的地址，若未指定状态空间，则表示一个通用地址。矩阵数据的每一行元素不必在内存中连续存储。对于.m8n8形状的矩阵而言，一个矩阵的8行数据需要8个地址来指定，由8个线程提供，每个地址即是所对应行的起始地址。若.num取值为复数，则需要更多的线程来指定矩阵的行地址，例如，0\~7号线程指定第1个矩阵的8个行地址，8\~15号线程指定第2个矩阵的8个行地址，依次类推。
+
+在stmatrix指令中，寄存器reg是使用大括号括起来的寄存器列表，可以是1个、2个、4个32位寄存器，例如{r0, r1, r2, r3}等形状。寄存器列表reg中的每一个寄存器分量，都持有要存储矩阵的相应fragment片段。修饰符.num表示存储的矩阵数目，取值可以是.x1、.x2、.x4，分别表示存储1个、2个、4个矩阵。
+
+对于.m8n8形状和.b16类型而言，.num取值即是所需的32位寄存器的数目，这是因为，当一整个Warp的32个线程负责8×8形状的一个矩阵时，每个线程负责2个.b16数据，也即一个32位寄存器，于是，存储几个矩阵，就需要几个32位寄存器。
+
+在存储.m8n8形状和.b16类型的矩阵时，一整个Warp共32个线程分为8组，一组4个连续线程负责一行元素的16个字节，一个线程负责自己的4字节矩阵片段，矩阵地址必须自然对齐。当.num取值为复数时，线程的第1个寄存器存储第1个矩阵，线程的第2个寄存器存储第2个矩阵，依次类推。如下图左侧所示。
+
+对于.m16n8形状和.b8类型而言，.num取值即是所需的32位寄存器的数目，这是因为，当一整个Warp的32个线程负责16×8形状的一个矩阵时，每个线程负责4个.b8数据，也即一个32位寄存器，于是，加载几个矩阵，就需要几个32位寄存器。
+
+在读取.m16n8形状和.b8类型的矩阵时，一整个Warp共32个线程分为8组，一组4个连续线程负责2行元素的共16个字节，一个线程负责自己的2个2字节片段，矩阵地址必须自然对齐。寄存器的低16位存储矩阵的第1部分，寄存器的高16位存储矩阵的第2部分，当.num取值为复数时，线程需要更多寄存器。如下图右侧所示。使用e0表示r0[7:0]，使用e1表示r0[15:8]，使用e2表示r0[23:16]，使用e3表示r0[31:24]，使用e4表示r1[7:0]，依次类推。
+
+<img src="CUDA的PTX指令集.assets/stmatrix的片段布局.png" style="zoom:25%;" />
+
+可选的修饰符.trans表示矩阵按照列主序的格式加载，片段的排列布局将是列主序的。对于.m16n16形状的矩阵而言，修饰符.trans是必需的。
+
+一些使用stmatrix指令存储矩阵数据的示例如下所示。
+
+```
+// Store a single 8x8 matrix
+.reg .b32 r<1>;
+stmatrix.sync.aligned.m8n8.x1.shared.b16 [addr], {r0};
+
+// Store four 8x8 matrices in column-major format
+.reg .b32 r<4>;
+stmatrix.sync.aligned.m8n8.x4.trans.shared.b16 [addr], { r0, r1, r2, r3 };
+
+// Store two 16x8 matrices in column-major format
+.reg .b32 r<2>;
+stmatrix.sync.aligned.m16n8.x2.trans.shared.b8 [addr],{ r0, r1 };
+```
+
+#### movmatrix指令
+
+movmatrix指令对一整个Warp中的所有线程寄存器中的矩阵数据进行转置，从源寄存器a中读取，转置后写入到目标寄存器d中，寄存器a和d都是32位寄存器。强制的.sync修饰符表示该指令会使得一个Warp中线程等待，直到该Warp中的所有线程都执行到该movmatrix指令，然后再继续执行。
+
+```
+movmatrix.sync.aligned.shape.trans.type d, a;
+.shape = { .m8n8 };
+.type  = { .b16 };
+```
+
+<img src="CUDA的PTX指令集.assets/movmatrix的片段布局.png" style="zoom:25%;" />
+
+一个使用movmatrix指令转置矩阵数据的示例如下所示。
+
+```
+.reg .b32 d, a;
+movmatrix.sync.aligned.m8n8.trans.b16 d, a;
+```
+
+## 异步Warpgroup矩阵乘法累加指令^$
+
+## 第五代TensorCore指令^$
+
+## 其它指令^$
 
 PTX支持对纹理（texture）和采样器描述符（sampler descriptor）执行以下操作：纹理和采样器描述符的静态初始化；纹理和采样器描述符的模块范围（module-scope）定义和核函数范围（per-entry scope）定义；查询纹理和采样器描述符中的字段。涉及tex、tld4、txq等指令。PTX支持对表面（surface）描述符执行以下操作：表面描述符的静态初始化；表面描述符的模块范围定义和核函数范围定义；查询表面描述符中的字段。涉及suld、sust、sured、suq指令。
 
