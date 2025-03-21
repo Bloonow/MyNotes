@@ -1487,7 +1487,7 @@ cp.async.bulk.prefetch指令启动一个非阻塞的异步操作，从全局内�
 cp.async.bulk.prefetch.L2.global{.L2::cache_hint} [srcMem], size{, cache_policy};
 ```
 
-#### 张量Tensor异步复制^$
+#### 张量Tensor异步复制
 
 > 该小节描述的张量Tensor异步复制指令需要计算能力9.0（Hopper架构）及以上的设备才能支持。
 
@@ -1799,7 +1799,7 @@ PTX提供了两种执行矩阵乘加运算的方法，一是使用wmma.xxx系列
 
 对于wmma.xxx系列指令而言。使用wmma.load指令将矩阵A、B、C从内存加载到寄存器中，每个线程中的目标寄存器将保存已加载矩阵的片段（fragment）。使用wmma.mma指令对所加载的矩阵片段执行矩阵乘加运算，每个线程中的目标寄存器将保存wmma.mma操作返回的结果矩阵D的片段。使用wmma.store指令将该线程所持有的结果矩阵D的片段存储到内存，或者结果矩阵D也可以用作后续wmma.mma指令的参数C。值得注意的是，wmma.load指令和wmma.store指令在从内存中加载片段以及将结果存储回内存时，会隐式地处理矩阵元素的排列布局组织。
 
-对于mma.xxx系列指令而言，也要求一整个Warp中的所有线程协同执行，但是在调用mma操作之前，需要手动在Warp中的不同线程之间完成显式的矩阵元素的排列布局。此外，mma.sp.xxx系列指令还支持对稀疏矩阵的操作。此外，mma.xxx系列指令还允许使用.kind修饰符来执行具有块缩放（block scaling）的矩阵乘加运算，由形如D＝(A×scale_A)×(B×scale_B)＋C的公式定义。
+对于mma.xxx系列指令而言，也要求一整个Warp中的所有线程协同执行，但是在调用mma操作之前，需要手动在Warp中的不同线程之间完成显式的矩阵元素的排列布局。此外，mma.sp.xxx系列指令还支持对稀疏矩阵的操作（仅适用于矩阵A的每行都具有50%的稀疏度时）。此外，mma.xxx系列指令还允许使用.kind修饰符来执行具有块缩放（block scaling）的矩阵乘加运算，由形如D＝(A×scale_A)×(B×scale_B)＋C的公式定义。
 
 Tensor Core硬件在计算时需要特殊的数据格式，这种特殊数据格式对于不同计算能力（架构）的设备而言可能是不同的，线程仅持有整个矩阵的一个fragment片段。对于wmma.xxx系列指令而言，fragment片段是特定于设备架构的不透明的ABI数据结构，开发人员不能对各个参数数据如何映射到寄存器作出任何假设。例如对于sm_70（Volta架构）和sm_75（Turning架构）而言，其fragment片段的格式就不相同。
 
@@ -2628,25 +2628,56 @@ movmatrix.sync.aligned.shape.trans.type d, a;
 movmatrix.sync.aligned.m8n8.trans.b16 d, a;
 ```
 
-## 异步Warpgroup矩阵乘法累加指令^$
+### 异步Warpgroup矩阵乘加
 
-## 第五代TensorCore指令^$
+线程束组（Warpgroup）级别的矩阵乘法累加运算具有D＝A×B＋D的形式，其中矩阵D称为累加器（Accumulator）。Warpgroup是一组四个连续的Warp线程束，第一个Warp线程束的编号（warp-rank）是4的整数倍，线程束编号的定义如下所示。
 
-## 其它指令^$
+```
+warp-rank = (%tid.x + %tid.y * %ntid.x + %tid.z * %ntid.x * %ntid.y) / 32;
+```
+
+wgmma.xxx系列指令让Warpgroup中的所有线程共同执行以下操作来执行线程束组级别的异步矩阵乘加操作。(1)将矩阵A、B、D加载到共享内存或寄存器中；(2)执行以下fence栅栏操作，使用wgmma.fence操作来指示Warpgroup中的共享内存/寄存器已被写入，使用fence.proxy.async操作，使普通代理（generic proxy）操作对异步代理（async proxy）可见；(3)使用wgmma.mma_async发出异步的矩阵乘加运算操作，该乘加操作将在异步代理中执行；(4)创建一个wgmma组，并使用wgmma.commit_group指令将之前所有未完成的wgmma.mma_async操作提交到该组中；(5)等待所需的wgmma组完成；(6)wgmma组完成之后，所有相关的wgmma.mma_async操作都已执行完成。
+
+与mma.xxx系列指令类似，wgmma.mma_async指令也支持特定形状.m#n#k#和特定类型.type的矩阵数据。更详细内容查看官方文档。
+
+### 第五代Tensor Core
+
+在计算能力10.0（Blackwell架构）的设备上，NVIDIA提出了第五代Tensor Core硬件单元，这一代Tensor Core硬件单元具有专用的片上内存（on-chip memory），称为张量内存（Tensor Memory），专供Tensor Core硬件使用。
+
+在架构sm_100a上，张量内存组织为二维矩阵，其中，水平行（horizontal row）称为道（lane），竖直列（vertical column）称为列（column）。每个CTA线程块的张量内存，具有128个行和512个列，每个单元格（cell）的大小是32位。
+
+## 其它指令
 
 PTX支持对纹理（texture）和采样器描述符（sampler descriptor）执行以下操作：纹理和采样器描述符的静态初始化；纹理和采样器描述符的模块范围（module-scope）定义和核函数范围（per-entry scope）定义；查询纹理和采样器描述符中的字段。涉及tex、tld4、txq等指令。PTX支持对表面（surface）描述符执行以下操作：表面描述符的静态初始化；表面描述符的模块范围定义和核函数范围定义；查询表面描述符中的字段。涉及suld、sust、sured、suq指令。
 
 PTX支持视频指令（video instruction），包括视频标量指令和视频SIMD指令。涉及vadd、vsub、vabsdiff、vmin、vmax、vshl、vshr、vmad、vset等标量指令，以及vadd2、vadd4、vsub2、vsub4、vavrg2、vavrg4、vabsdiff2、vabsdiff4、vmin2、vmin4、vmax2、vmax4、vset2、vset4等向量化指令。
 
+brkpt指令用于指定一个断点（breakpoint），暂停程序执行。
+
+```
 brkpt;
+```
 
-nanosleep;
+nanosleep指令用于暂停线程执行，使线程睡眠一定的时间（单位是纳秒），其中，time使用一个32位寄存器或立即数指定。
 
-pmevent;
+```
+nanosleep.u32 time;
+```
 
-trap;
+需要注意的是，睡眠持续时间是一个近似值，但保证在0到2×time的区间内，最大睡眠持续时间为1毫秒。该实现可以减少Warp中单个线程的睡眠持续时间，以便Warp中的所有睡眠线程一起唤醒。
 
-setmaxnreg;
+pmevent指令用于触发一个或多个性能监控器事件。trap指令用于中止执行并为主机CPU生成中断。
+
+setmaxnreg指令向系统提示，将正在执行的Warp中的每个线程拥有的最大寄存器数目设置为imm_reg_count指定的值。该值imm_reg_count是一个立即数，取值范围必须在24到256之间，且必须是8的整数倍。该指令必须由一个Warpgroup线程束组中的所有Warp线程束执行，要求计算能力9.0及以上的设备。
+
+```
+setmaxnreg.action.sync.aligned.u32 imm_reg_count;
+.action = { .inc, .dec };
+```
+
+限定符.inc用于请求额外的寄存器，以便将每个线程的绝对最大寄存器数目从其当前值增加到imm_reg_count。限定符.dec用于释放额外的寄存器，以便将每个线程的绝对最大寄存器数目从其当前值减少到imm_reg_count。
+
+每个CTA线程块维护一个可用寄存器池（pool of available registers）。若CTA的寄存器池中不存在可用的寄存器，则setmaxnreg.inc会阻塞执行，直到CTA的寄存器池中有足够的寄存器可用。在使用setmaxnreg.inc指令从池中获取新寄存器后，新寄存器的初始值是不确定的，必须进行初始化。
 
 # 指示语句
 
