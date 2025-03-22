@@ -1583,7 +1583,31 @@ struct Wmma<
 };
 ```
 
-# CUTLASS GEMM API Examples
+# CUTLASS GEMM API
+
+![](GEMM矩阵乘法和CUTLASS模板库.assets/gemm-hierarchy.png)
+
+如前所述，CUTLASS对通用矩阵乘法GEMM进行并行分片，映射到CUDA并行编程模型中的多个层级资源上，其代码实现组织为如下图所示的层级结构。注意，图中所展示的一些名称，均是充当API接口的概念，作用可分为两点，即(1)使用下一层级API接口实现某功能，(2)作为API接口提供给上一层级。而其它一些“仅仅是作为某个层级工具类实现，但未参与API接口构建”的概念则未在图中展示。
+
+![](GEMM矩阵乘法和CUTLASS模板库.assets/cutlass-components.png)
+
+```shell
+cutlass
+├── arch       # Architecture features (including instruction implementation)
+├── gemm       # GEneral Matrix Multiply computations
+│   ├── device       # Launch kernels
+│   ├── kernel       # Kernels
+│   ├── threadblock  # Cta Tile
+│   ├── warp         # Warp Tile
+│   └── thread       # Thread Tile
+├── transform  # Code specialized for layout, type, and domain transformations
+├── epilogue   # Epilogue rearranges result to canonical layouts, and supports conversion and reduction operations
+└── reduction  # Reduction kernels
+```
+
+CUTLASS在实现代码的几乎每个层级都提供了以default为前缀的默认配置default_xxx.cu，若不清楚每个层级的模板参数如何指定，可以参考这些默认配置。
+
+# CUTLASS API Examples
 
 在cutlass/gemm/device目录中，提供设备层级的GEMM接口，用于在GPU设备上启动矩阵乘法的kernel核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。由模板类提供实现，即cutlass::gemm::device::Gemm模板类、cutlass::gemm::device::GemmArray模板类、cutlass::gemm::device::GemmBatched模板类、cutlass::gemm::device::GemmSplitKParallel模板类。一些GEMM计算的示例如下。
 
@@ -1636,27 +1660,3 @@ void demo_gemm_splitK() {
     status = gemm_splitK_op();
 }
 ```
-
-# CUTLASS GEMM API Implementation
-
-![](GEMM矩阵乘法和CUTLASS模板库.assets/gemm-hierarchy.png)
-
-如前所述，CUTLASS对通用矩阵乘法GEMM进行并行分片，映射到CUDA并行编程模型中的多个层级资源上，其代码实现组织为如下图所示的层级结构。注意，图中所展示的一些名称，均是充当API接口的概念，作用可分为两点，即(1)使用下一层级API接口实现某功能，(2)作为API接口提供给上一层级。而其它一些“仅仅是作为某个层级工具类实现，但未参与API接口构建”的概念则未在图中展示。
-
-![](GEMM矩阵乘法和CUTLASS模板库.assets/cutlass-components.png)
-
-```shell
-cutlass
-├── arch       # Architecture features (including instruction implementation)
-├── gemm       # GEneral Matrix Multiply computations
-│   ├── device       # Launch kernels
-│   ├── kernel       # Kernels
-│   ├── threadblock  # Cta Tile
-│   ├── warp         # Warp Tile
-│   └── thread       # Thread Tile
-├── transform  # Code specialized for layout, type, and domain transformations
-├── epilogue   # Epilogue rearranges result to canonical layouts, and supports conversion and reduction operations
-└── reduction  # Reduction kernels
-```
-
-CUTLASS在实现代码的几乎每个层级都提供了以default为前缀的默认配置default_xxx.cu，若不清楚每个层级的模板参数如何指定，可以参考这些默认配置。
