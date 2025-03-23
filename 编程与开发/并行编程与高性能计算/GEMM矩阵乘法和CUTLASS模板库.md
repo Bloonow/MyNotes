@@ -530,7 +530,7 @@ SliceK（reduction across Warp）通过在blockK维度上划分线程束，能�
 
 从Hopper架构开始，CUTLASS 3.0引入线程束专业化的概念，即一个线程块中的线程束被分为两组，分别是生产者线程束与消费者线程束。生产者使用新架构的张量内存加速器（Tensor Memory Accelerator，TMA）将数据从设备全局内存中加载到共享内存缓冲区中，并更新该阶段所关联的栅障以通知相关消费者数据已填充；消费者等待生产者的填充信号，然后启动Tensor Core的MMA操作，然后释放共享内存缓冲区，并使用新引入的Async Pipeline Class类通知生产者共享内存缓冲区已为空，以执行下一组TMA工作负载。
 
-# CUTLASS and Utility
+# CUTLASS
 
 CUTLASS是CUDA Templates for Linear Algebra Subroutines and Solvers的缩写，是基于CUDA运行时的线性代数例程与求解器的C++模板库，用于实现高性能的矩阵乘法GEMM及其相关计算。除通用矩阵乘法之外，CUTLASS通过隐式GEMM算法实现高性能的卷积操作。
 
@@ -557,6 +557,8 @@ CUTLASS库包括若干组件。在顶层include目录中提供CUTLASS模板库�
 多维对象（multidimensional object）是一个统称，可以指数组（array）、矩阵（matrix）、张量（tensor）、索引空间（index space）、形状（shape）、跨步（stride）、布局（layout）等。逻辑数目（logical number）是指，在逻辑表示上，有效元素的数目。实际存储数目（physical number）是指，在内存空间中进行存储时，占用物理存储空间的实际存储的元素数目，包括有效元素和填充元素。
 
 使用Index表示某个逻辑维度轴上的索引，使用Extent表示某个逻辑维度轴上的逻辑维数，使用Rank表示维度轴的数目，使用Size表示全部逻辑元素的数目；使用LongIndex表示在内存空间中存储位置的线性偏移，使用Capacity表示多维对象在内存中实际需要存储的元素数目，包括填充元素。
+
+##  Utility
 
 在项目顶层的tools/util/include/cutlass目录中，提供CUTLASS的各种功能的工具模板类，实际使用时可查阅目录中所提供的头文件，此处只是列举一些常用的工具模板类。注意，应用程序需要将顶层tools/util/include目录添加到编译器的头文件搜索路径。
 
@@ -762,7 +764,9 @@ bool same = cutlass::reference::host::TensorEquals(tensor1.host_view(), tensor2.
 
 在cutlass/util/reference/host/tensor_elementwise.h头文件中，提供主机端内存中TensorView对象的逐元素操作，例如TensorAdd()函数、TensorSub()函数、TensorMul()函数、TensorDiv()函数、TensorModulus()函数，以及自定义的TensorFuncBinaryOp结构体等。
 
-# CUTLASS Type Reference
+## Type Reference
+
+在项目顶层的include/cutlass目录中，提供CUTLASS在各个硬件层次对GEMM的实现代码，以及所需要的辅助类型，如下所示。
 
 ```shell
 cutlass  # CUTLASS Template Library
@@ -787,7 +791,7 @@ cutlass  # CUTLASS Template Library
 >
 > 因为CUTLASS模板库的所有代码都位于cutlass根命名空间中，故在介绍时默认省略cutlass::命名空间。
 
-## Fundamental Type
+### Fundamental Type
 
 CUTLASS沿用C++标准库的基本类型，可用于主机端代码与设备端代码，并且与设备的计算能力无关。此外，CUTLASS还额外定义了一些数值类型与容器。需要注意的是，一些类型或函数在较低的架构上并不支持，例如hrsqrt函数，可在编译时使用-arch=sm_70指定目标架构。
 
@@ -952,7 +956,7 @@ struct multiply_add {
 
 其中，multiply_add\<T\>表示乘法与加法操作，由CUTLASS进行扩展，以支持复数complex\<T\>类型的乘法与加法操作，并尽可能调用本地硬件指令。
 
-## Shape and Coord
+### Shape and Coord
 
 在cutlass/coord.h头文件中，提供Coord\<Rank\>容器的定义，如下所示。
 
@@ -1044,7 +1048,7 @@ struct MatrixShape {
 
 MatrixShape表示一个矩阵的形状，包括行数与列数。
 
-## Layout and Tensor
+### Layout and Tensor
 
 张量是一个多维对象，由内存中多维的数值元素数组表示。例如，二维矩阵通常用于经典数值计算，多维张量通常用于深度学习任务等。本节描述CUTLASS库的设计，如何使用Layout概念将逻辑索引空间映射到内存布局，如何使用TensorRef和TensorView概念间接访问内存中的张量元素。同时，CUTLASS提供一些与C++标准库一致的概念；size指张量的元素总数；capacity指实际存储的元素总数；rank指张量逻辑维度的数目；extent指张量每个维度上的维数。
 
@@ -1184,7 +1188,7 @@ void demo_tensor_view() {
 }
 ```
 
-## Macro and Platform
+### Macro and Platform
 
 在cutlass/detail/helper_macros.hpp头文件中，提供一些辅助宏定义，如下所示。
 
@@ -1227,7 +1231,7 @@ struct conditional<false, _Iftrue, _Iffalse> { typedef _Iffalse type; };  // Par
 
 在cutlass/cutlass.h头文件中，提供Status枚举类的定义，用于标识CUTLASS库的执行状态，并提供一些常量定义。
 
-## Architecture and Instruction
+### Architecture and Instruction
 
 在cutlass/arch目录中，提供基础操作的PTX汇编指令级实现，以及这些基础操作在指定GPU架构上的实现与特性，如下表所示。
 
@@ -1583,7 +1587,7 @@ struct Wmma<
 };
 ```
 
-# CUTLASS GEMM API
+## GEMM API
 
 ![](GEMM矩阵乘法和CUTLASS模板库.assets/gemm-hierarchy.png)
 
@@ -1607,7 +1611,7 @@ cutlass
 
 CUTLASS在实现代码的几乎每个层级都提供了以default为前缀的默认配置default_xxx.cu，若不清楚每个层级的模板参数如何指定，可以参考这些默认配置。
 
-# CUTLASS API Examples
+# CUTLASS Examples
 
 在cutlass/gemm/device目录中，提供设备层级的GEMM接口，用于在GPU设备上启动矩阵乘法的kernel核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。由模板类提供实现，即cutlass::gemm::device::Gemm模板类、cutlass::gemm::device::GemmArray模板类、cutlass::gemm::device::GemmBatched模板类、cutlass::gemm::device::GemmSplitKParallel模板类。一些GEMM计算的示例如下。
 
