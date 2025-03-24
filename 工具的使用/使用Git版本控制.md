@@ -28,7 +28,7 @@ git config
 
 ```shell
 git config --global user.name "Bloonow@PC"
-git config --global user.email "excelbloonow@gmail.com"
+git config --global user.email "bloonow@163.com"
 ```
 
 可使用--list选项查看所设置的配置文件。

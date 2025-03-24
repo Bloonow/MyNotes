@@ -2150,7 +2150,7 @@ public class StartupReceiver extends BroadcastReceiver {
 ```java
 // PollService.java
 public class PollService extends IntentService {
-	public static final String ACTION_SHOW_NOTIFICATION = "com.excelbloonow.android.SHOW_NOTIFICATION";
+	public static final String ACTION_SHOW_NOTIFICATION = "com.bloonow.android.SHOW_NOTIFICATION";
 }
 ```
 
@@ -2158,9 +2158,9 @@ public class PollService extends IntentService {
 
 ```xml
 <manifest>
-	<permission android:name="com.excelbloonow.android.PRIVATE"
+	<permission android:name="com.bloonow.android.PRIVATE"
                 android:protectionLevel="signature"/>
-    <uses-permission android:name="com.excelbloonow.android.PRIVATE"/>
+    <uses-permission android:name="com.bloonow.android.PRIVATE"/>
 </manifest>
 ```
 
@@ -2169,7 +2169,7 @@ public class PollService extends IntentService {
 ```java
 // PollService.java
 public class PollService extends IntentService {
-    public static final String PERM_PRIVATE = "com.excelbloonow.android.PRIVATE";
+    public static final String PERM_PRIVATE = "com.bloonow.android.PRIVATE";
     @Override
     protected void onHandleIntent(@Nullable Intent intent) {
         /* xxx */
@@ -2285,7 +2285,7 @@ public class NotificationReceiver extends BroadcastReceiver {
     	<receiver android:name=".NotificationReceiver"
                   android:exported="false">
         	<intent-filter android:priority="-999">
-            	<action android:name="com.excelbloonow.android.SHOW_NOTIFICATION"/>
+            	<action android:name="com.bloonow.android.SHOW_NOTIFICATION"/>
             </intent-filter>
         </receiver>
     </application>
