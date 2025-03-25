@@ -812,7 +812,7 @@ struct integer_subbyte {
     static constexpr Storage sign_mask_ = Storage((Signed ? 1 : 0) << (Bits - 1));  // bitmask for the sign bit
     Storage storage;
 }
-using  int4b_t = integer_subbyte<4, true>;   // 4-bit Integer type
+using int4b_t = integer_subbyte<4, true>;    // 4-bit Integer type
 using uint4b_t = integer_subbyte<4, false>;  // 4-bit Unsigned integer type
 using bin1_t = bool;                         // 1-bit binary type
 ```
@@ -836,9 +836,7 @@ struct sizeof_bits<void> { static constexpr int value = 0; };
 ```c++
 template<typename T, int N, bool RegisterSized = sizeof_bits<T>::value >= 32>
 struct Array;
-```
 
-```c++
 template<typename T, int N>
 struct Array<T, N, true> {
     static constexpr size_t kElements = N;
@@ -847,8 +845,8 @@ struct Array<T, N, true> {
     typedef value_type* pointer;
     using Storage = T;
     Storage storage[kElements];
-    CUTLASS_HOST_DEVICE pointer data()                      { return reinterpret_cast<pointer>(storage); }
-    CUTLASS_HOST_DEVICE reference operator[](size_type pos) { return reinterpret_cast<reference>(storage[pos]); }
+    pointer data()                      { return reinterpret_cast<pointer>(storage); }
+    reference operator[](size_type pos) { return reinterpret_cast<reference>(storage[pos]); }
 };
 ```
 
@@ -871,7 +869,7 @@ struct AlignedBuffer {
     typedef value_type* pointer;
     using Storage = uint8_t;
     alignas(Align) Storage storage[kBytes];
-    CUTLASS_HOST_DEVICE pointer data() { return reinterpret_cast<pointer>(storage); }
+    pointer data() { return reinterpret_cast<pointer>(storage); }
 };
 ```
 
@@ -907,8 +905,8 @@ struct NumericConverter {
     static FloatRoundStyle const round_style = Round;
     using result_type = T;
     using source_type = S;
-    CUTLASS_HOST_DEVICE static result_type convert(source_type const &s)   { return static_cast<result_type>(s); }
-    CUTLASS_HOST_DEVICE result_type operator()(source_type const &s) const { return convert(s); }
+    static result_type convert(source_type const &s)   { return static_cast<result_type>(s); }
+    result_type operator()(source_type const &s) const { return convert(s); }
 };
 ```
 
@@ -946,7 +944,7 @@ PredicateVector是一个由预测谓词构成的固定长度的向量，也即�
 ```c++
 template<typename A, typename B = A, typename C = A>
 struct multiply_add {
-    CUTLASS_HOST_DEVICE C operator()(A const &a, B const &b, C const &c) const {
+    C operator()(A const &a, B const &b, C const &c) const {
 		return C(a) * C(b) + c;
     }
 };
@@ -963,7 +961,7 @@ template<int Rank, typename Index = int, typename LongIndex = int64_t>
 struct Coord {
     static int const kRank = Rank;
     Index idx[kRank];
-    CUTLASS_HOST_DEVICE Index& operator[](int dim) { return idx[dim]; }
+    Index& operator[](int dim) { return idx[dim]; }
 };
 ```
 
@@ -975,21 +973,19 @@ Coord\<Rank\>是一个通用的逻辑坐标，或表示维数形状，可用于�
 struct MatrixCoord : public Coord<2, int> {
     static int const kRow = 0;
     static int const kColumn = 1;
-    CUTLASS_HOST_DEVICE Index& row()    { return this->at(kRow); }
-    CUTLASS_HOST_DEVICE Index& column() { return this->at(kColumn); }
+    Index& row()    { return this->at(kRow); }
+    Index& column() { return this->at(kColumn); }
 };
-```
 
-```c++
 struct Tensor4DCoord : public Coord<4> {
     static int const kN = 0;
     static int const kH = 1;
     static int const kW = 2;
     static int const kC = 3;
-    CUTLASS_HOST_DEVICE Index& n() { return this->at(kN); }
-    CUTLASS_HOST_DEVICE Index& h() { return this->at(kH); }
-    CUTLASS_HOST_DEVICE Index& w() { return this->at(kW); }
-    CUTLASS_HOST_DEVICE Index& c() { return this->at(kC); }
+    Index& n() { return this->at(kN); }
+    Index& h() { return this->at(kH); }
+    Index& w() { return this->at(kW); }
+    Index& c() { return this->at(kC); }
 }
 ```
 
@@ -1006,13 +1002,11 @@ struct GemmCoord : public Coord<3, int> {
     static int const kM = 0;  // GEMM M dimension - rows of the output C matrix
     static int const kN = 1;  // GEMM N dimension - columns of the output C matrix
     static int const kK = 2;  // GEMM K dimension - inner dimension of the GEMM problem
-    CUTLASS_HOST_DEVICE Index & m() { return this->at(kM); }
-    CUTLASS_HOST_DEVICE Index & n() { return this->at(kN); }
-    CUTLASS_HOST_DEVICE Index & k() { return this->at(kK); }
+    Index & m() { return this->at(kM); }
+    Index & n() { return this->at(kN); }
+    Index & k() { return this->at(kK); }
 };
-```
 
-```c++
 // Shape of a matrix multiply-add operation
 template<int M = 1, int N = 1, int K = 1>
 struct GemmShape {
@@ -1025,7 +1019,7 @@ struct GemmShape {
     static int const kMNK = M * N * K;
     static int const kCount = kMNK;
     // Returns a Coord object
-    CUTLASS_HOST_DEVICE static Coord<3> toCoord() { return make_Coord(kM, kN, kK); }
+    static Coord<3> toCoord() { return make_Coord(kM, kN, kK); }
 };
 ```
 
@@ -1040,7 +1034,7 @@ struct MatrixShape {
     static int const kRow = Row;             // rows of a matrix
     static int const kColumn = Column;       // columns of a matrix
     static int const kCount = Row * Column;  // total number of elements in a matrix
-    CUTLASS_HOST_DEVICE static Coord<2> toCoord() { return make_Coord(kRow, kColumn); }
+    static Coord<2> toCoord() { return make_Coord(kRow, kColumn); }
 };
 ```
 
@@ -1067,14 +1061,14 @@ public:
 private:
     Stride stride_;  // Stride data member
 public:
-    CUTLASS_HOST_DEVICE ColumnMajor(LongIndex ldm = 0): stride_(ldm) { }
-    CUTLASS_HOST_DEVICE ColumnMajor(Stride stride): stride_(stride) { }
+    ColumnMajor(LongIndex ldm = 0): stride_(ldm) { }
+    ColumnMajor(Stride stride): stride_(stride) { }
     // Helper returns a layout to a tightly packed tensor
-    CUTLASS_HOST_DEVICE static ColumnMajor packed(MatrixCoord const &extent) {
+    static ColumnMajor packed(MatrixCoord const &extent) {
         return ColumnMajor(extent.row());
     }
     // Returns the offset of a coordinate in linear memory
-    CUTLASS_HOST_DEVICE LongIndex operator()(MatrixCoord const &coord) const {
+    LongIndex operator()(MatrixCoord const &coord) const {
         return LongIndex(coord.column()) * LongIndex(stride_[0]) + coord.row();
     }
     // Inverse of layout function, mapping linear offset to logical coordinate
@@ -1120,31 +1114,31 @@ private:
     Layout layout_;  // Layout object maps logical coordinates to linear offsets
 public:
     // Constructs a TensorRef with a pointer and layout object
-    CUTLASS_HOST_DEVICE TensorRef(Element *ptr, Layout const &layout): ptr_(ptr), layout_(layout) {}
+    TensorRef(Element *ptr, Layout const &layout): ptr_(ptr), layout_(layout) {}
     // Returns a reference to the element at a given linear index
-    CUTLASS_HOST_DEVICE Reference data(LongIndex idx) const {
+    Reference data(LongIndex idx) const {
         return ptr_[idx];
     }
     // Computes the offset of an index from the origin of the tensor
-    CUTLASS_HOST_DEVICE LongIndex offset(TensorCoord const &coord) const {
+    LongIndex offset(TensorCoord const &coord) const {
         return layout_(coord);
     }
     // Returns a reference to the element at a given Coord
-    CUTLASS_HOST_DEVICE Reference operator[](TensorCoord const& coord) const {
+    Reference operator[](TensorCoord const& coord) const {
         return data(offset(coord));
     }
     // Updates the pointer and layout object
-    CUTLASS_HOST_DEVICE void reset(Element* ptr, Layout const &layout) {
+    void reset(Element* ptr, Layout const &layout) {
         ptr_ = ptr;
         layout_ = layout;
     }
     // Adds an offset to each pointer
-    CUTLASS_HOST_DEVICE TensorRef& add_pointer_offset(LongIndex offset_) {
+    TensorRef& add_pointer_offset(LongIndex offset_) {
         ptr_ += offset_;
         return *this;
     }
     // Adds an offset to each pointer
-    CUTLASS_HOST_DEVICE TensorRef& add_coord_offset(TensorCoord const &coord) {
+    TensorRef& add_coord_offset(TensorCoord const &coord) {
         add_pointer_offset(offset(coord));
         return *this;
     }
@@ -1163,10 +1157,9 @@ private:
     TensorCoord extent_;  // View extent
 public:
     // Constructs a TensorView object
-    CUTLASS_HOST_DEVICE TensorView(Element *ptr, Layout const &layout, TensorCoord const &extent):
-    	Base(ptr, layout), extent_(extent) {}
+    TensorView(Element *ptr, Layout const &layout, TensorCoord const &extent): Base(ptr, layout), extent_(extent) {}
     // Returns the extent of the view
-    CUTLASS_HOST_DEVICE TensorCoord const& extent() const {
+    TensorCoord const& extent() const {
         return extent_;
     }
 };
