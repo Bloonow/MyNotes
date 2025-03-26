@@ -482,7 +482,7 @@ for (int cta_k = 0; cta_k < GemmK; cta_k += CtaTileK)  // GEMM mainloop, no unro
         for (int mma_k = 0; mma_k < WarpTileK; mma_k += MmaK)  // outer product loop, fully unroll across WarpTileK
         for (int mma_n = 0; mma_n < WarpTileN; mma_n += MmaN)  // for each mma instruction
         for (int mma_m = 0; mma_m < WarpTileM; mma_m += MmaM)  // for each mma instruction
-			mma_instruction(d, a, b, c);  // one single mma instruction by Tensor Core or CUDA Core
+            mma_instruction(d, a, b, c);  // one single mma instruction by Tensor Core or CUDA Core
 ```
 
 MMA（Matrix Multiply Accumulate）是指矩阵乘法累加操作，是矩阵乘法的实现代码中的基本操作，因为实现代码必须对K维度进行迭代循环，每次迭代都需要执行矩阵乘法操作与累加操作，也即MMA矩阵乘法累加操作。
@@ -512,7 +512,7 @@ CUTLASS对矩阵乘法的划分如下图所示，从左至右，每个层级对�
 
 下图展示CUTLASS所使用的GEMM主循环流水线。
 
-<img src="GEMM矩阵乘法和CUTLASS模板库.assets/software-pipeline.png" style="zoom:25%;" />
+<img src="GEMM矩阵乘法和CUTLASS模板库.assets/software-pipeline.png" style="zoom:20%;" />
 
 ## SplitK and SliceK
 
@@ -554,13 +554,15 @@ CUTLASS库包括若干组件。在顶层include目录中提供CUTLASS模板库�
 └── test
 ```
 
+> 在项目结构中，通常文件目录与命名空间的组成方式是一致的，例如，命名空间cutlass::gemm::device对应到cutlass/gemm/device目录。因为CUTLASS模板库的所有代码都位于cutlass根命名空间中，故在介绍时默认省略cutlass::命名空间。
+
 多维对象（multidimensional object）是一个统称，可以指数组（array）、矩阵（matrix）、张量（tensor）、索引空间（index space）、形状（shape）、跨步（stride）、布局（layout）等。逻辑数目（logical number）是指，在逻辑表示上，有效元素的数目。实际存储数目（physical number）是指，在内存空间中进行存储时，占用物理存储空间的实际存储的元素数目，包括有效元素和填充元素。
 
 使用Index表示某个逻辑维度轴上的索引，使用Extent表示某个逻辑维度轴上的逻辑维数，使用Rank表示维度轴的数目，使用Size表示全部逻辑元素的数目；使用LongIndex表示在内存空间中存储位置的线性偏移，使用Capacity表示多维对象在内存中实际需要存储的元素数目，包括填充元素。
 
 ##  Utility
 
-在项目顶层的tools/util/include/cutlass目录中，提供CUTLASS的各种功能的工具模板类，实际使用时可查阅目录中所提供的头文件，此处只是列举一些常用的工具模板类。注意，应用程序需要将顶层tools/util/include目录添加到编译器的头文件搜索路径。
+在项目顶层的tools/util/include/cutlass目录中，提供CUTLASS的各种功能的工具模板类，实际使用时可查阅目录中所提供的头文件，此处只是列举一些常用的工具模板类。注意，应用程序需要将顶层tools/util/include目录添加到编译器的头文件搜索路径，完整的是tools/util/include/cutlass/util路径。
 
 在cutlass/util/device_memory.h头文件中，提供GPU设备全局内存管理函数的C++包装接口DeviceAllocation\<T\>模板类，其使用smart_ptr智能指针对内存空间地址指针进行管理，在模板类的实例对象超出作用域时，会自动释放已分配的设备内存，避免内存泄漏问题。
 
@@ -597,24 +599,29 @@ public:
         ? cutlass::lcm(sizeof_bits<Element>::value, 8) : sizeof_bits<Element>::value;
     static constexpr int kElementsPerStoredVec = kBitsStoredVec / sizeof_bits<Element>::value;
     static constexpr int kNumStoragePerStoredVec = kBitsStoredVec / (sizeof(Element) * 8);
+
 private:
     TensorCoord extent_;  // Extent of tensor in logical dimensions
     Layout layout_;       // Layout object
+    
     // Host-side memory allocation. Avoid the std::vector<bool> specialization
     std::vector<std::conditional_t<std::is_same_v<Element,bool>, uint8_t, Element>> host_;
     // Device-side memory. using allocation = cutlass::DeviceAllocation<T>
     device_memory::allocation<Element> device_;
+
 public:
     // Constructs a tensor given an extent and layout
     HostTensor(TensorCoord const &extent, Layout const &layout, bool device_backed = true) {
         this->reset(extent, layout, device_backed);
     }
+    
     // Updates the extent and layout of the HostTensor. Allocates memory according to the new extent and layout.
     void reset(TensorCoord const &extent, Layout const &layout, bool device_backed_ = true) {                        
         extent_ = extent;
         layout_ = layout;
         this->reserve(size_t(layout_.capacity(extent_)), device_backed_);
     }
+    
     // Resizes internal memory allocations without affecting layout or extent
     void reserve(size_t count, bool device_backed_ = true) {
         // @param count             size of tensor in elements
@@ -654,13 +661,16 @@ class HostTensor {
 private:
     std::vector<std::conditional_t<std::is_same_v<Element,bool>, uint8_t, Element>> host_;
     device_memory::allocation<Element> device_;
+
 public:
     // Returns true if device memory is allocated
     bool device_backed() const { return (device_.get() == nullptr) ? false : true; }
+    
     // Copies data from device to host
     void sync_host() {
         if (device_backed()) { device_memory::copy_to_host(host_data(), device_data(), size()); }
     }
+    
     // Copies data from host to device
     void sync_device() {
         if (device_backed()) { device_memory::copy_to_device(device_data(), host_data(), size()); }
@@ -787,8 +797,6 @@ cutlass  # CUTLASS Template Library
 └── conv       # Implict GEMM for Convolution
 ```
 
-> 在项目结构中，通常文件目录与命名空间的组成方式是一致的，例如，命名空间cutlass::gemm::device对应到cutlass/gemm/device目录。因为CUTLASS模板库的所有代码都位于cutlass根命名空间中，故在介绍时默认省略cutlass::命名空间。
-
 ### Fundamental Type
 
 CUTLASS沿用C++标准库的基本类型，可用于主机端代码与设备端代码，并且与设备的计算能力无关。此外，CUTLASS还额外定义了一些数值类型与容器。需要注意的是，一些类型或函数在较低的架构上并不支持，例如hrsqrt函数，可在编译时使用-arch=sm_70指定目标架构。
@@ -812,6 +820,7 @@ struct integer_subbyte {
     static constexpr Storage sign_mask_ = Storage((Signed ? 1 : 0) << (Bits - 1));  // bitmask for the sign bit
     Storage storage;
 }
+
 using int4b_t = integer_subbyte<4, true>;    // 4-bit Integer type
 using uint4b_t = integer_subbyte<4, false>;  // 4-bit Unsigned integer type
 using bin1_t = bool;                         // 1-bit binary type
@@ -823,10 +832,13 @@ using bin1_t = bool;                         // 1-bit binary type
 // defines the size of an element in bits
 template<typename T>
 struct sizeof_bits { static constexpr int value = int(sizeof(T) * 8); };
+
 template <int Bits, bool Signed>
 struct sizeof_bits<integer_subbyte<Bits,Signed>> { static constexpr int value = Bits; };
+
 template <>
 struct sizeof_bits<bin1_t> { static constexpr int value = 1; };
+
 template <>
 struct sizeof_bits<void> { static constexpr int value = 0; };
 ```
@@ -868,7 +880,9 @@ struct AlignedBuffer {
     typedef T value_type;
     typedef value_type* pointer;
     using Storage = uint8_t;
+    
     alignas(Align) Storage storage[kBytes];
+    
     pointer data() { return reinterpret_cast<pointer>(storage); }
 };
 ```
@@ -897,14 +911,13 @@ enum class FloatRoundStyle {
     round_half_ulp_truncate,      // add 0.5ulp to integer representation then round toward zero
     round_half_ulp_trunc_dntz     // like round_half_ulp_truncate, except denorms are rounded *toward* zero
 };
-```
 
-```c++
 template<typename T, typename S, FloatRoundStyle Round = FloatRoundStyle::round_to_nearest>
 struct NumericConverter {
     static FloatRoundStyle const round_style = Round;
     using result_type = T;
     using source_type = S;
+    
     static result_type convert(source_type const &s)   { return static_cast<result_type>(s); }
     result_type operator()(source_type const &s) const { return convert(s); }
 };
@@ -933,6 +946,7 @@ struct PredicateVector {
     static constexpr int kBytes = (kPredicates + kPredicatesPerByte - 1) / kPredicatesPerByte;
     // Number of storage elements needed
     static constexpr int kWordCount = (kBytes + int(sizeof(Storage)) - 1) / int(sizeof(Storage));
+    
     Storage storageData[kWordCount];
 }
 ```
@@ -945,7 +959,7 @@ PredicateVector是一个由预测谓词构成的固定长度的向量，也即�
 template<typename A, typename B = A, typename C = A>
 struct multiply_add {
     C operator()(A const &a, B const &b, C const &c) const {
-		return C(a) * C(b) + c;
+        return C(a) * C(b) + c;
     }
 };
 ```
@@ -961,27 +975,32 @@ template<int Rank, typename Index = int, typename LongIndex = int64_t>
 struct Coord {
     static int const kRank = Rank;
     Index idx[kRank];
+    
     Index& operator[](int dim) { return idx[dim]; }
 };
 ```
 
 Coord\<Rank\>是一个通用的逻辑坐标，或表示维数形状，可用于张量中的索引下标，并支持两个坐标之间的加减乘除操作，逐元素操作。
 
-在cutlass/matrix_coord.h头文件和cutlass/tensor_coord.h头文件中，提供MatrixCoord坐标和Tensor4DCoord坐标的定义，如下所示。
+在cutlass/matrix_coord.h头文件中提供MatrixCoord坐标的定义，在cutlass/tensor_coord.h头文件中提供Tensor4DCoord坐标、Tensor5DCoord坐标的定义。
 
 ```c++
 struct MatrixCoord : public Coord<2, int> {
     static int const kRow = 0;
     static int const kColumn = 1;
+    
     Index& row()    { return this->at(kRow); }
     Index& column() { return this->at(kColumn); }
 };
+```
 
+```c++
 struct Tensor4DCoord : public Coord<4> {
     static int const kN = 0;
     static int const kH = 1;
     static int const kW = 2;
     static int const kC = 3;
+    
     Index& n() { return this->at(kN); }
     Index& h() { return this->at(kH); }
     Index& w() { return this->at(kW); }
@@ -999,9 +1018,11 @@ MatrixCoord和Tensor4DCoord分别提供专用于二维矩阵和四维张量情�
 struct GemmCoord : public Coord<3, int> {
     typedef int Index;
     typedef Coord<3, Index> Base;
+    
     static int const kM = 0;  // GEMM M dimension - rows of the output C matrix
     static int const kN = 1;  // GEMM N dimension - columns of the output C matrix
     static int const kK = 2;  // GEMM K dimension - inner dimension of the GEMM problem
+    
     Index & m() { return this->at(kM); }
     Index & n() { return this->at(kN); }
     Index & k() { return this->at(kK); }
@@ -1018,6 +1039,7 @@ struct GemmShape {
     static int const kKN = N * K;
     static int const kMNK = M * N * K;
     static int const kCount = kMNK;
+    
     // Returns a Coord object
     static Coord<3> toCoord() { return make_Coord(kM, kN, kK); }
 };
@@ -1034,6 +1056,7 @@ struct MatrixShape {
     static int const kRow = Row;             // rows of a matrix
     static int const kColumn = Column;       // columns of a matrix
     static int const kCount = Row * Column;  // total number of elements in a matrix
+    
     static Coord<2> toCoord() { return make_Coord(kRow, kColumn); }
 };
 ```
@@ -1058,19 +1081,24 @@ public:
     using LongIndex = int64_t;                     // Long index type used for offsets
     using TensorCoord = MatrixCoord;               // Logical coordinate
     using Stride = Coord<kStrideRank, LongIndex>;  // Stride vector
+    
 private:
     Stride stride_;  // Stride data member
+    
 public:
     ColumnMajor(LongIndex ldm = 0): stride_(ldm) { }
     ColumnMajor(Stride stride): stride_(stride) { }
+    
     // Helper returns a layout to a tightly packed tensor
     static ColumnMajor packed(MatrixCoord const &extent) {
         return ColumnMajor(extent.row());
     }
+    
     // Returns the offset of a coordinate in linear memory
     LongIndex operator()(MatrixCoord const &coord) const {
         return LongIndex(coord.column()) * LongIndex(stride_[0]) + coord.row();
     }
+    
     // Inverse of layout function, mapping linear offset to logical coordinate
     MatrixCoord inverse(LongIndex offset) const {
         return MatrixCoord(Index(offset % stride_[0]), Index(offset / stride_[0]));
@@ -1109,34 +1137,42 @@ public:
     using LongIndex = typename Layout::LongIndex;      // Long index used for pointer offsets
     using TensorCoord = typename Layout::TensorCoord;  // Coordinate in logical tensor space
     using Stride = typename Layout::Stride;            // Layout's stride vector
+    
 private:
     Element* ptr_;   // Pointer
     Layout layout_;  // Layout object maps logical coordinates to linear offsets
+    
 public:
     // Constructs a TensorRef with a pointer and layout object
     TensorRef(Element *ptr, Layout const &layout): ptr_(ptr), layout_(layout) {}
+    
     // Returns a reference to the element at a given linear index
     Reference data(LongIndex idx) const {
         return ptr_[idx];
     }
+    
     // Computes the offset of an index from the origin of the tensor
     LongIndex offset(TensorCoord const &coord) const {
         return layout_(coord);
     }
+    
     // Returns a reference to the element at a given Coord
     Reference operator[](TensorCoord const& coord) const {
         return data(offset(coord));
     }
+    
     // Updates the pointer and layout object
     void reset(Element* ptr, Layout const &layout) {
         ptr_ = ptr;
         layout_ = layout;
     }
+    
     // Adds an offset to each pointer
     TensorRef& add_pointer_offset(LongIndex offset_) {
         ptr_ += offset_;
         return *this;
     }
+    
     // Adds an offset to each pointer
     TensorRef& add_coord_offset(TensorCoord const &coord) {
         add_pointer_offset(offset(coord));
@@ -1153,11 +1189,14 @@ class TensorView : public TensorRef<Element, Layout> {
 public:
     using Base = cutlass::TensorRef<Element, Layout>;  // Base tensor reference
     using TensorCoord = typename Layout::TensorCoord;  // Coordinate in logical tensor space
+    
 private:
     TensorCoord extent_;  // View extent
 public:
+    
     // Constructs a TensorView object
     TensorView(Element *ptr, Layout const &layout, TensorCoord const &extent): Base(ptr, layout), extent_(extent) {}
+    
     // Returns the extent of the view
     TensorCoord const& extent() const {
         return extent_;
@@ -1201,6 +1240,7 @@ struct integral_constant {
     constexpr operator value_type() const noexcept { return value; }
     constexpr value_type operator()() const noexcept { return value; }
 };
+
 using true_type  = integral_constant<bool, true>;   // compile-time boolean with true value
 using false_type = integral_constant<bool, false>;  // compile-time boolean with false value
 ```
@@ -1208,14 +1248,19 @@ using false_type = integral_constant<bool, false>;  // compile-time boolean with
 ```c++
 template<typename _Tp, typename _Up>
 struct is_same : public false_type {};
+
 template<typename _Tp>               
 struct is_same<_Tp, _Tp> : public true_type {};
+
 template<bool, typename _Tp = void>
 struct enable_if {};
+
 template<typename _Tp>
 struct enable_if<true, _Tp> { typedef _Tp type; };                        // Partial specialization for true
+
 template<bool _Cond, typename _Iftrue, typename _Iffalse>
 struct conditional { typedef _Iftrue type; };
+
 template<typename _Iftrue, typename _Iffalse>
 struct conditional<false, _Iftrue, _Iffalse> { typedef _Iffalse type; };  // Partial specialization for false
 ```
@@ -1265,6 +1310,7 @@ void demo_gemm() {
         {{M, N, K}, {d_A, M}, {d_B, K}, {d_C, M}, {d_C, M}, {alpha, beta}}
     );
 }
+
 void demo_gemm_batched() {
     using GemmBatched = cutlass::gemm::device::GemmBatched<
         float, cutlass::layout::ColumnMajor,
@@ -1276,6 +1322,7 @@ void demo_gemm_batched() {
         {{M, N, K}, {d_A, M}, M * K, {d_B, K}, K * N, {d_C, M}, M * N, {d_C, M}, M * N, {alpha, beta}, Batch}
     );
 }
+
 void demo_gemm_array() {
     using GemmArray = cutlass::gemm::device::GemmArray<
         float, cutlass::layout::ColumnMajor,
@@ -1287,6 +1334,7 @@ void demo_gemm_array() {
         {{M, N, K}, d_A_array, M, d_B_array, K, d_C_array, M, d_C_array, M, {alpha, beta}, Batch}
     );
 }
+
 void demo_gemm_splitK() {
     using GemmSplitK = cutlass::gemm::device::GemmSplitKParallel<
         float, cutlass::layout::ColumnMajor,
