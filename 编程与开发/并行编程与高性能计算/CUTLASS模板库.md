@@ -242,7 +242,7 @@ bool same = cutlass::reference::host::TensorEquals(tensor1.host_view(), tensor2.
 
 在cutlass/util/reference/host/tensor_elementwise.h头文件中，提供主机端内存中TensorView对象的逐元素操作，例如TensorAdd()函数、TensorSub()函数、TensorMul()函数、TensorDiv()函数、TensorModulus()函数，以及自定义的TensorFuncBinaryOp结构体等。
 
-# Common Concept Class
+# Common Concept
 
 在项目顶层的cutlass目录中，提供CUTLASS在各个硬件层级对GEMM的实现代码，以及所需要的辅助类型，如下所示。
 
@@ -383,11 +383,13 @@ template<typename _Iftrue, typename _Iffalse>
 struct conditional<false, _Iftrue, _Iffalse> { typedef _Iffalse type; };  // Partial specialization for false
 ```
 
-## Array<T,N>
+## Array
 
 模板类Array<T,N>是一个固定长度的数组，存储N个T类型的元素，元素的数据类型可以是小于一个字节的亚类型（Sub-Type），亚类型的元素之间紧凑存储。需要注意的是，对于亚类型元素而言，在使用sizeof(Array<T,N>)运算符时，其返回结果仍然是以字节为单位的，且最小是一个字节。
 
 在CUTLASS中实例化Array<T,N>对象时，一个线程通常会使用多个寄存器来存储数组元素，并且常被用于表示一个Fragment矩阵片段。当线程的寄存器溢出时，则会使用线程的局部内存来存储数组元素。当使用\_\_shared\_\_修饰符时，则会使用共享内存来存储数组元素。
+
+### Array<T,N>
 
 在cutlass/array.h头文件中，提供Array<T,N>的定义，如下所示。
 
@@ -417,13 +419,17 @@ struct Array<T, N, true> {
 };
 ```
 
-在cutlass/array.h头文件中，提供AlignedArray<T,N,Align>的定义，如下所示。它继承自Array<T,N>模板类，但AlignedArray<T,N,Align>可以指定其内部的用于存储元素的内存空间按照Alignment字节进行对齐。
+AlignedArray继承自Array<T,N>模板类，但AlignedArray<T,N,Align>可以指定其内部的用于存储元素的内存空间按照Alignment字节进行对齐。
+
+在cutlass/array.h头文件中，提供AlignedArray<T,N,Align>的定义，如下所示。
 
 ```c++
 /// Aligned array type
 template<typename T, int N, int Alignment = (sizeof_bits<T>::value * N + 7) / 8>
 class alignas(Alignment) AlignedArray: public Array<T,N> { };
 ```
+
+### AlignedBuffer
 
 模板类AlignedBuffer<T,N,Align>是一个固定长度的缓冲区，存储N个T类型的元素，并且内部的用于存储元素的内存空间按照Align字节进行对齐。AlignedBuffer常用于获取一段按照指定字节对齐的连续内存空间，例如设备的全局内存或共享内存，以用于向量化操作。
 
@@ -464,9 +470,11 @@ __global__ void demo_aligned_buffer_kernel() {
 }
 ```
 
-## NumericConverter<T,S>
+## Type Caster
 
 模板类NumericConverter<T,S>是一个类型转换器，用于将一个一个对象从S类型转换成T类型，该类型转换的过程会尽可能地在目标架构上使用硬件加速。模板类NumericArrayConverter<T,S,N>是一个数组的类型转换器，用于将一个数组中的所有N个元素从S类型转换成T类型。
+
+### NumericConverter
 
 在cutlass/numeric_conversion.h头文件中，提供一个枚举类型FloatRoundStyle的定义，如下所示。该枚举类的值用于标识转换过程中的浮点数舍入方式。
 
@@ -497,6 +505,8 @@ struct NumericConverter {
     result_type operator()(source_type const &s) const { return convert(s); }
 };
 ```
+
+### NumericArrayConverter
 
 在cutlass/numeric_conversion.h头文件中，提供NumericArrayConverter<T,S,N>的定义，如下所示。
 
@@ -545,325 +555,912 @@ void demo_converter() {
 }
 ```
 
-## Coord\<Rank\>
+## Coordinate
 
-模板类Coord\<Rank\>是一个通用的逻辑坐标，它具有Rank个维度轴，每个维度轴上可以使用一个索引坐标来确定该维度轴上的元素位置。多个Coord\<Rank\>坐标对象之间支持四则运算，这种坐标之间的加减乘除运算是逐元素（element-wise）的。
+模板类Coord\<Rank\>是一个通用的逻辑坐标（Logical Coordinate），它具有Rank个维度轴，每个维度轴上可以使用一个索引坐标来确定该维度轴上的元素位置。多个Coord\<Rank\>坐标对象之间支持四则运算，这种坐标之间的加减乘除运算是逐元素（element-wise）的。
 
-在CUTLASS中，常用的坐标是二维的矩阵坐标MatrixCoord、三维的矩阵乘法坐标GemmCoord、四维的批量矩阵乘法坐标BatchedGemmCoord，以及四维的张量坐标Tensor4DCoord和五维的张量坐标Tensor5DCoord，这些坐标常用于在各个层级中表示某种类型的某个元素的逻辑位置。
+在CUTLASS中，常用的坐标是二维的矩阵坐标MatrixCoord、三维的矩阵乘法坐标GemmCoord、四维的批量矩阵乘法坐标BatchedGemmCoord，以及四维的张量坐标Tensor4DCoord和五维的张量坐标Tensor5DCoord。这些坐标常用于在各个层级中表示某种类型的某个元素的逻辑位置。
 
-与坐标类似的概念是形状，模板类MatrixShape用于表示一个二维矩阵的维数形状，模板类GemmShape用于表示一个三维矩阵乘法的维数形状。
+<img src="CUTLASS模板库.assets/MatrixCoord和MatrixShape.png" style="zoom:15%;" />
 
-【图片】
+### Coord\<Rank\>
 
 在cutlass/coord.h头文件中，提供Coord\<Rank\>的定义，如下所示。
 
-
-
-
-
-
-
-！！！
-
-
-
-### Shape and Coord
-
-
-
 ```c++
-template<int Rank, typename Index = int, typename LongIndex = int64_t>
+/// Statically-sized array specifying Coords within a tensor
+template <
+    int Rank_,                     ///< Logical rank of coordinate
+    typename Index_ = int,         ///< Index type used for each dimension
+    typename LongIndex_ = int64_t  ///< Long index type used for linear offsets
+>
 struct Coord {
-    static int const kRank = Rank;
-    Index idx[kRank];
-    
+public:
+    static int const kRank = Rank_;  /// Number of elements in Coord
+    using Index = Index_;            /// Index type used to store elements
+    using LongIndex = LongIndex_;    /// Type used to represent linear offsets
+
+private:
+    Index idx[kRank];  /// Indices
+
+public:
+    /// Default ctor initializes uniformly
+    explicit Coord(Index value = Index(0)) {
+        for (int i = 0; i < kRank; ++i) {
+            idx[i] = value;
+        }
+    }
+
+    /// Constructs from an array of integers
+    Coord(Index const (&_idx)[kRank]) {
+        for (int i = 0; i < kRank; ++i) {
+            idx[i] = _idx[i];
+        }
+    }
+
+    /// Member access operator
     Index& operator[](int dim) { return idx[dim]; }
+    
+    /// Access via index; may limit unrolling potential
+    Index& at(int dim) { return idx[dim]; }
+
+    /// Element-wise operators
+    Coord operator+(Coord const& b) const { Coord c; for (int i = 0; i < kRank; ++i) { c.idx[i] = idx[i] + b.idx[i]; } return c; }
+    Coord operator-(Coord const& b) const { Coord c; for (int i = 0; i < kRank; ++i) { c.idx[i] = idx[i] - b.idx[i]; } return c; }
+    Coord operator*(Coord const& b) const { Coord c; for (int i = 0; i < kRank; ++i) { c.idx[i] = idx[i] * b.idx[i]; } return c; }
+    Coord operator/(Coord const& b) const { Coord c; for (int i = 0; i < kRank; ++i) { c.idx[i] = idx[i] / b.idx[i]; } return c; }
+
+    /// In-place element-wise operators
+    Coord& operator+=(Coord const& b) { for (int i = 0; i < kRank; ++i) { idx[i] += b.idx[i]; } return *this; }
+    Coord& operator-=(Coord const& b) { for (int i = 0; i < kRank; ++i) { idx[i] -= b.idx[i]; } return *this; }
+    Coord& operator*=(Coord const& b) { for (int i = 0; i < kRank; ++i) { idx[i] *= b.idx[i]; } return *this; }
+    Coord& operator/=(Coord const& b) { for (int i = 0; i < kRank; ++i) { idx[i] /= b.idx[i]; } return *this; }
+
+    /// Compare operators
+    bool operator< (Coord const &b) const { for (int i = 0; i < kRank; ++i) { if (!(idx[i] <  b[i])) { return false; } } return true; }
+    bool operator<=(Coord const &b) const { for (int i = 0; i < kRank; ++i) { if (!(idx[i] <= b[i])) { return false; } } return true; }
+    bool operator> (Coord const &b) const { return !(*this <= b); }
+    bool operator>=(Coord const &b) const { return !(*this <  b); }
 };
 ```
 
-Coord\<Rank\>是一个通用的逻辑坐标，或表示维数形状，可用于张量中的索引下标，并支持两个坐标之间的加减乘除操作，逐元素操作。
-
-在cutlass/matrix_coord.h头文件中提供MatrixCoord坐标的定义，在cutlass/tensor_coord.h头文件中提供Tensor4DCoord坐标、Tensor5DCoord坐标的定义。
+在cutlass/coord.h头文件中，还提供关于Coord\<Rank\>的辅助函数，如下所示。
 
 ```c++
-struct MatrixCoord : public Coord<2, int> {
-    static int const kRow = 0;
-    static int const kColumn = 1;
-    
-    Index& row()    { return this->at(kRow); }
-    Index& column() { return this->at(kColumn); }
-};
-```
+/// Scalar multiplication
+template <int Rank, typename Index>
+Coord<Rank, Index> operator*(Index s, Coord<Rank, Index> coord) {
+    for (int i = 0; i < Rank; ++i) { coord[i] *= s; }
+    return coord;
+}
+/// Scalar multiplication
+template <int Rank, typename Index>
+Coord<Rank, Index> operator*(Coord<Rank, Index> coord, Index s) {
+    for (int i = 0; i < Rank; ++i) { coord[i] *= s; }
+    return coord;
+}
 
-```c++
-struct Tensor4DCoord : public Coord<4> {
-    static int const kN = 0;
-    static int const kH = 1;
-    static int const kW = 2;
-    static int const kC = 3;
-    
-    Index& n() { return this->at(kN); }
-    Index& h() { return this->at(kH); }
-    Index& w() { return this->at(kW); }
-    Index& c() { return this->at(kC); }
+/// Scalar division
+template <int Rank, typename Index>
+Coord<Rank, Index> operator/(Index s, Coord<Rank, Index> coord) {
+    for (int i = 0; i < Rank; ++i) { coord[i] = s / coord[i]; }
+    return coord;
+}
+/// Scalar division
+template <int Rank, typename Index>
+Coord<Rank, Index> operator/(Coord<Rank, Index> coord, Index s) {
+    for (int i = 0; i < Rank; ++i) { coord[i] = coord[i] / s; }
+    return coord;
+}
+
+/// Helper to make a 2-element coordinate
+template <typename T>
+Coord<2, T> make_Coord(T _0, T _1) {
+    T values[2] = { _0, _1 };
+    return Coord<2, T>(values);
+}
+
+/// Helper to make a 3-element coordinate
+template <typename T>
+Coord<3, T> make_Coord(T _0, T _1, T _2) {
+    T values[3] = { _0, _1, _2 };
+    return Coord<3, T>(values);
+}
+
+/// Helper to make a 4-element coordinate
+template <typename T>
+Coord<4, T> make_Coord(T _0, T _1, T _2, T _3) {
+    T values[4] = { _0, _1, _2, _3 };
+    return Coord<4, T>(values);
+}
+
+/// Helper to make a 5-element coordinate
+template <typename T>
+Coord<5, T> make_Coord(T _0, T _1, T _2, T _3, T _4) {
+    T values[5] = { _0, _1, _2, _3, _4 };
+    return Coord<5, T>(values);
 }
 ```
 
-MatrixCoord和Tensor4DCoord分别提供专用于二维矩阵和四维张量情况下的坐标，并提供相关特定的成员方法。
+### MatrixCoord
 
-在cutlass/gemm_coord.h头文件中，提供GemmCoord和GemmShape的定义，如下所示。
+在cutlass/matrix_coord.h头文件中，提供MatrixCoord的定义，如下所示。
 
 ```c++
-// GemmCoord is a structure derived from Coord<3> that 
-// specifies a location within the coordinate space of a GEMM problem.
+/// MatrixCoord wraps Coord<2, int> to provide a helper for accessing named dimensions.
+/// Classes expecting a coordinate in the rank=2 index space of a matrix should use MatrixCoord.
+struct MatrixCoord : public Coord<2, int> {
+public:
+    using Index = int;                           /// Integer-valued index
+    using Base = Coord<2, Index>;                /// Base type is a Coord of rank=2
+    using LongIndex = typename Base::LongIndex;  /// LongIndex type
+
+private:
+    /// Syntax = (row, column)
+    static int const kRow = 0;     /// Rows dimension
+    static int const kColumn = 1;  /// Columns dimension
+
+public:
+    /// Default ctor
+    MatrixCoord() {}
+
+    /// Helper to construct from a row and column
+    MatrixCoord(Index row, Index column) : Base(make_Coord(row, column)) {}
+
+    /// Returns the row of the coordinate
+    Index & row() { return this->at(kRow); }
+
+    /// Returns the column of the coordinate
+    Index & column() { return this->at(kColumn); }
+};
+```
+
+### GemmCoord
+
+在cutlass/gemm_coord.h头文件中，提供GemmCoord和BatchedGemmCoord的定义，如下所示。
+
+```c++
+/// GemmCoord is a structure derived from Coord<3> that specifies a location within the coordinate space of a GEMM problem.
 struct GemmCoord : public Coord<3, int> {
-    typedef int Index;
-    typedef Coord<3, Index> Base;
-    
-    static int const kM = 0;  // GEMM M dimension - rows of the output C matrix
-    static int const kN = 1;  // GEMM N dimension - columns of the output C matrix
-    static int const kK = 2;  // GEMM K dimension - inner dimension of the GEMM problem
-    
+    typedef int Index;             /// Integer-valued index
+    typedef Coord<3, Index> Base;  /// Base type is a Coord of rank=3
+
+    /// Syntax = (m, n, k)
+    static int const kM = 0;  /// GEMM M dimension - rows of the output C matrix
+    static int const kN = 1;  /// GEMM N dimension - columns of the output C matrix
+    static int const kK = 2;  /// GEMM K dimension - inner dimension of the GEMM problem
+
+    /// Default ctor
+    GemmCoord() {}
+
+    /// Helper to construct from a K, N, M, batch variables
+    GemmCoord(Index m, Index n, Index k) : Base(make_Coord(m, n, k)) {}
+
+    /// Returns reference to the GEMM M coordinate
     Index & m() { return this->at(kM); }
+
+    /// Returns reference to the GEMM N coordinate
     Index & n() { return this->at(kN); }
+
+    /// Returns reference to the GEMM K coordinate
     Index & k() { return this->at(kK); }
 };
 
-// Shape of a matrix multiply-add operation
-template<int M = 1, int N = 1, int K = 1>
+/// BatchedGemmCoord is a structure derived from Coord<4> that specifies a location within the coordinate space of a batched GEMM problem.
+struct BatchedGemmCoord : public Coord<4, int> {
+    typedef int Index;             /// Integer-valued index
+    typedef Coord<4, Index> Base;  /// Base type is a Coord of rank=4
+
+    /// Syntax = (m, n, k, batch)
+    static int const kM = 0;      /// GEMM M dimension - rows of the output C matrix
+    static int const kN = 1;      /// GEMM N dimension - columns of the output C matrix
+    static int const kK = 2;      /// GEMM K dimension - inner dimension of the GEMM problem
+    static int const kBatch = 3;  /// GEMM Batch dimension - inner dimension of the GEMM problem
+
+    /// Default ctor
+    BatchedGemmCoord() {}
+
+    /// Helper to construct from a K, N, M, and batch variables
+    BatchedGemmCoord(Index m, Index n, Index k, Index b) : Base(make_Coord(m, n, k, b)) {}
+
+    /// Returns reference to the GEMM M coordinate
+    Index & m() { return this->at(kM); }
+
+    /// Returns reference to the GEMM N coordinate
+    Index & n() { return this->at(kN); }
+
+    /// Returns reference to the GEMM K coordinate
+    Index & k() { return this->at(kK); }
+
+    /// Returns reference to the GEMM batch coordinate
+    Index & batch() { return this->at(kBatch); }
+};
+```
+
+### Tensor[4D|5D]Coord
+
+在cutlass/tensor_coord.h头文件中，提供Tensor4DCoord和Tensor5DCoord的定义，如下所示。
+
+```c++
+/// Defines a canonical 4D coordinate used by tensor operations.
+struct Tensor4DCoord : public Coord<4> {
+    using Base = Coord<4>;                       /// Base class
+    using Index = typename Base::Index;          /// Index type
+    using LongIndex = typename Base::LongIndex;  /// LongIndex type
+
+    /// Syntax = (n, h, w, c)
+    static int const kN = 0;  /// Batch dimension
+    static int const kH = 1;  /// Height dimension
+    static int const kW = 2;  /// Width dimension
+    static int const kC = 3;  /// Channels dimension
+
+    /// Default ctor
+    Tensor4DCoord() {}
+
+    /// Helper to construct from N, H, W, and C.
+    Tensor4DCoord(Index n, Index h, Index w, Index c) : Base(make_Coord(n, h, w, c)) {}
+
+    /// Returns the batch of the coordinate
+    Index & n() { return this->at(kN); }
+
+    /// Returns the row of the coordinate
+    Index & h() { return this->at(kH); }
+
+    /// Returns the column of the coordinate
+    Index & w() { return this->at(kW); }
+
+    /// Returns the channel of the coordinate
+    Index & c() { return this->at(kC); }
+};
+
+/// Defines a canonical 5D coordinate used by tensor operations.
+struct Tensor5DCoord : public Coord<5> {
+    using Base = Coord<5>;                       /// Base class
+    using Index = typename Base::Index;          /// Index type
+    using LongIndex = typename Base::LongIndex;  /// LongIndex type
+
+    /// Syntax = (n, d, h, w, c)
+    static int const kN = 0;  /// Batch dimension
+    static int const kD = 1;  /// Depth dimension
+    static int const kH = 2;  /// Height dimension
+    static int const kW = 3;  /// Width dimension
+    static int const kC = 4;  /// Channels dimension
+
+    /// Default ctor
+    Tensor5DCoord() {}
+
+    /// Helper to construct from N, D, H, W, and C.
+    Tensor5DCoord(Index n, Index d, Index h, Index w, Index c) : Base(make_Coord(n, d, h, w, c)) {}
+
+    /// Returns the batch of the coordinate
+    Index & n() { return this->at(kN); }
+
+    /// Returns the batch of the coordinate
+    Index & d() { return this->at(kD); }
+
+    /// Returns the row of the coordinate
+    Index & h() { return this->at(kH); }
+
+    /// Returns the column of the coordinate
+    Index & w() { return this->at(kW); }
+
+    /// Returns the channel of the coordinate
+    Index & c() { return this->at(kC); }
+};
+```
+
+## Shape
+
+在CUTLASS中，与坐标类似的概念是形状（Shape），模板类MatrixShape<Row,Column>用于表示一个二维矩阵的维数形状，模板类GemmShape<M,N,K>用于表示一个三维矩阵乘法的维数形状。实际上，也可以直接使用一个Coord\<Rank\>来表示形状，这能起到同样的作用，但为了代码可读性，还是提供常用形状MatrixShape和GemmShape的类型定义。
+
+### MatrixShape
+
+在cutlass/matrix_shape.h头文件中，提供MatrixShape<Row,Column>的定义，如下所示。
+
+```c++
+/// Describes the size of a matrix tile
+template <
+    int Row_,    ///< rows of a matrix
+    int Column_  ///< columns of a matrix
+>
+struct MatrixShape {
+    static int const kRow = Row_;              ///< rows of a matrix
+    static int const kColumn = Column_;        ///< columns of a matrix
+    static int const kCount = Row_ * Column_;  ///< total number of elements in a matrix
+
+    /// Returns a Coord object
+    static Coord<2> toCoord() {
+        return make_Coord(kRow, kColumn);
+    }
+};
+```
+
+### GemmShape
+
+在cutlass/gemm_coord.h头文件中，提供GemmShape<M,N,K>的定义，如下所示。
+
+```c++
+/// Shape of a matrix multiply-add operation
+template <
+    int M = 1,  /// Rows of matrix product
+    int N = 1,  /// Columns of matrix product
+    int K = 1   /// Inner dimension of matrix product
+>
 struct GemmShape {
-    static int const kM = M;  // Rows of matrix product
-    static int const kN = N;  // Columns of matrix product
-    static int const kK = K;  // Inner dimension of matrix product
+    static int const kM = M;
+    static int const kN = N;
+    static int const kK = K;
     static int const kMN = M * N;
     static int const kMK = M * K;
     static int const kKN = N * K;
     static int const kMNK = M * N * K;
     static int const kCount = kMNK;
-    
-    // Returns a Coord object
-    static Coord<3> toCoord() { return make_Coord(kM, kN, kK); }
+
+    /// Returns a Coord object
+    static Coord<3> toCoord() {
+        return make_Coord(kM, kN, kK);
+    }
 };
+
+/// Type alias of the transpose of a GemmShape
+template <
+    typename Shape  /// concept: GemmShape
+>
+using GemmShapeTranspose = GemmShape<Shape::kN, Shape::kM, Shape::kK>;
 ```
 
-GemmCoord表示一个GEMM问题中的坐标，GemmShape表示一个矩阵乘法累加MMA操作的形状。
+## Layout
 
-在cutlass/matrix_shape.h头文件中，提供MatrixShape的定义，如下所示。
+布局（Layout）是一个用于将元素坐标转换为偏移量的映射（Mapping），它将一个逻辑坐标映射为一个偏移量（Offset）。偏移值是指，多维数组的某个元素的存储位置，与第一个元素的存储位置之间的间距。一个布局由存储顺序（Storage Order）和跨步（Stride）确定，存储顺序是指多个维度轴存储时的先后顺序，跨步是指两个相应元素的存储位置之间的间距。
 
-```c++
-// Describes the size of a matrix tile
-template<int Row, int Column>
-struct MatrixShape {
-    static int const kRow = Row;             // rows of a matrix
-    static int const kColumn = Column;       // columns of a matrix
-    static int const kCount = Row * Column;  // total number of elements in a matrix
-    
-    static Coord<2> toCoord() { return make_Coord(kRow, kColumn); }
-};
-```
+需要注意的是，在CUTLASS中，偏移和跨步，都是以元素类型Element为单位的，而不是以字节为单位的。
 
-MatrixShape表示一个矩阵的形状，包括行数与列数。
+CUTLASS常用的布局是行主序布局RowMajor、列主序布局ColumnMajor、行主序交错布局RowMajorInterleaved、列主序交错布局ColumnMajorInterleaved。这些布局常用于在各个层级中将某种类型的某个元素的逻辑坐标，转换成该元素在内存空间中的偏移量。
 
-### Layout and Tensor
+![](CUTLASS模板库.assets/MatrixLayout.png)
 
-张量是一个多维对象，由内存中多维的数值元素数组表示。例如，二维矩阵通常用于经典数值计算，多维张量通常用于深度学习任务等。本节描述CUTLASS库的设计，如何使用Layout概念将逻辑索引空间映射到内存布局，如何使用TensorRef和TensorView概念间接访问内存中的张量元素。同时，CUTLASS提供一些与C++标准库一致的概念；size指张量的元素总数；capacity指实际存储的元素总数；rank指张量逻辑维度的数目；extent指张量每个维度上的维数。
+### RowMajor
 
-布局Layout将逻辑索引空间映射到内存空间中存储位置的实际偏移，并存储用于计算映射的状态，定义其它CUTLASS组件需要使用的部分实例化。
-
-在cutlass/layout目录的若干头文件中，提供各种布局类型的定义。例如cutlass/layout/vector.h头文件、cutlass/layout/matrix.h头文件、cutlass/layout/tensor.h头文件、cutlass/layout/pitch_linear.h头文件等，还有cutlass/layout/permute.h头文件提供变换概念的定义。矩阵行主序存储和列主序存储的布局如下所示。
+在cutlass/layout/matrix.h头文件中，提供RowMajor的定义，如下所示。
 
 ```c++
-// Mapping function for row-major matrices.
+/// Mapping function for row-major matrices.
 class RowMajor {
 public:
-    static int const kRank = 2;                    // Logical rank of tensor
-    static int const kStrideRank = 1;              // Rank of stride vector
-    using Index = int32_t;                         // Index type used for coordinates
-    using LongIndex = int64_t;                     // Long index type used for offsets
-    using TensorCoord = MatrixCoord;               // Logical coordinate
-    using Stride = Coord<kStrideRank, LongIndex>;  // Stride vector
+    static int const kRank = 2;        /// Logical rank of tensor
+    static int const kStrideRank = 1;  /// Rank of stride vector
+
+    using Index = int32_t;                         /// Index type used for coordinates
+    using LongIndex = int64_t;                     /// Long index type used for offsets
+    using TensorCoord = MatrixCoord;               /// Logical coordinate
+    using Stride = Coord<kStrideRank, LongIndex>;  /// Stride vector
 
 private:
-    Stride stride_;  // Stride data member
+    Stride stride_;  /// Stride data member
 
 public:
-    RowMajor(LongIndex ldm = 0): stride_(ldm) { }
-    RowMajor(Stride stride): stride_(stride) { }
+    /// Constructor
+    RowMajor(Stride stride) : stride_(stride) {}
 
-    // Helper returns a layout to a tightly packed tensor
+    /// Constructor
+    RowMajor(LongIndex ldm = 0) : stride_(ldm) {}
+
+    /// Helper returns a layout to a tightly packed tensor
     static RowMajor packed(MatrixCoord const &extent) {
         return RowMajor(extent.column());
     }
 
-    // Returns the offset of a coordinate in linear memory. 
-    // Assumes coordinate has convention (row, column)
+    /// Returns the offset of a coordinate in linear memory.
+    /// Assumes coordinate has convention (row, column)
     LongIndex operator()(MatrixCoord const &coord) const {
         return LongIndex(coord.row()) * LongIndex(stride_[0]) + coord.column();
     }
 
-    // Inverse of layout function, mapping linear offset to logical coordinate
+    /// Inverse of layout function, mapping linear offset to logical coordinate
     MatrixCoord inverse(LongIndex offset) const {
         return MatrixCoord(Index(offset / stride_[0]), Index(offset % stride_[0]));
     }
+
+    /// Compute the number of contiguous elements needed to store a tensor with the given size
+    LongIndex capacity(MatrixCoord const &extent) const {
+        return LongIndex(extent.row()) * LongIndex(stride_[0]);
+    }
 };
 ```
 
+### ColumnMajor
+
+在cutlass/layout/matrix.h头文件中，提供ColumnMajor的定义，如下所示。
+
 ```c++
-// Mapping function for column-major matrices.
+/// Mapping function for column-major matrices.
 class ColumnMajor {
-public:  
-    static int const kRank = 2;                    // Logical rank of tensor
-    static int const kStrideRank = 1;              // Rank of stride vector
-    using Index = int32_t;                         // Index type used for coordinates
-    using LongIndex = int64_t;                     // Long index type used for offsets
-    using TensorCoord = MatrixCoord;               // Logical coordinate
-    using Stride = Coord<kStrideRank, LongIndex>;  // Stride vector
-    
-private:
-    Stride stride_;  // Stride data member
-    
 public:
-    ColumnMajor(LongIndex ldm = 0): stride_(ldm) { }
-    ColumnMajor(Stride stride): stride_(stride) { }
-    
-    // Helper returns a layout to a tightly packed tensor
+    static int const kRank = 2;        /// Logical rank of tensor
+    static int const kStrideRank = 1;  /// Rank of stride vector
+
+    using Index = int32_t;                         /// Index type used for coordinates
+    using LongIndex = int64_t;                     /// Long index type used for offsets
+    using TensorCoord = MatrixCoord;               /// Logical coordinate
+    using Stride = Coord<kStrideRank, LongIndex>;  /// Stride vector
+
+private:
+    Stride stride_;  /// Stride data member
+
+public:
+    /// Constructor
+    ColumnMajor(Stride stride) : stride_(stride) {}
+
+    /// Constructor
+    ColumnMajor(LongIndex ldm = 0) : stride_(ldm) {}
+
+    /// Helper returns a layout to a tightly packed tensor
     static ColumnMajor packed(MatrixCoord const &extent) {
         return ColumnMajor(extent.row());
     }
-    
-    // Returns the offset of a coordinate in linear memory.
-    // Assumes coordinate has convention (row, column)
+
+    /// Returns the offset of a coordinate in linear memory. 
+    /// Assumes coordinate has convention (row, column)
     LongIndex operator()(MatrixCoord const &coord) const {
         return LongIndex(coord.column()) * LongIndex(stride_[0]) + coord.row();
     }
-    
-    // Inverse of layout function, mapping linear offset to logical coordinate
+
+    /// Inverse of layout function, mapping linear offset to logical coordinate
     MatrixCoord inverse(LongIndex offset) const {
         return MatrixCoord(Index(offset % stride_[0]), Index(offset / stride_[0]));
+    }
+
+    /// Compute the number of contiguous elements needed to store a tensor with the given size
+    LongIndex capacity(MatrixCoord const &extent) const {
+        return LongIndex(extent.column()) * LongIndex(stride_[0]);
     }
 };
 ```
 
-在cuBLAS库中，存在前导维数的概念，在默认采用列主序存储的矩阵布局时，这意味着矩阵元素{rid,cid}具有值为rid+cid\*ld的偏移，等价于CUTLASS提供的ColumnMajor布局类型；同时CUTLASS也提供RowMajor、RowMajorInterleaved、ColumnMajorInterleaved等布局类型，如下示意图所示，索引即是元素在线性内存中的存储顺序。假设RowMajor布局的主维数为ldm，则交错存储RowMajorInterleaved布局的主维数为InterleavedLdm＝ldm×Interleave。
+### RowMajorInterleaved
 
-<img src="CUTLASS模板库.assets/Matrix Layout.png" style="zoom: 50%;" />
-
-一个使用布局将逻辑坐标映射到存储偏移的示例，如下所示。
+在cutlass/layout/matrix.h头文件中，提供RowMajorInterleaved\<Interleave\>的定义，如下所示。
 
 ```c++
-void demo_layout() {
-    int64_t ld = 32;
-    ColumnMajor col_layout(ld);
-    RowMajor    row_layout(ld);
-    int64_t col_offset = col_layout({7, 23});  // rid + cid * ld
-    int64_t row_offset = row_layout({7, 23});  // rid * ld + cid
-    printf("%ld, %ld\n", col_offset, row_offset);  // 743, 247
-}
+/// Mapping function for interleaved matrices. 
+/// Matrix is structured as row-major arrangement of fixed-size columns.
+template <int Interleave>
+struct RowMajorInterleaved {
+public:
+    static int const kRank = 2;        /// Logical rank of tensor
+    static int const kStrideRank = 1;  /// Rank of stride vector
+
+    using Index = int32_t;                         /// Index type used for coordinates
+    using LongIndex = int64_t;                     /// Long index type used for offsets
+    using TensorCoord = MatrixCoord;               /// Logical coordinate
+    using Stride = Coord<kStrideRank, LongIndex>;  /// Stride vector
+
+    static int const kInterleave = Interleave;  /// Size of interleaved columns
+
+private:
+    Stride stride_;  /// Stride data member
+
+public:
+    /// Constructor
+    RowMajorInterleaved(Stride stride) : stride_(stride) {}
+
+    /// Constructor
+    RowMajorInterleaved(LongIndex ldm = 0) : stride_(ldm) {}
+
+    /// Helper returns a layout to a tightly packed tensor
+    static RowMajorInterleaved packed(MatrixCoord const &extent) {
+        return RowMajorInterleaved(extent.column() * kInterleave);
+    }
+
+    /// Returns the offset of a coordinate in linear memory. 
+    /// Assumes coordinate has convention (row, column)
+    LongIndex operator()(MatrixCoord const &coord) const {
+        Index row_major = coord.row() / kInterleave;
+        Index row_minor = coord.row() % kInterleave;
+        return LongIndex(row_major) * LongIndex(stride_[0]) + LongIndex(coord.column()) * kInterleave + row_minor;
+    }
+
+    /// Inverse of layout function, mapping linear offset to logical coordinate
+    MatrixCoord inverse(LongIndex offset) const {
+        Index row_major = Index(offset / stride_[0]);
+        Index residual  = Index(offset % stride_[0]);
+        Index column    = residual / kInterleave;
+        Index row_minor = residual % kInterleave;
+        return MatrixCoord(row_major * kInterleave + row_minor, column);
+    }
+
+    /// Compute the number of contiguous elements needed to store a tensor with the given size
+    LongIndex capacity(MatrixCoord const &extent) const {
+        return (extent.row() + kInterleave - 1) / kInterleave * stride_[0];
+    }
+};
 ```
 
-在上述两种情况下，逻辑坐标{rid,cid}表示矩阵中同一个元素，这允许采用逻辑索引空间的算法实现保持通用性，并由Layout提供到实际存储位置的映射。
+### ColumnMajorInterleaved
 
-在cutlass/tensor_ref.h头文件中，提供TensorRef<T,Layout>结构体的定义，该结构体持有一个张量的数据地址指针以及布局对象，用于访问张量元素，可作为函数参数传递，如下所示。
+在cutlass/layout/matrix.h头文件中，提供ColumnMajorInterleaved\<Interleave\>的定义，如下所示。
 
 ```c++
-template<typename Element, typename Layout>
+/// Mapping function for interleaved matrices. 
+/// Matrix is structured as row-major arrangement of fixed-size columns.
+template <int Interleave>
+struct RowMajorInterleaved {
+public:
+    static int const kRank = 2;        /// Logical rank of tensor
+    static int const kStrideRank = 1;  /// Rank of stride vector
+
+    using Index = int32_t;                         /// Index type used for coordinates
+    using LongIndex = int64_t;                     /// Long index type used for offsets
+    using TensorCoord = MatrixCoord;               /// Logical coordinate
+    using Stride = Coord<kStrideRank, LongIndex>;  /// Stride vector
+
+    static int const kInterleave = Interleave;  /// Size of interleaved columns
+
+private:
+    Stride stride_;  /// Stride data member
+
+public:
+    /// Constructor
+    RowMajorInterleaved(Stride stride) : stride_(stride) {}
+
+    /// Constructor
+    RowMajorInterleaved(LongIndex ldm = 0) : stride_(ldm) {}
+
+    /// Helper returns a layout to a tightly packed tensor
+    static RowMajorInterleaved packed(MatrixCoord const &extent) {
+        return RowMajorInterleaved(extent.column() * kInterleave);
+    }
+
+    /// Returns the offset of a coordinate in linear memory. 
+    /// Assumes coordinate has convention (row, column)
+    LongIndex operator()(MatrixCoord const &coord) const {
+        Index row_major = coord.row() / kInterleave;
+        Index row_minor = coord.row() % kInterleave;
+        return LongIndex(row_major) * LongIndex(stride_[0]) + LongIndex(coord.column()) * kInterleave + row_minor;
+    }
+
+    /// Inverse of layout function, mapping linear offset to logical coordinate
+    MatrixCoord inverse(LongIndex offset) const {
+        Index row_major = Index(offset / stride_[0]);
+        Index residual  = Index(offset % stride_[0]);
+        Index column    = residual / kInterleave;
+        Index row_minor = residual % kInterleave;
+        return MatrixCoord(row_major * kInterleave + row_minor, column);
+    }
+
+    /// Compute the number of contiguous elements needed to store a tensor with the given size
+    LongIndex capacity(MatrixCoord const &extent) const {
+        return (extent.row() + kInterleave - 1) / kInterleave * stride_[0];
+    }
+};
+```
+
+## Pitch Linear Mode
+
+连续线性模式（Pitch Linear Mode）是一种元素在内存中的组织方式，其最内层维度轴上的元素连续存储，外层维度轴上的元素以内存维度轴的维数为单位进行连续存储。在CUTLASS中，使用的是，二维的连续线性坐标PitchLinearCoord、二维的连续线性形状PitchLinearShape、二维的连续线性布局PitchLinear。
+
+<img src="CUTLASS模板库.assets/PitchLinear.png" style="zoom:15%;" />
+
+### PitchLinearCoord
+
+在cutlass/pitch_linear_coord.h头文件中，提供PitchLinearCoord的定义，如下所示。
+
+```c++
+/// Coordinate in pitch-linear space
+struct PitchLinearCoord : public Coord<2, int> {
+public:
+    using Index = int;                           /// Integer-valued index
+    using Base = Coord<2, Index>;                /// Base type is a Coord of rank=2
+    using LongIndex = typename Base::LongIndex;  /// Long integer type
+
+private:
+    static int const kContiguous = 0;  /// Contiguous dimension
+    static int const kStrided = 1;     /// Strided dimension
+
+public:
+    /// Default ctor
+    PitchLinearCoord() {}
+
+    /// Helper to construct from a row and column
+    PitchLinearCoord(Index contiguous_, Index strided_) : Base(make_Coord(contiguous_, strided_)) {}
+
+    /// Returns the contiguous dimension
+    Index & contiguous() { return this->at(kContiguous); }
+
+    /// Returns the strided dimension
+    Index & strided() { return this->at(kStrided); }
+};
+```
+
+### PitchLinearShape
+
+在cutlass/pitch_linear_coord.h头文件中，提供PitchLinearShape的定义，如下所示。
+
+```c++
+/// Template defining a shape used by pitch-linear operators
+template <
+    int Contiguous,
+    int Strided
+>
+struct PitchLinearShape {
+    static int const kContiguous = Contiguous;
+    static int const kStrided = Strided;
+    static int const kCount = Contiguous * Strided;
+};
+```
+
+### PitchLinear
+
+在cutlass/layout/pitch_linear.h头文件中，提供PitchLinear的定义，如下所示。
+
+```c++
+/// Mapping function for pitch-linear memory
+class PitchLinear {
+public:
+    static int const kRank = 2;        /// Logical rank of tensor
+    static int const kStrideRank = 1;  /// Rank of stride vector
+
+    using Index = int32_t;                         /// Index type used for coordinates
+    using LongIndex = int64_t;                     /// Long index type used for offsets
+    using TensorCoord = PitchLinearCoord;          /// Logical coordinate
+    using Stride = Coord<kStrideRank, LongIndex>;  /// Stride vector
+
+private:
+    Stride stride_;  /// Stride data member
+
+public:
+    /// Constructor
+    PitchLinear(Stride _stride) : stride_(_stride) {}
+
+    /// Constructor
+    PitchLinear(LongIndex ldm = 0) : stride_(ldm) {}
+
+    /// Helper returns a layout to a tightly packed tensor
+    static PitchLinear packed(TensorCoord const &extent) {
+        return PitchLinear(extent.contiguous());
+    }
+
+    /// Returns the offset of a coordinate in linear memory. 
+    /// Assumes coordinate has convention (contiguous, strided)
+    LongIndex operator()(TensorCoord const &coord) const {
+        return LongIndex(coord.contiguous()) + LongIndex(coord.strided()) * LongIndex(stride_[0]);
+    }
+
+    /// Returns the logical coordinate given an offset.
+    TensorCoord inverse(LongIndex index) const {
+        return make_Coord(TensorCoord::Index(index % stride_[0]), TensorCoord::Index(index / stride_[0]));
+    }
+};
+```
+
+## TensorOp Layout
+
+为高效利用Tensor Core硬件单元进行矩阵乘加运算，需要对矩阵A、矩阵B、矩阵C和矩阵D的元素布局方式做出规定，使其满足mma.xxx系列指令的要求。
+
+在CUTLASS中，相关布局的基本概念是TensorOpMultiplicand布局，该布局是基于元素位数（Element Size in bits）和交叉数目（Crosswise Size in elements）来定义，适用于.b16、.b8、.b4、.b1位数的元素，并且假设所使用的内存是连续线性的PitchLinear内存。
+
+
+
+
+
+
+
+TensorOpMultiplicandCongruous
+
+TensorOpMultiplicandCongruous<32, Crosswise>
+
+ColumnMajorTensorOpMultiplicandCongruous
+
+RowMajorTensorOpMultiplicandCongruous
+
+
+
+TensorOpMultiplicandCrosswise
+
+ColumnMajorTensorOpMultiplicandCrosswise
+
+RowMajorTensorOpMultiplicandCrosswise
+
+
+
+TensorOpMultiplicandColumnMajorInterleaved
+
+TensorOpMultiplicandRowMajorInterleaved
+
+【图】
+
+
+
+
+
+
+
+## Tensor Accessor
+
+张量访问器（Accessor），用于访问在内存中张量的一个元素，它接收一个元素的逻辑坐标，根据张量的起始指针和排列布局，从相应的内存位置上访问元素。
+
+### TensorRef
+
+模板类TensorRef<Element,Layout>持有一个指向张量起始元素位置的ptr\_指针，和一个描述张量元素排列方式的layout\_布局。在访问时，TensorRef接收一个元素的逻辑坐标，然后使用布局layout\_获得该元素在内存中的偏移量，然后根据起始元素的指针ptr\_，使用基址偏移寻址，从相应的内存位置上访问到该元素的值。
+
+值得注意的是，在CUTLASS中，使用TensorRef<Element,Layout>访问内存位置时，其元素类型Element通常是一个基本数据类型，或者是一个Array数组。
+
+在cutlass/tensor_ref.h头文件中，提供TensorRef<Element,Layout>的定义，如下所示。
+
+```c++
+/// TensorRef is a template for objects pointing to the start of tensors of arbitrary rank and layout within memory.
+/// A TensorRef combines a pointer and a Layout concept.
+template <
+    typename Element_,  /// Data type of element stored within tensor (concept: NumericType)
+    typename Layout_    /// Defines a mapping from logical coordinate to linear memory (concept: Layout)
+>
 class TensorRef {
 public:
-    using Reference = Element&;                        // Reference type to an element
-    static int const kRank = Layout::kRank;            // Logical rank of tensor index space
-    using Index = typename Layout::Index;              // Index type
-    using LongIndex = typename Layout::LongIndex;      // Long index used for pointer offsets
-    using TensorCoord = typename Layout::TensorCoord;  // Coordinate in logical tensor space
-    using Stride = typename Layout::Stride;            // Layout's stride vector
-    
+    using Element = Element_;    /// Data type of individual access
+    using Layout = Layout_;      /// Mapping function from logical coordinate to linear memory
+    using Reference = Element&;  /// Reference type to an element
+
+    static int const kRank = Layout::kRank;  /// Logical rank of tensor index space
+
+    using Index = typename Layout::Index;              /// Index type
+    using LongIndex = typename Layout::LongIndex;      /// Long index used for pointer offsets
+    using TensorCoord = typename Layout::TensorCoord;  /// Coordinate in logical tensor space
+    using Stride = typename Layout::Stride;            /// Layout's stride vector
+
 private:
-    Element* ptr_;   // Pointer
-    Layout layout_;  // Layout object maps logical coordinates to linear offsets
-    
+    Element* ptr_;   /// Pointer
+    Layout layout_;  /// Layout object maps logical coordinates to linear offsets
+
 public:
-    // Constructs a TensorRef with a pointer and layout object
-    TensorRef(Element *ptr, Layout const &layout): ptr_(ptr), layout_(layout) {}
-    
-    // Returns the pointer to referenced data
-    Element* data() const {
-        return ptr_;
-    }
-    
-    // Returns a reference to the element at a given linear index
-    Reference data(LongIndex idx) const {
-        return ptr_[idx];
-    }
-    
-    // Computes the offset of an index from the origin of the tensor
-    LongIndex offset(TensorCoord const &coord) const {
-        return layout_(coord);
-    }
-    
-    // Returns a reference to the element at a given Coord
-    Reference operator[](TensorCoord const& coord) const {
-        return data(offset(coord));
-    }
-    
-    // Updates the pointer and layout object
+    /// Constructs a TensorRef.
+    TensorRef() : ptr_(nullptr) {}
+
+    /// Constructs a TensorRef with a pointer and layout object.
+    TensorRef(
+        Element *ptr,         ///< pointer to start of tensor
+        Layout const &layout  ///< layout object containing stride and mapping function
+    ) : ptr_(ptr), layout_(layout) {}
+
+    /// Updates the pointer and layout object
     void reset(Element* ptr, Layout const &layout) {
         ptr_ = ptr;
         layout_ = layout;
     }
-    
-    // Adds an offset to each pointer
-    TensorRef& add_pointer_offset(LongIndex offset_) {
+
+    /// Returns the pointer to referenced data
+    Element * data() const {
+        return ptr_;
+    }
+
+    /// Returns a reference to the element at a given linear index
+    Reference data(LongIndex idx) const { 
+        return ptr_[idx];
+    }
+
+    /// Computes the offset of an index from the origin of the tensor
+    LongIndex offset(TensorCoord const& coord) const {
+        return layout_(coord);
+    }
+
+    /// Returns a reference to the element at a given Coord
+    Reference at(TensorCoord const& coord) const {
+        return data(offset(coord));
+    }
+
+    /// Returns a reference to the element at a given Coord
+    Reference operator[](TensorCoord const& coord) const {
+        return data(offset(coord));
+    }
+
+    /// Adds an offset to each pointer
+    TensorRef & add_pointer_offset(LongIndex offset_) {
         ptr_ += offset_;
         return *this;
     }
-    
-    // Adds an offset to each pointer
-    TensorRef& add_coord_offset(TensorCoord const &coord) {
+
+    /// Adds an offset to each pointer
+    TensorRef & add_coord_offset(TensorCoord const &coord) {
         add_pointer_offset(offset(coord));
+        return *this;
+    }
+
+    /// Returns a TensorRef offset by a given amount
+    TensorRef operator+(TensorCoord const& b) const {
+        TensorRef result(*this);
+        result.add_coord_offset(b);
+        return result;
+    }
+
+    /// Returns a TensorRef offset by a given amount
+    TensorRef & operator+=(TensorCoord const& b) {
+        add_coord_offset(b);
+        return *this;
+    }
+
+    /// Returns a TensorRef offset by a given amount
+    TensorRef operator-(TensorCoord const& b) const {
+        TensorRef result(*this);
+        result.add_pointer_offset(-offset(b));
+        return result;
+    }
+
+    /// Returns a TensorRef offset by a given amount
+    TensorRef & operator-=(TensorCoord const& b) {
+        add_pointer_offset(-offset(b));
         return *this;
     }
 };
 ```
 
-在cutlass/tensor_view.h头文件中，提供TensorView<T,Layout>类的定义，用于描述线性代数计算中维数确定的张量。该类继承自TensorRef<T,Layout>结构体，并提供extent()方法获得某个特定维度轴上的维数，如下所示。
+### TensorView
+
+TensorView<Element,Layout>继承自TensorRef<Element,Layout>模板类，但TensorView<Element,Layout>是一个维数都确定的访问器，它假设所访问的张量是确定维数的，即张量在每个维度轴上的维数都是提前确定的。由此性质，TensorView<Element,Layout>可以定义一些有用的函数。
+
+在cutlass/tensor_view.h头文件中，提供TensorView<Element,Layout>的定义，如下所示。
 
 ```c++
-template<typename Element, typename Layout>
-class TensorView : public TensorRef<Element, Layout> {
+template <
+    typename Element_,  /// Data type of element stored within tensor
+    typename Layout_    /// Maps a Coord<Rank_> in the logical tensor index space to the internal n-D array
+>
+class TensorView : public TensorRef<Element_, Layout_> {
 public:
-    using Base = cutlass::TensorRef<Element, Layout>;  // Base tensor reference
-    using TensorCoord = typename Layout::TensorCoord;  // Coordinate in logical tensor space
-    
+    using Base = cutlass::TensorRef<Element_, Layout_>;  /// Base tensor reference
+    using Layout = Layout_;      /// Mapping function from logical coordinate to internal n-D array
+    using TensorRef = Base;      /// Underlying TensorRef type
+    using Element = Element_;    /// Data type of individual access
+    using Reference = Element&;  /// Reference type to an element
+
+    static int const kRank = Layout::kRank;  /// Logical rank of tensor index space
+
+    using Index = typename Layout::Index;              /// Index type
+    using LongIndex = typename Layout::LongIndex;      /// Long index used for pointer offsets
+    using TensorCoord = typename Layout::TensorCoord;  /// Coordinate in logical tensor space
+    using Stride = typename Layout::Stride;            /// Coordinate in storage n-D array
+
 private:
-    TensorCoord extent_;  // View extent
+    TensorCoord extent_;  /// View extent
+
 public:
-    
-    // Constructs a TensorView object
-    TensorView(Element *ptr, Layout const &layout, TensorCoord const &extent): Base(ptr, layout), extent_(extent) {}
-    
-    // Returns the extent of the view
-    TensorCoord const& extent() const {
-        return extent_;
+    /// Constructs a TensorView object
+    TensorView() {}
+
+    /// Constructs a TensorView object
+    TensorView(
+        Element *ptr,              ///< pointer to start of tensor
+        Layout const &layout,      ///< layout object containing stride and mapping function
+        TensorCoord const &extent  ///< size of the view in logical coordinates
+    ) : Base(ptr, layout), extent_(extent) {}
+
+    /// Updates the pointer and layout object
+    void reset(Element* ptr, Layout const &layout, TensorCoord const &extent) {
+        Base::reset(ptr, layout);
+        this->resize(extent);
+    }
+
+    /// Changes the size of the view without affecting pointer or layout
+    void resize(TensorCoord const &extent) {
+        this->extent_ = extent;
+    }
+
+    /// Returns the number of logical elements
+    LongIndex size() const {
+        return extent_.product();
+    }
+
+    /// Determines whether a location is within a tensor
+    bool contains(TensorCoord const& coord) const {
+        for (int dim = 0; dim < kRank; ++dim) {
+            if (!(coord[dim] >= 0 && coord[dim] < extent(dim))) {
+                return false;
+            }
+        }
+        return true;
     }
 };
 ```
 
-使用TensorRef或TensorView访问张量元素的示例如下所示。
-
-```c++
-void demo_tensor_view() {
-    int8_t *ptr = (int8_t*)malloc(sizeof(int8_t) * 16 * 9);
-    for (int i = 0; i < 16 * 9; ptr[i++] = i);
-    TensorView<int8_t, ColumnMajor> view(ptr, ColumnMajor(16), MatrixCoord(16, 9));
-    if (view.contains({9, 5})) {
-        printf("%d\n", view[{9, 5}]);  // 89
-    }
-    free(ptr);
-}
-```
-
-## CUTLASS GEMM API ^$
-
-# CUTLASS Examples
+# Usage Examples
 
 在cutlass/gemm/device目录中，提供设备层级的GEMM接口，用于在GPU设备上启动矩阵乘法的kernel核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。由模板类提供实现，即cutlass::gemm::device::Gemm模板类、cutlass::gemm::device::GemmArray模板类、cutlass::gemm::device::GemmBatched模板类、cutlass::gemm::device::GemmSplitKParallel模板类。一些GEMM计算的示例如下。
 
@@ -918,4 +1515,550 @@ void demo_gemm_splitK() {
     cutlass::Status status = gemm_splitK_op.initialize(args, workspace_buffer.get());
     status = gemm_splitK_op();
 }
+```
+
+# GEMM API ^$
+
+CUTLASS模板库对于矩阵乘法GEMM的核心实现代码如下目录所示。并且，在实现代码的几乎每个层级都提供了以default为前缀的默认配置default_xxx.cu，若不清楚每个层级的模板参数如何指定，可以参考这些默认配置。
+
+```shell
+cutlass
+├── arch       # Architecture features (including instruction implementation)
+├── gemm       # GEneral Matrix Multiply computations
+│   ├── device       # Launch kernels
+│   ├── kernel       # Kernels
+│   ├── threadblock  # Cta Tile
+│   ├── warp         # Warp Tile
+│   └── thread       # Thread Tile
+├── transform  # Code specialized for layout, type, and domain transformations
+├── epilogue   # Epilogue rearranges result to canonical layouts, and supports conversion and reduction operations
+└── reduction  # Reduction kernels
+```
+
+实现代码组织为如下图所示的层级结构。注意，图中所展示的一些名称，均是充当API接口的概念，作用可分为两点，即(1)使用下一层级API接口实现某功能，(2)作为API接口提供给上一层级。而其它一些“仅仅是作为某个层级工具类实现，但未参与API接口构建”的概念则未在图中展示。
+
+![](CUTLASS模板库.assets/CUTLASS的组件示意图.png)
+
+CUTLASS对通用矩阵乘法GEMM进行并行分片，映射到CUDA并行编程模型中的多个层级资源上，整个流程的示意图如下所示。
+
+![](CUTLASS模板库.assets/CUTLASS的GEMM示意图.png)
+
+## Common Tag
+
+在cutlass/gemm/gemm_enumerated_types.h头文件中，提供一些枚举类型的定义，用于标识操作数、指定操作类型、设置共享内存清除策略，如下所示。
+
+```c++
+/// GEMM operand enumeration: D = A * B + C
+enum class Operand {
+    kA,  /// A multiplicand
+    kB,  /// B multiplicand
+    kC,  /// Source accumulator
+    kD   /// Destination accumulator
+};
+
+enum class GemmUniversalMode {
+    kGemm,
+    kGemmSplitKParallel,
+    kBatched,
+    kArray,
+    kGrouped,
+    kInvalid
+};
+
+/// Some options for clearing shared memory
+enum class SharedMemoryClearOption {
+    kNone,           ///< SMEM is in don't-care state
+    kZfill,          ///< Kernels fill out of bounds accesses with zeros
+    kClearLastStage  ///< Last SMEM stage is explicitly cleared. Mainloop uses 'kNone'
+};
+```
+
+## Architecture
+
+在cutlass/arch目录中，提供一些基本操作的PTX汇编指令实现，主要包括内存访问指令、mma.xxx系列矩阵乘加指令、wmma.xxx系列矩阵乘加指令。这些PTX汇编指令直接与硬件架构进行交互，不同的硬件架构支持不同的PTX汇编指令，该层级的代码是对PTX汇编指令的包装。
+
+在cutlass/arch/arch.h头文件中，提供LaneId()与SmId()辅助函数，以及设备架构与计算能力的标识。
+
+```c++
+/// Computes laneId within a warp
+int LaneId() {
+    int ret;
+    asm("mov.u32 %0, %%laneid;" : "=r"(ret) : );
+    return ret;
+}
+
+/// Computes SM number the thread is running on
+int SmId() {
+    int ret;
+    asm("mov.u32 %0, %%smid;" : "=r"(ret) : );
+    return ret;
+}
+
+struct Sm50 { static int const kMinComputeCapability = 50; };
+struct Sm60 { static int const kMinComputeCapability = 60; };
+struct Sm61 { static int const kMinComputeCapability = 61; };
+struct Sm70 { static int const kMinComputeCapability = 70; };
+struct Sm72 { static int const kMinComputeCapability = 72; };
+struct Sm75 { static int const kMinComputeCapability = 75; };
+struct Sm80 { static int const kMinComputeCapability = 80; };
+struct Sm86 { static int const kMinComputeCapability = 86; };
+struct Sm89 { static int const kMinComputeCapability = 89; };
+struct Sm90 { static int const kMinComputeCapability = 90; };
+```
+
+在cutlass/arch/cache_operation.h头文件中，提供标识Cache缓存行为的枚举类。
+
+```c++
+/// Controls PTX cache operations
+struct CacheOperation {
+    enum Kind {
+        Always,       /// Cache at all levels - accessed again
+        Global,       /// Cache at global level
+        Streaming,    /// Streaming - likely to be accessed once
+        LastUse,      /// Indicates the line will not be used again
+        Volatile,     /// Don't cache, and fetch again
+        WriteBack,    /// Write back at all coherent levels
+        WriteThrough  /// Write through to system memory
+    };
+};
+```
+
+### global_load, global_store
+
+在cutlass/arch/memory.h头文件中，提供从全局内存中加载数据的操作，并支持不同的加载粒度，即支持一次性加载1、2、4、8、16、32个字节的数据。
+
+```c++
+template <
+    typename AccessType,                                    /// Fragment type to store loaded data
+    int LoadBytes,                                          /// The bytes of loading
+    CacheOperation::Kind cache_op = CacheOperation::Always  /// Cache operation
+>
+struct global_load;
+
+template <typename AccessType>
+struct global_load<AccessType, 16, CacheOperation::Always> {
+    global_load(AccessType &D, void const *ptr, bool pred_guard) {
+        uint4 &data = reinterpret_cast<uint4 &>(D);
+        // The redundant mov PTX instruction is used to enforce the compiler to keep the initializing code before ld.global
+        asm volatile(
+            "{\n"
+            "  .reg .pred p;\n"
+            "  setp.ne.b32 p, %5, 0;\n"
+            "  mov.b32 %0, %6;\n"
+            "  mov.b32 %1, %7;\n"
+            "  mov.b32 %2, %8;\n"
+            "  mov.b32 %3, %9;\n"
+        #if CUTLASS_ENABLE_L2_PREFETCH
+            "  @p ld.global.L2::128B.v4.u32 {%0, %1, %2, %3}, [%4];\n"
+        #else
+            "  @p ld.global.v4.u32 {%0, %1, %2, %3}, [%4];\n"
+        #endif
+            "}\n"
+            : "=r"(data.x), "=r"(data.y), "=r"(data.z), "=r"(data.w)
+            : "l"(ptr), "r"((int)pred_guard), "r"(data.x), "r"(data.y), "r"(data.z), "r"(data.w)
+        );
+    }
+};
+```
+
+在cutlass/arch/memory.h头文件中，提供向全局内存中写入数据的操作，并支持不同的写入粒度，即支持一次性写入1、2、4、8、16、32个字节的数据。
+
+```c++
+template <
+    typename AccessType,  /// Fragment type to store data
+    int StoreBytes        /// The bytes of storing
+>
+struct global_store;
+
+template <typename AccessType>
+struct global_store<AccessType, 16> {
+    global_store(AccessType const &D, void *ptr, bool pred_guard) {
+        uint4 const &data = reinterpret_cast<uint4 const &>(D);
+        asm volatile(
+            "{\n"
+            "  .reg .pred p;\n"
+            "  setp.ne.b32 p, %5, 0;\n"
+            "  @p st.global.v4.u32 [%0], {%1, %2, %3, %4};\n"
+            "}\n"
+            :
+            : "l"(ptr), "r"(data.x), "r"(data.y), "r"(data.z), "r"(data.w), "r"((int)pred_guard)
+        );
+    }
+};
+```
+
+### shread_load, shared_store
+
+在cutlass/arch/memory.h头文件中，提供从共享内存中加载数据的操作，并支持不同的加载粒度，即支持一次性加载2、4、8、16个字节的数据。
+
+```c++
+/// ld.shared
+template <int Bytes>
+void shared_load(void *dst, uint32_t ptr);
+
+/// ld.shared - 128b
+template <>
+void shared_load<16>(void *dst, uint32_t ptr) {
+    uint4 *dst_u128 = reinterpret_cast<uint4 *>(dst);
+    asm volatile(
+        "ld.shared.v4.u32 {%0, %1, %2, %3}, [%4];\n"
+        : "=r"(dst_u128->x), "=r"(dst_u128->y), "=r"(dst_u128->z), "=r"(dst_u128->w)
+        : "r"(ptr)
+    );
+}
+```
+
+在cutlass/arch/memory.h头文件中，提供向共享内存中写入数据的操作，并支持不同的写入粒度，即支持一次性写入2、4、8、16个字节的数据。
+
+```c++
+/// st.shared
+template <int Bytes>
+void shared_store(uint32_t ptr, void const *src);
+
+/// st.shared - 128b
+template <>
+void shared_store<16>(uint32_t ptr, void const *src) {
+    uint4 const *dst_u128 = reinterpret_cast<uint4 const *>(src);
+    asm volatile(
+        "st.shared.v4.u32 [%0], {%1, %2, %3, %4};\n"
+        : 
+        : "r"(ptr), "r"(dst_u128->x), "r"(dst_u128->y), "r"(dst_u128->z), "r"(dst_u128->w)
+    );
+}
+```
+
+需要注意的是，在使用PTX汇编指令ld.shared和st.shared访问共享内存时，所使用的地址是位于.shared共享存储状态空间的，而不是一个通用地址，因此需要使用cvta指令将通用地址转换为一个位于共享存储状态空间的地址。相应的辅助函数如下所示。
+
+```c++
+// helper to cast SMEM pointer to unsigned integer
+uint32_t cast_smem_ptr_to_uint(void const* const ptr) {
+    uint32_t smem_ptr;
+    asm volatile(
+        "{\n"
+        "  .reg .u64 smem_ptr;"
+        "  cvta.to.shared.u64 smem_ptr, %1;"
+        "  cvt.u32.u64 %0, smem_ptr;"
+        "}\n"
+        : "=r"(smem_ptr)
+        : "l"(ptr)
+    );
+    return smem_ptr;
+    #endif
+}
+```
+
+### SIMD
+
+大多数指令都是在CUDA Core硬件上执行的。对于一个线程而言，有的操作是单指令多数据（SIMD）的，这对于GPU而言是依赖于循环展开的。对于一个Warp调度器而言，有的操作时单指令多线程（SIMT）的，这依赖于Warp调度器的调度机制。
+
+在cutlass/arch/simd.h头文件中，提供一个线程依赖于循环展开的SIMD操作，此处列举几个有代表性的操作。
+
+```c++
+template <typename T, int N>
+Array<T, N> operator*(Array<T, N> const &a, Array<T, N> const &b) {
+    Array<T, N> d;
+    for (int i = 0; i < N; ++i) { d[i] = a[i] * b[i]; }
+    return d;
+}
+
+template <typename T, int N>
+Array<T, N> mac(Array<T, N> const &a, Array<T, N> const &b, Array<T, N> const &c) {
+    Array<T, N> d;
+    for (int i = 0; i < N; ++i) { d[i] = a[i] * b[i] + c[i]; }
+    return d;
+}
+
+template <typename T, typename Accumulator, int N>
+Accumulator dot(Array<T, N> const &a, Array<T, N> const &b, Accumulator accum) {
+    for (int i = 0; i < N; ++i) { accum += a[i] * b[i]; }
+    return accum;
+}
+```
+
+### MMA
+
+矩阵乘加操作可以在Tensor Core硬件上由mma.xxx系列指令执行，这些指令在CUTLASS中被抽象为arch::Mma模板类。
+
+在cutlass/arch/mma.h头文件中，提供对各类操作的标识符（用于提示编译器选择合适的部分实例化的模板类），如下所示。
+
+```c++
+struct OpMultiplyAdd {};        // Tag indicating the operation implied by MMA.
+struct OpClassSimt {};          // Tag classifying math operators as thread-level operations.
+struct OpClassTensorOp {};      // Tag classifying operators as Tensor Core operations.
+struct OpClassWmmaTensorOp {};  // Tag classifying operators as WMMA Tensor Core operations.
+```
+
+在cutlass/arch/mma.h头文件中，提供arch::Mma的定义，如下所示。
+
+```c++
+/// Matrix multiply-add operation
+template <
+    typename Shape,     /// Size of the matrix product (concept: GemmShape)
+    int kThreads,       /// Number of threads participating
+    typename ElementA,  /// Data type of A elements
+    typename LayoutA,   /// Layout of A matrix (concept: MatrixLayout)
+    typename ElementB,  /// Data type of B elements
+    typename LayoutB,   /// Layout of B matrix (concept: MatrixLayout)
+    typename ElementC,  /// Element type of C matrix
+    typename LayoutC,   /// Layout of C matrix (concept: MatrixLayout)
+    typename Operator   /// Inner product operator
+>
+struct Mma;
+
+/// Matrix multiply-add operation - specialized for 1x1x1x1 matrix multiply operation
+template <
+    typename ElementA,  /// Data type of A elements
+    typename LayoutA,   /// Layout of A matrix (concept: MatrixLayout)
+    typename ElementB,  /// Data type of B elements
+    typename LayoutB,   /// Layout of B matrix (concept: MatrixLayout)
+    typename ElementC,  /// Element type of C matrix
+    typename LayoutC,   /// Layout of C matrix (concept: MatrixLayout)
+    typename Operator   /// Inner product operator
+>
+struct Mma<gemm::GemmShape<1, 1, 1>, 1, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, Operator> {
+    void operator()(
+        Array<ElementC, 1> &d,
+        Array<ElementA, 1> const &a,
+        Array<ElementB, 1> const &b,
+        Array<ElementC, 1> const &c
+    ) {
+        multiply_add<ElementA, ElementB, ElementC> op;
+        d[0] = op(a[0], b[0], c[0]);
+    }
+};
+```
+
+在诸如cutlass/arch/mma_sm80.h等头文件中，提供arch::Mma特定于一个硬件架构的代码实现，如下所示。
+
+```c++
+/// Matrix multiply-add operation: F32 = F16 * F16 + F32
+template <>
+struct Mma<
+    gemm::GemmShape<16, 8, 16>,
+    32,
+    half_t,
+    layout::RowMajor,
+    half_t,
+    layout::ColumnMajor,
+    float,
+    layout::RowMajor,
+    OpMultiplyAdd
+> {
+    using Shape = gemm::GemmShape<16, 8, 16>;
+    using ElementA = half_t;
+    using LayoutA = layout::RowMajor;
+    using FragmentA = Array<half_t, 8>;
+    using ElementB = half_t;
+    using LayoutB = layout::ColumnMajor;
+    using FragmentB = Array<half_t, 4>;
+    using ElementC = float;
+    using LayoutC = layout::RowMajor;
+    using FragmentC = Array<float, 4>;
+    using Operator = OpMultiplyAdd;
+    using ArchTag = arch::Sm80;
+
+    /// Computes multiply-add
+    void operator()(FragmentC &d, FragmentA const &a, FragmentB const &b, FragmentC const &c) const {
+        uint32_t const *A = reinterpret_cast<uint32_t const *>(&a);
+        uint32_t const *B = reinterpret_cast<uint32_t const *>(&b);
+        float const *C = reinterpret_cast<float const *>(&c);
+        float *D = reinterpret_cast<float *>(&d);
+        asm volatile(
+            "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%10,%11,%12,%13};\n"
+            : "=f"(D[0]), "=f"(D[1]), "=f"(D[2]), "=f"(D[3])
+            : "r"(A[0]), "r"(A[1]), "r"(A[2]), "r"(A[3]), "r"(B[0]), "r"(B[1]), "f"(C[0]), "f"(C[1]), "f"(C[2]), "f"(C[3])
+        );
+    }
+};
+```
+
+### WMMA
+
+矩阵乘加操作可以在Tensor Core硬件上由wmma.xxx系列指令执行，这些指令在CUTLASS中被抽象为arch::Wmma模板类。
+
+在cutlass/arch/wmma.h头文件中，提供arch::Wmma的定义，如下所示。
+
+```c++
+// WMMA template structure defines nvcuda::wmma::fragments and static assertion chaeks
+// for a specific template paramterized data type (Element[A|B|C]), layout (Layout[A|B|C]), and native wmma size (Shape)
+template <
+    typename Shape_,                                   ///< Size of the matrix product (concept: GemmShape)
+    typename ElementA_,                                ///< Data type of A elements 
+    typename LayoutA_,                                 ///< Layout of A matrix (concept: MatrixLayout)  
+    typename ElementB_,                                ///< Data type of B elements
+    typename LayoutB_,                                 ///< Layout of B matrix (concept: MatrixLayout)  
+    typename ElementC_,                                ///< Element type of C matrix  
+    typename LayoutC_,                                 /// Layout of C matrix (concept: MatrixLayout)
+    typename Operator_ = cutlass::arch::OpMultiplyAdd  ///< Inner product operator (multiply-add, xor.popc)
+>
+struct Wmma;
+```
+
+在诸如cutlass/arch/wmma_sm70.h等头文件中，提供arch::Wmma特定于一个硬件架构的代码实现，如下所示。
+
+```c++
+// WMMA template structure defines nvcuda::wmma::fragments and static assert for
+// wmma native instruction sizes supported for half
+template <typename Shape_, typename LayoutA_, typename LayoutB_, typename ElementC_, typename LayoutC_>
+struct Wmma<
+    Shape_,                       ///< Size of the matrix product (concept: GemmShape)
+    cutlass::half_t,              ///< ElementA
+    LayoutA_,                     ///< LayoutA
+    cutlass::half_t,              ///< ElementB
+    LayoutB_,                     ///< LayoutB
+    ElementC_,                    ///< ElementC
+    LayoutC_,                     ///< LayoutC
+    cutlass::arch::OpMultiplyAdd  ///< Operator (multiply-add, xor.popc)
+> {
+    using Shape = Shape_;
+    using ElementA = cutlass::half_t;
+    using LayoutA = LayoutA_;
+    using ElementB = cutlass::half_t;
+    using LayoutB = LayoutB_;
+    using ElementC = ElementC_;
+    using LayoutC = LayoutC_;
+    using Operator = cutlass::arch::OpMultiplyAdd;
+    using ArchTag = arch::Sm70;
+
+    // Wmma Fragment
+    using FragmentA = nvcuda::wmma::fragment<
+        nvcuda::wmma::matrix_a, Shape::kM, Shape::kN, Shape::kK,
+        typename CutlassToWmmaDataType<ElementA>::Type, typename CutlassToWmmaLayout<LayoutA>::Layout
+    >;
+    using FragmentB = nvcuda::wmma::fragment<
+        nvcuda::wmma::matrix_b, Shape::kM, Shape::kN, Shape::kK,
+        typename CutlassToWmmaDataType<ElementB>::Type, typename CutlassToWmmaLayout<LayoutB>::Layout
+    >;
+    using FragmentC = nvcuda::wmma::fragment<
+        nvcuda::wmma::accumulator, Shape::kM, Shape::kN, Shape::kK,
+        typename CutlassToWmmaDataType<ElementC>::Type
+    >;
+
+    /// Performs a nvcuda::wmma matrix multiply-accumulate operation
+    void operator()(FragmentC &D, FragmentA const &A, FragmentB const &B, FragmentC const &C) const {
+        nvcuda::wmma::mma_sync(D, A, B, C);
+    }
+};
+```
+
+## Thread Level
+
+在cutlass/gemm/thread目录中，提供矩阵乘加操作在Thread线程层级的实现，主要是线程使用SIMD浮点指令在CUDA Core上的实现，这些操作被抽象为gemm::thread::Mma模板类。
+
+在cutlass/gemm/thread/mma.h头文件中，提供gemm::thread::Mma的定义，如下所示。
+
+```c++
+/// Structure to compute the matrix product
+template <
+    typename Shape,                           /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    typename ElementA,                        /// Data type of A elements
+    typename LayoutA,                         /// Layout of A matrix (concept: MatrixLayout)
+    typename ElementB,                        /// Data type of B elements
+    typename LayoutB,                         /// Layout of B matrix (concept: MatrixLayout)
+    typename ElementC,                        /// Element type of C matrix
+    typename LayoutC,                         /// Layout of C matrix (concept: MatrixLayout)
+    typename Operator = arch::OpMultiplyAdd,  /// Concept: arch::OpMultiplyAdd or arch::Mma<>
+    typename Enable = bool                    /// Used for partial specialization
+>
+struct Mma;
+```
+
+在cutlass/gemm/thread/mma_sm50.h头文件中，提供通用的gemm::thread::MmaGeneric实现，并且该实现由gemm::thread::Mma使用。
+
+```c++
+/// Gemplate that handles all packed matrix layouts
+template <
+    typename Shape_,     /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    typename ElementA_,  /// Data type of A elements
+    typename LayoutA_,   /// Layout of A matrix (concept: layout::MapFunc)
+    typename ElementB_,  /// Data type of B elements
+    typename LayoutB_,   /// Layout of B matrix (concept: layout::MapFunc)
+    typename ElementC_,  /// Element type of C matrix
+    typename LayoutC_,   /// Layout of C matrix (concept: layout::MapFunc)
+    typename Operator_   /// Operator used to compute GEMM
+>
+struct MmaGeneric {
+    using Shape = Shape_;        /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    using ElementA = ElementA_;  /// Data type of operand A
+    using LayoutA = LayoutA_;    /// Layout of A matrix (concept: layout::MapFunc)
+    using ElementB = ElementB_;  /// Data type of operand B
+    using LayoutB = LayoutB_;    /// Layout of B matrix (concept: layout::MapFunc)
+    using ElementC = ElementC_;  /// Element type of operand C
+    using LayoutC = LayoutC_;    /// Layout of C matrix (concept: layout::MapFunc)
+    using Operator = Operator_;  /// Underlying mathematical operator
+
+    using FragmentA = Array<ElementA, Shape::kMK>;  /// A operand storage
+    using FragmentB = Array<ElementB, Shape::kKN>;  /// B operand storage
+    using FragmentC = Array<ElementC, Shape::kMN>;  /// C operand storage
+
+    /// Instruction
+    using MmaOp = arch::Mma<gemm::GemmShape<1, 1, 1>, 1, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, Operator>;
+
+    /// Computes a matrix product D = A * B + C
+    void operator()(FragmentC & D, FragmentA const & A, FragmentB const & B, FragmentC const & C) {
+        TensorRef<ElementA const, LayoutA> a_ref(reinterpret_cast<ElementA const *>(&A), LayoutA::packed({ Shape::kM, Shape::kK }));
+        TensorRef<ElementB const, LayoutB> b_ref(reinterpret_cast<ElementB const *>(&B), LayoutB::packed({ Shape::kK, Shape::kN }));
+        TensorRef<ElementC, LayoutC> d_ref(reinterpret_cast<ElementC *>(&D), LayoutC::packed(make_Coord(Shape::kM, Shape::kN)));
+        MmaOp mma_op;
+
+        // Copy accumulators
+        D = C;
+        // Compute matrix product
+        for (int k = 0; k < Shape::kK; ++k) {
+            for (int n = 0; n < Shape::kN; ++n) {
+                for (int m = 0; m < Shape::kM; ++m) {
+                    // ◦┌┐┌┐
+                    // ↓↑↓↑↓
+                    // └┘└┘◦
+                    int m_serpentine = (n % 2) ? (Shape::kM - 1 - m) : m;
+                    MatrixCoord mn(m_serpentine, n);
+                    MatrixCoord mk(m_serpentine, k);
+                    MatrixCoord kn(k, n);
+                    Array<ElementC, 1> d;
+                    Array<ElementA, 1> a;
+                    Array<ElementB, 1> b;
+                    d[0] = d_ref.at(mn);
+                    a[0] = a_ref.at(mk);
+                    b[0] = b_ref.at(kn);
+                    mma_op(d, a, b, d);
+                    d_ref.at(mn) = d[0];
+                }
+            }
+        }
+    }
+};
+
+/// Gemplate that handles conventional layouts for FFMA and DFMA GEMM
+template <
+    typename Shape_,     /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    typename ElementA_,  /// Data type of A elements
+    typename LayoutA_,   /// Layout of A matrix (concept: layout::MapFunc)
+    typename ElementB_,  /// Data type of B elements
+    typename LayoutB_,   /// Layout of B matrix (concept: layout::MapFunc)
+    typename ElementC_,  /// Element type of C matrix
+    typename LayoutC_    /// Layout of C matrix (concept: layout::MapFunc)
+>
+struct Mma<Shape_, ElementA_, LayoutA_, ElementB_, LayoutB_, ElementC_, LayoutC_, arch::OpMultiplyAdd, bool> {
+    using Shape = Shape_;                  /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    using ElementA = ElementA_;            /// Data type of operand A
+    using LayoutA = LayoutA_;              /// Layout of A matrix (concept: layout::MapFunc)
+    using ElementB = ElementB_;            /// Data type of operand B
+    using LayoutB = LayoutB_;              /// Layout of B matrix (concept: layout::MapFunc)
+    using ElementC = ElementC_;            /// Element type of operand C
+    using LayoutC = LayoutC_;              /// Layout of C matrix (concept: layout::MapFunc)
+    using Operator = arch::OpMultiplyAdd;  /// Underlying mathematical operator
+    
+    using FragmentA = Array<ElementA, Shape::kMK>;  /// A operand storage
+    using FragmentB = Array<ElementB, Shape::kKN>;  /// B operand storage
+    using FragmentC = Array<ElementC, Shape::kMN>;  /// C operand storage
+
+    /// Underlying matrix multiply operator (concept: arch::Mma)
+    using ArchMmaOperator = typename MmaGeneric<Shape, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, Operator>::MmaOp;
+
+    /// Computes a matrix product D = A * B + C
+    void operator()(FragmentC & D, FragmentA const & A, FragmentB const & B, FragmentC const & C) {
+        MmaGeneric<Shape, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, Operator> mma;
+        mma(D, A, B, C);
+    }
+};
 ```

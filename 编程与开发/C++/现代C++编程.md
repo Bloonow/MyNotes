@@ -1384,7 +1384,7 @@ int main(int argc, char *argv[]) {
 int arr[10];
 int *p;
 printf("%d, %d \n", sizeof(arr), sizeof(arr) / sizeof(int));	// 40, 10
-printf("%d \n", sizeof(p));		// 4（32位）/ 8（64位）
+printf("%d \n", sizeof(p));		// 4（32位机器）/ 8（64位机器）
 ```
 
 最直接的体现就是传参退化现象。C语言只会以值拷贝（value copy）的方式传递参数，参数传递时，如果拷贝整个数组，效率会大大降低，并且在参数位于栈上时，太大的数组拷贝将会导致栈溢出。因此，C语言将数组的传参进行了退化。将整个数组拷贝一份传入函数时，将数组名看做常量指针，只传数组首元素的地址。
