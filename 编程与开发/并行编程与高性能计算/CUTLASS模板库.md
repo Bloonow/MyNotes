@@ -2149,6 +2149,42 @@ uint32_t cast_smem_ptr_to_uint(void const* const ptr) {
 }
 ```
 
+### ldsm
+
+在cutlass/arch/memory_sm75.h头文件中，提供从共享内存中加载数据的操作，这是对ldmatrix指令的包装，可以一次性加载1、2、3、4个矩阵。
+
+```c++
+template <
+    typename Layout,  /// Layout of destination matrix (column-major implies transpose)
+   int MatrixCount    /// .x1, .x2, or .x4
+>
+void ldsm(Array<unsigned, MatrixCount> & D, void const* ptr);
+
+template <>
+void ldsm<layout::RowMajor, 4>(Array<unsigned, 4> & D, void const* ptr) {
+    unsigned addr = cutlass_get_smem_pointer(ptr);
+    int x, y, z, w;
+    asm volatile (
+        "ldmatrix.sync.aligned.x4.m8n8.shared.b16 {%0, %1, %2, %3}, [%4];"
+        : "=r"(x), "=r"(y), "=r"(z), "=r"(w)
+        : "r"(addr)
+    );
+    reinterpret_cast<int4 &>(D) = make_int4(x, y, z, w);
+}
+
+template <>
+void ldsm<layout::ColumnMajor, 4>(Array<unsigned, 4> & D, void const* ptr) {
+    unsigned addr = cutlass_get_smem_pointer(ptr);
+    int x, y, z, w;
+    asm volatile (
+        "ldmatrix.sync.aligned.x4.trans.m8n8.shared.b16 {%0, %1, %2, %3}, [%4];" 
+        : "=r"(x), "=r"(y), "=r"(z), "=r"(w)
+        : "r"(addr)
+    );
+    reinterpret_cast<int4 &>(D) = make_int4(x, y, z, w);
+}
+```
+
 ### SIMD
 
 大多数指令都是在CUDA Core硬件上执行的。对于一个线程而言，有的操作是单指令多数据（SIMD）的，这对于GPU而言是依赖于循环展开的。对于一个Warp调度器而言，有的操作时单指令多线程（SIMT）的，这依赖于Warp调度器的调度机制。
