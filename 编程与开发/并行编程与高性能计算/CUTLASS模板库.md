@@ -1139,7 +1139,7 @@ public:
 
 连续线性模式（Pitch Linear Mode）是一种元素在内存中的组织方式，其最内层维度轴上的元素连续存储，外层维度轴上的元素以内存维度轴的维数为单位进行连续存储。在CUTLASS中，使用的是，二维的连续线性坐标PitchLinearCoord、二维的连续线性形状PitchLinearShape、二维的连续线性布局PitchLinear。
 
-<img src="CUTLASS模板库.assets/PitchLinear.png" style="zoom:15%;" />
+![](CUTLASS模板库.assets/PitchLinear.png)
 
 ### PitchLinearCoord
 
@@ -1237,43 +1237,445 @@ public:
 
 为高效利用Tensor Core硬件单元进行矩阵乘加运算，需要对矩阵A、矩阵B、矩阵C和矩阵D的元素布局方式做出规定，使其满足mma.xxx系列指令的要求。
 
-在CUTLASS中，相关布局的基本概念是TensorOpMultiplicand布局，该布局是基于元素位数（Element Size in bits）和交叉数目（Crosswise Size in elements）来定义，适用于.b16、.b8、.b4、.b1位数的元素，并且假设所使用的内存是连续线性的PitchLinear内存。
+在CUTLASS中，相关布局的基本概念是TensorOpMultiplicand布局，该布局是基于元素位数（Element Size in bits）和交叉数目（Crosswise Size in elements）来定义，适用于.b8、.b16、.b32位数的元素，并且假设所使用的内存是连续线性的PitchLinear内存。
 
+![](CUTLASS模板库.assets/TensorOpMultiplicand.png)
 
+### TensorOpMultiplicand
 
+在cutlass/layout/tensor_op_multiplicand_sm75.h头文件中，提供TensorOpMultiplicand的定义，如下所示。
 
+```c++
+/// Template based on element size (in bits) - defined in terms of pitch-linear memory and Crosswise size (in elements).
+/// This one is the base class of all Ampere/Turing fp16/bf16/int8/int4/int1 tensor core kernels. tf32 TN uses this too.
+/// 通常情况下，Crosswise = platform::min(128 / sizeof(Element), ThreadblockShape::k[M|N]);
+/// 于是，Crosswise的取值，对于.b8为128，对于.b16为64，对于.b32为32
+template <int ElementSize, int Crosswise>
+struct TensorOpMultiplicand {
+    static int const kRank = 2;        /// Logical rank of tensor
+    static int const kStrideRank = 1;  /// Rank of stride vector
 
+    using Index = int32_t;                                /// Index type used for coordinates
+    using LongIndex = int64_t;                            /// Long index type used for offsets
+    using TensorCoord = PitchLinearCoord;                 /// Logical coordinate
+    using Stride = Coord<kStrideRank, Index, LongIndex>;  /// Stride vector
 
+    /// This layout is optimized for 128b accesses.
+    /// 一次访问的粒度是128位，后文将128位的数据称为一个vector向量，通常使用形如.shared.v4.b32的向量访问
+    static int const kAccessSize = 128;
+    /// 一个元素的位数，例如.b8、.b16、.b32类型
+    static int const kElementSize = ElementSize;
+    /// 一次128位的向量访问，能访问几个元素，即，16个.b8元素，8个.b16元素，4个.b32元素
+    static int const kElementsPerAccess = kAccessSize / kElementSize;
+    /// 交叉数目，指定多少个元素为“一折”，如'Z'型布局中的“一折”
+    static int const kCrosswise = Crosswise;
 
-TensorOpMultiplicandCongruous
+    /// Contiguous dimension of the tile shape matches one shared memory cache line - 128B.
+    /// For 128bit access size, it equals to 8 accesses.
+    /// 缓冲行是128字节，也是共享内存32个Bank一层的字节数，这等于8次粒度为128位的向量访问
+    static int const kTileShapeContiguous = 128 / (kAccessSize / 8);
+    /// Number of kblocks to store PartitionShape::kContiguous Elements.
+    /// 8次粒度为128位的向量访问的元素数目，除以kCrosswise交叉数目，得到，一个128字节访问的所有元素能构成几个一折
+    static int const kFactor = kTileShapeContiguous * kElementsPerAccess / kCrosswise;
+    /// The strided dimension needs to be at least (WarpSize(32) / kTileShapeContiguous) = 4 for a warp to access.
+    /// To ensure conflict free access, it also needs to be at least (kTileShapeContiguous / kFactor) = 8 / kFactor.
+    static int const kTileShapeStride = platform::max(kTileShapeContiguous / kFactor, 32 / kTileShapeContiguous);
 
-TensorOpMultiplicandCongruous<32, Crosswise>
+    /// Fundamental tile shape in units of vectors to guarantee bank conflict free shared memory load/store.
+    /// For kFactor = 1, TileShape = PitchLinearShape<8, 8>;
+    /// For kFactor > 1, TileShape = PitchLinearShape<8, 4>;
+    using TileShape = PitchLinearShape<kTileShapeContiguous, kTileShapeStride>;
 
-ColumnMajorTensorOpMultiplicandCongruous
+    /// Fundamental partition shape in units of vectors
+    using PartitionShape = PitchLinearShape<4, 4>;
+    using PartitionCount = PitchLinearShape<
+        TileShape::kContiguous / PartitionShape::kContiguous, TileShape::kStrided / PartitionShape::kStrided>;
+    using AccessCount = PitchLinearShape<PartitionShape::kContiguous, PartitionShape::kStrided>;
 
-RowMajorTensorOpMultiplicandCongruous
+private:
+    /// Stride data member. For GEMM, it equals to `kCrosswise * stage`.
+    Stride stride_;
 
+public:
+    /// Constructor
+    TensorOpMultiplicand(Stride stride) : stride_(stride) {}
 
+    /// Constructor
+    TensorOpMultiplicand(Index ldm = 0) : stride_(ldm) {}
 
-TensorOpMultiplicandCrosswise
+    /// Helper returns a layout to a tightly packed tensor
+    static TensorOpMultiplicand packed(TensorCoord const &extent) {
+        return TensorOpMultiplicand(extent[0]);
+    }
 
-ColumnMajorTensorOpMultiplicandCrosswise
+    /// Returns the offset of a coordinate in linear memory.
+    /// Assumes coordinate has convention (contiguous, strided)
+    LongIndex operator()(TensorCoord const &coord) const {
+        // First, compute cIdx and sIdx of vector within source (in units of vector accesses)
+        int vec_contiguous_idx = coord.contiguous() / kElementsPerAccess;
+        int vec_strided_idx = coord.strided() / kFactor;
 
-RowMajorTensorOpMultiplicandCrosswise
+        // Compute the fundamental tile being accessed
+        int tile_contiguous_idx = vec_contiguous_idx / (TileShape::kContiguous / kFactor);
+        int tile_contiguous_residual = vec_contiguous_idx % (TileShape::kContiguous / kFactor)
+            + ((coord.strided() % kFactor) * (TileShape::kContiguous / kFactor));
+        int tile_strided_residual = vec_strided_idx % TileShape::kStrided;
 
+        // Compute the 'partition' within the fundamental tile
+        int partition_contiguous_idx = tile_contiguous_residual / PartitionShape::kContiguous;
+        int partition_strided_idx = tile_strided_residual / PartitionShape::kStrided;
+        int partition_contiguous_residual = tile_contiguous_residual % PartitionShape::kContiguous;
+        int partition_strided_residual = tile_strided_residual % PartitionShape::kStrided;
 
+        // Then swizzle
+        int permuted_vec_contiguous_within_partition = partition_contiguous_residual ^ (partition_strided_residual % 4);
+        int permuted_partition_contiguous_within_tile = partition_contiguous_idx ^ (partition_strided_idx % 2);
 
-TensorOpMultiplicandColumnMajorInterleaved
+        // Compute final element location
+        int element_contiguous = (tile_contiguous_idx * TileShape::kContiguous
+            + permuted_partition_contiguous_within_tile * PartitionShape::kContiguous
+            + permuted_vec_contiguous_within_partition)
+            * kElementsPerAccess
+            + (coord.contiguous() % kElementsPerAccess);
+        int element_strided = vec_strided_idx;
+        return element_contiguous + element_strided * stride_[0] * kFactor;
+    }
+};
+```
 
-TensorOpMultiplicandRowMajorInterleaved
+### TensorOpMultiplicandCongruous
 
-【图】
+以TensorOpMultiplicand布局为基本（称之为基本布局），CUTLASS提出各种其它用途的相关布局。例如，TensorOpMultiplicandCongruous布局是对基本布局的包装，ColumnMajorTensorOpMultiplicandCongruous布局将列主序布局映射为基本布局，RowMajorTensorOpMultiplicandCongruous布局将行主序布局映射为基本布局。
 
+在cutlass/layout/tensor_op_multiplicand_sm75.h头文件中，提供TensorOpMultiplicandCongruous的定义，如下所示。
 
+```c++
+/// Template based on element size (in bits) - defined in terms of pitch-linear memory and Crosswise size (in elements).
+template <int ElementSize, int Crosswise>
+struct TensorOpMultiplicandCongruous {
+    static int const kRank = 2;        /// Logical rank of tensor
+    static int const kStrideRank = 1;  /// Rank of stride vector
 
+    using Index = int32_t;                                /// Index type used for coordinates
+    using LongIndex = int64_t;                            /// Long index type used for offsets
+    using TensorCoord = PitchLinearCoord;                 /// Logical coordinate
+    using Stride = Coord<kStrideRank, Index, LongIndex>;  /// Stride vector
+    
+    /// This layout is optimized for 128b accesses
+    using Base = TensorOpMultiplicand<ElementSize, Crosswise>;
+    static int const kAccessSize = Base::kAccessSize;
+    static int const kElementSize = Base::kElementSize;
+    static int const kElementsPerAccess = Base::kElementsPerAccess;
+    static int const kCrosswise = Base::kCrosswise;
+    static int const kFactor = Base::kFactor;
+    using TileShape = typename Base::TileShape;
+    using PartitionShape = typename Base::PartitionShape;
+    using PartitionCount = typename Base::PartitionCount;
+    using AccessCount = typename Base::AccessCount;
 
+private:
+    Base layout_;
 
+public:
+    /// Constructor
+    TensorOpMultiplicandCongruous(Stride stride) : layout_(stride) {}
+    
+    /// Constructor
+    TensorOpMultiplicandCongruous(Index ldm = 0) : layout_(ldm) {}
 
+    /// Helper returns a layout to a tightly packed tensor
+    static TensorOpMultiplicandCongruous packed(TensorCoord const &extent) {
+        return TensorOpMultiplicandCongruous(extent[0]);
+    }
+
+    /// Returns the offset of a coordinate in linear memory.
+    /// Assumes coordinate has convention (contiguous, strided)
+    LongIndex operator()(TensorCoord const &coord) const {
+        return layout_(coord);
+    }
+
+    /// Inverse of layout function, mapping linear offset to logical coordinate
+    TensorCoord inverse(LongIndex offset) const {
+        PitchLinearCoord coord = layout_.inverse(offset);
+        return coord;
+    }
+};
+```
+
+在cutlass/layout/tensor_op_multiplicand_sm75.h头文件中，提供ColumnMajorTensorOpMultiplicandCongruous的定义，如下所示。
+
+```c++
+/// Template mapping a column-major view of pitch-linear memory to TensorOpMultiplicand
+template <int ElementSize, int Crosswise>
+struct ColumnMajorTensorOpMultiplicandCongruous {
+    static int const kRank = 2;        /// Logical rank of tensor
+    static int const kStrideRank = 1;  /// Rank of stride vector
+
+    using Index = int32_t;                                /// Index type used for coordinates
+    using LongIndex = int64_t;                            /// Long index type used for offsets
+    using TensorCoord = MatrixCoord;                      /// Logical coordinate
+    using Stride = Coord<kStrideRank, Index, LongIndex>;  /// Stride vector
+
+    /// This layout is optimized for 128b accesses
+    using Base = TensorOpMultiplicandCongruous<ElementSize, Crosswise>;
+    static int const kAccessSize = Base::kAccessSize;
+    static int const kElementSize = Base::kElementSize;
+    static int const kElementsPerAccess = Base::kElementsPerAccess;
+    static int const kCrosswise = Base::kCrosswise;
+    static int const kFactor = Base::kFactor;
+    using TileShape = typename Base::TileShape;
+    using PartitionShape = typename Base::PartitionShape;
+    using PartitionCount = typename Base::PartitionCount;
+    using AccessCount = typename Base::AccessCount;
+
+private:
+    Base layout_;
+
+public:
+    /// Constructor
+    ColumnMajorTensorOpMultiplicandCongruous(Stride stride) : layout_(stride) {}
+
+    /// Constructor
+    ColumnMajorTensorOpMultiplicandCongruous(Index ldm = 0) : layout_(ldm) {}
+
+    /// Helper returns a layout to a tightly packed tensor
+    static ColumnMajorTensorOpMultiplicandCongruous packed(TensorCoord const &extent) {
+        return ColumnMajorTensorOpMultiplicandCongruous(extent.row());
+    }
+
+    /// Returns the offset of a coordinate in linear memory. 
+    /// Assumes coordinate has convention (contiguous, strided)
+    LongIndex operator()(TensorCoord const &coord) const {
+        return layout_(PitchLinearCoord(coord.row(), coord.column()));
+    }
+
+    /// Inverse of layout function, mapping linear offset to logical coordinate
+    TensorCoord inverse(LongIndex offset) const {
+        PitchLinearCoord coord = layout_.inverse(offset);
+        return MatrixCoord(coord.contiguous(), coord.strided());
+    }
+};
+```
+
+在cutlass/layout/tensor_op_multiplicand_sm75.h头文件中，提供RowMajorTensorOpMultiplicandCongruous的定义，如下所示。
+
+```c++
+/// Template mapping a row-major view of pitch-linear memory to TensorOpMultiplicand
+template <int ElementSize, int Crosswise>
+struct RowMajorTensorOpMultiplicandCongruous {
+    static int const kRank = 2;        /// Logical rank of tensor
+    static int const kStrideRank = 1;  /// Rank of stride vector
+
+    using Index = int32_t;                                /// Index type used for coordinates
+    using LongIndex = int64_t;                            /// Long index type used for offsets
+    using TensorCoord = MatrixCoord;                      /// Logical coordinate
+    using Stride = Coord<kStrideRank, Index, LongIndex>;  /// Stride vector
+
+    /// This layout is optimized for 128b accesses
+    using Base = TensorOpMultiplicandCongruous<ElementSize, Crosswise>;
+    static int const kAccessSize = Base::kAccessSize;
+    static int const kElementSize = Base::kElementSize;
+    static int const kElementsPerAccess = Base::kElementsPerAccess;
+    static int const kCrosswise = Base::kCrosswise;
+    static int const kFactor = Base::kFactor;
+    using TileShape = typename Base::TileShape;
+    using PartitionShape = typename Base::PartitionShape;
+    using PartitionCount = typename Base::PartitionCount;
+    using AccessCount = typename Base::AccessCount;
+
+private:
+    Base layout_;
+
+public:
+    /// Constructor
+    RowMajorTensorOpMultiplicandCongruous(Stride stride) : layout_(stride) {}
+
+    /// Constructor
+    RowMajorTensorOpMultiplicandCongruous(Index ldm = 0) : layout_(ldm) {}
+
+    /// Helper returns a layout to a tightly packed tensor
+    static RowMajorTensorOpMultiplicandCongruous packed(TensorCoord const &extent) {
+        return RowMajorTensorOpMultiplicandCongruous(extent.column());
+    }
+
+    /// Returns the offset of a coordinate in linear memory. 
+    /// Assumes coordinate has convention (contiguous, strided)
+    LongIndex operator()(TensorCoord const &coord) const {
+        return layout_(PitchLinearCoord(coord.column(), coord.row()));
+    }
+
+    /// Inverse of layout function, mapping linear offset to logical coordinate
+    TensorCoord inverse(LongIndex offset) const {
+        PitchLinearCoord coord = layout_.inverse(offset);
+        return MatrixCoord(coord.strided(), coord.contiguous());
+    }
+}
+```
+
+### TensorOpMultiplicandCrosswise
+
+以TensorOpMultiplicand布局为基本（称之为基本布局），CUTLASS提出各种其它用途的相关布局。例如，TensorOpMultiplicandCrosswise布局是对基本布局的包装，ColumnMajorTensorOpMultiplicandCrosswise布局将列主序布局映射为基本布局，RowMajorTensorOpMultiplicandCrosswise布局将行主序布局映射为基本布局。
+
+在cutlass/layout/tensor_op_multiplicand_sm75.h头文件中，提供TensorOpMultiplicandCrosswise的定义，如下所示。
+
+```c++
+/// Template based on element size (in bits) - defined in terms of pitch-linear memory and Crosswise size (in elements).
+template <int ElementSize, int Crosswise>
+struct TensorOpMultiplicandCrosswise {
+    static int const kRank = 2;        /// Logical rank of tensor
+    static int const kStrideRank = 1;  /// Rank of stride vector
+
+    using Index = int32_t;                                /// Index type used for coordinates
+    using LongIndex = int64_t;                            /// Long index type used for offsets
+    using TensorCoord = PitchLinearCoord;                 /// Logical coordinate
+    using Stride = Coord<kStrideRank, Index, LongIndex>;  /// Stride vector
+
+    /// This layout is optimized for 128b accesses
+    using Base = TensorOpMultiplicand<ElementSize, Crosswise>;
+    static int const kAccessSize = Base::kAccessSize;
+    static int const kElementSize = Base::kElementSize;
+    static int const kElementsPerAccess = Base::kElementsPerAccess;
+    static int const kCrosswise = Base::kCrosswise;
+    static int const kFactor = Base::kFactor;
+    using TileShape = typename Base::TileShape;
+    using PartitionShape = typename Base::PartitionShape;
+    using PartitionCount = typename Base::PartitionCount;
+    using AccessCount = typename Base::AccessCount;
+
+private:
+    Base layout_;
+
+public:
+    /// Constructor
+    TensorOpMultiplicandCrosswise(Stride stride) : layout_(stride) {}
+
+    /// Constructor
+    TensorOpMultiplicandCrosswise(Index ldm = 0) : layout_(ldm) {}
+
+    /// Helper returns a layout to a tightly packed tensor
+    static TensorOpMultiplicandCrosswise packed(TensorCoord const &extent) {
+        return TensorOpMultiplicandCrosswise(extent[0]);
+    }
+
+    /// Returns the offset of a coordinate in linear memory.
+    /// Assumes coordinate has convention (contiguous, strided)
+    LongIndex operator()(TensorCoord const &coord) const {
+        return layout_(coord);
+    }
+
+    /// Inverse of layout function, mapping linear offset to logical coordinate
+    TensorCoord inverse(LongIndex offset) const {
+        PitchLinearCoord coord = layout_.inverse(offset);
+        return coord;
+    }
+}
+```
+
+在cutlass/layout/tensor_op_multiplicand_sm75.h头文件中，提供ColumnMajorTensorOpMultiplicandCrosswise的定义，如下所示。
+
+```c++
+/// Template mapping a column-major view of pitch-linear memory to TensorOpMultiplicandCrosswise
+template <int ElementSize, int Crosswise>
+struct ColumnMajorTensorOpMultiplicandCrosswise {
+    static int const kRank = 2;        /// Logical rank of tensor
+    static int const kStrideRank = 1;  /// Rank of stride vector
+
+    using Index = int32_t;                                /// Index type used for coordinates
+    using LongIndex = int64_t;                            /// Long index type used for offsets
+    using TensorCoord = MatrixCoord;                      /// Logical coordinate
+    using Stride = Coord<kStrideRank, Index, LongIndex>;  /// Stride vector
+    
+    /// This layout is optimized for 128b accesses
+    using Base = TensorOpMultiplicandCrosswise<ElementSize, Crosswise>;
+    static int const kAccessSize = Base::kAccessSize;
+    static int const kElementSize = Base::kElementSize;
+    static int const kElementsPerAccess = Base::kElementsPerAccess;
+    using TileShape = typename Base::TileShape;
+    using PartitionShape = typename Base::PartitionShape;
+    using PartitionCount = typename Base::PartitionCount;
+    using AccessCount = typename Base::AccessCount;
+
+private:
+    Base layout_;
+
+public:
+    /// Constructor
+    ColumnMajorTensorOpMultiplicandCrosswise(Stride stride) : layout_(stride) {}
+
+    /// Constructor
+    ColumnMajorTensorOpMultiplicandCrosswise(Index ldm = 0) : layout_(ldm) {}
+
+    /// Helper returns a layout to a tightly packed tensor
+    static ColumnMajorTensorOpMultiplicandCrosswise packed(TensorCoord const &extent) {
+        return ColumnMajorTensorOpMultiplicandCrosswise(extent.row());
+    }
+
+    /// Returns the offset of a coordinate in linear memory.
+    /// Assumes coordinate has convention (contiguous, strided)
+    LongIndex operator()(TensorCoord const &coord) const {
+        return layout_(PitchLinearCoord(coord.row(), coord.column()));
+    }
+
+    /// Inverse of layout function, mapping linear offset to logical coordinate
+    TensorCoord inverse(LongIndex offset) const {
+        PitchLinearCoord coord = layout_.inverse(offset);
+        return MatrixCoord(coord.contiguous(), coord.strided());
+    }
+}
+```
+
+在cutlass/layout/tensor_op_multiplicand_sm75.h头文件中，提供RowMajorTensorOpMultiplicandCrosswise的定义，如下所示。
+
+```c++
+/// Template mapping a row-major view of pitch-linear memory to TensorOpMultiplicandCrosswise
+template <int ElementSize, int Crosswise>
+struct RowMajorTensorOpMultiplicandCrosswise {
+    static int const kRank = 2;        /// Logical rank of tensor
+    static int const kStrideRank = 1;  /// Rank of stride vector
+
+    using Index = int32_t;                                /// Index type used for coordinates
+    using LongIndex = int64_t;                            /// Long index type used for offsets
+    using TensorCoord = MatrixCoord;                      /// Logical coordinate
+    using Stride = Coord<kStrideRank, Index, LongIndex>;  /// Stride vector
+
+    /// This layout is optimized for 128b accesses
+    using Base = TensorOpMultiplicandCrosswise<ElementSize, Crosswise>;
+    static int const kAccessSize = Base::kAccessSize;
+    static int const kElementSize = Base::kElementSize;
+    static int const kElementsPerAccess = Base::kElementsPerAccess;
+    using TileShape = typename Base::TileShape;
+    using PartitionShape = typename Base::PartitionShape;
+    using PartitionCount = typename Base::PartitionCount;
+    using AccessCount = typename Base::AccessCount;
+
+private:
+    Base layout_;
+
+public:
+    /// Constructor
+    RowMajorTensorOpMultiplicandCrosswise(Stride stride) : layout_(stride) {}
+
+    /// Constructor
+    RowMajorTensorOpMultiplicandCrosswise(Index ldm = 0) : layout_(ldm) {}
+
+    /// Helper returns a layout to a tightly packed tensor
+    static RowMajorTensorOpMultiplicandCrosswise packed(TensorCoord const &extent) {
+        return RowMajorTensorOpMultiplicandCrosswise(extent.column());
+    }
+
+    /// Returns the offset of a coordinate in linear memory.
+    /// Assumes coordinate has convention (contiguous, strided)
+    LongIndex operator()(TensorCoord const &coord) const {
+        return layout_(PitchLinearCoord(coord.column(), coord.row()));
+    }
+
+    /// Inverse of layout function, mapping linear offset to logical coordinate
+    TensorCoord inverse(LongIndex offset) const {
+        PitchLinearCoord coord = layout_.inverse(offset);
+        return MatrixCoord(coord.strided(), coord.contiguous());
+    }
+}
+```
 
 ## Tensor Accessor
 
