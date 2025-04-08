@@ -1239,7 +1239,9 @@ public:
 
 在CUTLASS中，相关布局的基本概念是TensorOpMultiplicand布局，该布局是基于元素位数（Element Size in bits）和交叉数目（Crosswise Size in elements）来定义，适用于.b8、.b16、.b32位数的元素，并且假设所使用的内存是连续线性的PitchLinear内存。
 
-![](CUTLASS模板库.assets/TensorOpMultiplicand.png)
+<img src="CUTLASS模板库.assets/TensorOpMultiplicand.png" style="zoom:20%;" />
+
+当一个PitchLinear布局的维数大于一个TensorOpMultiplicand布局的维数时，会先在Contiguous维度轴上使用多个TensorOpMultiplicand布局，并且以tile_contiguous_idx标识每个TensorOpMultiplicand布局；然后再在Strided维度轴上使用多个TensorOpMultiplicand布局。
 
 ### TensorOpMultiplicand
 
@@ -1937,10 +1939,6 @@ cutlass
 └── reduction  # Reduction kernels
 ```
 
-实现代码组织为如下图所示的层级结构。注意，图中所展示的一些名称，均是充当API接口的概念，作用可分为两点，即(1)使用下一层级API接口实现某功能，(2)作为API接口提供给上一层级。而其它一些“仅仅是作为某个层级工具类实现，但未参与API接口构建”的概念则未在图中展示。
-
-![](CUTLASS模板库.assets/CUTLASS的组件示意图.png)
-
 CUTLASS对通用矩阵乘法GEMM进行并行分片，映射到CUDA并行编程模型中的多个层级资源上，整个流程的示意图如下所示。
 
 ![](CUTLASS模板库.assets/CUTLASS的GEMM示意图.png)
@@ -1979,9 +1977,7 @@ enum class SharedMemoryClearOption {
 
 在cutlass/arch目录中，提供一些基本操作的PTX汇编指令实现，主要包括内存访问指令、mma.xxx系列矩阵乘加指令、wmma.xxx系列矩阵乘加指令。这些PTX汇编指令直接与硬件架构进行交互，不同的硬件架构支持不同的PTX汇编指令，该层级的代码是对PTX汇编指令的包装。
 
-
-
-
+<img src="CUTLASS模板库.assets/gemm-arch.png" style="zoom:15%;" />
 
 在cutlass/arch/arch.h头文件中，提供LaneId()与SmId()辅助函数，以及设备架构与计算能力的标识。
 
@@ -2387,6 +2383,8 @@ struct Wmma<
 
 在cutlass/gemm/thread目录中，提供矩阵乘加操作在Thread线程层级的实现，主要是线程使用SIMD浮点指令在CUDA Core上的实现，这些操作被抽象为gemm::thread::Mma模板类。
 
+![](CUTLASS模板库.assets/gemm-thread.png)
+
 在cutlass/gemm/thread/mma.h头文件中，提供gemm::thread::Mma的定义，如下所示。
 
 ```c++
@@ -2405,7 +2403,7 @@ template <
 struct Mma;
 ```
 
-在cutlass/gemm/thread/mma_sm50.h头文件中，提供通用的gemm::thread::MmaGeneric实现，并且该实现由gemm::thread::Mma使用。
+在cutlass/gemm/thread/mma_sm50.h头文件中，提供通用的gemm::thread::MmaGeneric实现，并且该实现由gemm::thread::Mma使用，如下所示。
 
 ```c++
 /// Gemplate that handles all packed matrix layouts
