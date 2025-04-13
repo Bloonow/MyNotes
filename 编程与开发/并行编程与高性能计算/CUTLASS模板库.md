@@ -2502,3 +2502,937 @@ struct Mma<Shape_, ElementA_, LayoutA_, ElementB_, LayoutB_, ElementC_, LayoutC_
     }
 };
 ```
+
+## Warp Level
+
+在cutlass/gemm/warp目录中，提供矩阵乘加操作在Warp线程束层级的实现，主要包括使用CUDA Core硬件的实现与使用Tensor Core硬件的实现，这些操作被抽象为gemm::warp::MmaSimt模板类和gemm::warp::MmaTensorOp模板类。此外，还提供一些相关的辅助类型，包括线程排列策略，数据访问策略等。
+
+![](CUTLASS模板库.assets/gemm-warp.png)
+
+### MmaSimtPolicy
+
+当使用CUDA Core硬件实现矩阵乘加操作时，需要明确，一整个Warp中32个线程的排列布局、一个MMA计算的形状，以及一个线程负责几个MMA计算。这些属性被抽象为gemm::warp::MmaSimtPolicy模板类。
+
+在cutlass/gemm/warp/mma_simt_policy.h头文件中，提供gemm::warp::MmaSimtPolicy的定义，如下所示。
+
+```c++
+/// Describes the arrangement and configuration of per-lane operations in warp-level matrix multiply 
+template <
+    typename WarpShape_,   /// shape of the warp in lanes (concept: MatrixShape). 一整个Warp的线程形状，如4×8或8×4
+    typename LaneLayout_,  /// layout function of lanes. 一整个Warp的线程排列布局，如'Z'形布局
+    /// size of each lane's thread-level matrix product (concept: GemmShape). 一个线程负责的一个MMA形状，一个线程可执行多个MMA计算
+    typename LaneMmaShape_
+>
+struct MmaSimtPolicy {
+    using WarpShape = WarpShape_;
+    using LaneLayout = LaneLayout_;
+    using LaneMmaShape = LaneMmaShape_;
+    using MmaShape = LaneMmaShape;
+
+    /// Returns a layout functor mapping lane position in the warp to thread ID
+    static LaneLayout get_lane_layout() {
+        return LaneLayout::packed({ WarpShape::kRow, WarpShape::kColumn });
+    }
+};
+```
+
+### MmaSimtTileIterator
+
+当在线程束Warp层级执行矩阵乘加计算时，需要将数据从共享内存中读取到寄存器中，这种数据迭代器被抽象为gemm::warp::MmaSimtTileIterator模板类。
+
+<img src="CUTLASS模板库.assets/gemm-warp-MmaSimtTileIterator.png" style="zoom:12%;" />
+
+在cutlass/gemm/warp/mma_simt_tile_iterator.h头文件中，提供gemm::warp::MmaSimtTileIterator的定义，如下所示。
+
+```c++
+/// Iterates over operands to warp-level matrix multiply operations targeting SIMT instructions
+/// concept: MutableRandomAccessContiguousTileIteratorConcept
+template <
+    typename Shape_,            /// Size of the matrix to load (concept: MatrixShape). 一整个Warp要加载的矩阵形状
+    Operand Operand,            /// Operand identity. 用于标识操作数矩阵，可以是矩阵A、矩阵B、矩阵C、矩阵D
+    typename Element_,          /// Data type of elements. 元素的基本类型
+    typename Layout_,           /// Layout of operand. 标识矩阵元素的排列布局，可以是行主序或列主序，矩阵A和B还支持sliced-K布局
+    typename Policy_,           /// Shape of the warp in units of thread (concept: MmaSimtPolicy). 线程束Warp的策略
+    int PartitionsK = 1,        /// Number of partitions along K dimension - used in sliced-K
+    int PartitionGroupSize = 1  /// Group Size along kPartition - used in sliced-K
+>
+class MmaSimtTileIterator;
+```
+
+在实现时，会根据所访问的矩阵操作数，以及矩阵操作数的排列布局，来提供最高效的访问方式，即模板类的部分实例化。例如，对于矩阵A而言，最优布局是列主序存储，对于矩阵B而言，最优布局是行主序存储，对于矩阵C和矩阵D而言，最优布局是行主序布局或列主序布局。
+
+当矩阵A在共享内存中按照列主序存储时，gemm::warp::MmaSimtTileIterator访问器的实现代码如下所示。当矩阵B在共享内存中按照行主序存储时，gemm::warp::MmaSimtTileIterator访问器的实现代码与矩阵A的情况类似，此处不再赘述。
+
+```c++
+/// Specialization for A operands of column-major layouts
+/// Concept: MutableRandomAccessContiguousTileIteratorConcept
+template <
+    typename Shape_,        /// Size of the matrix to load (concept: MatrixShape)
+    typename Element_,      /// Data type of A elements
+    typename Policy_,       /// Shape of the warp in units of thread (concept: MmaSimtPolicy)
+    int PartitionsK,        /// Number of partitions along K dimension - used in sliced-K
+    int PartitionGroupSize  /// Group Size along kPartition - used in sliced-K
+>
+class MmaSimtTileIterator<Shape_, Operand::kA, Element_, layout::ColumnMajor, Policy_, PartitionsK, PartitionGroupSize> {
+public:
+    using Shape = Shape_;
+    static Operand const kOperand = Operand::kA;
+    using Element = Element_;
+    using Layout = layout::ColumnMajor;
+    using Policy = Policy_;
+    using TensorRef = TensorRef<Element, Layout>;         /// TensorRef type for loading element from a tensor
+    using Index = typename TensorRef::Index;              /// Index type
+    using LongIndex = typename TensorRef::LongIndex;      /// Long Index type
+    using TensorCoord = typename TensorRef::TensorCoord;  /// Coordinate for an element in the tensor
+
+    /// Thread-level shape of a fragment.
+    using ThreadShape = MatrixShape<Shape::kRow / Policy::WarpShape::kRow, Shape::kColumn>;
+    /// Number of individual loads.
+    using Iterations = MatrixShape<ThreadShape::kRow / Policy::LaneMmaShape::kM, ThreadShape::kColumn>;
+    /// Fragment object holding a thread's part of a tile.
+    using Fragment = Array<Element, ThreadShape::kCount>;
+
+private:
+    /// Internal reference. 张量引用，类型单位是一个Array，表示乘加计算中矩阵A对应的一个MMA形状
+    /// 加载和存储，都是以一个Array为单位的，即每次访问一个Array类型，偏移计算也以Array为单位，而不是以单个元素为单位的
+    cutlass::TensorRef<Array<Element, Policy::LaneMmaShape::kM>, layout::ColumnMajor> ref_;
+
+public:
+    /// Default ctor constructs null iterator
+    MmaSimtTileIterator() {}
+    
+    /// Constructor from TensorRef
+    MmaSimtTileIterator(TensorRef ref, int lane_id) {
+        // compute offset based on thread ID and lane layout
+        typename Policy::LaneLayout lane_layout = Policy::get_lane_layout();
+        MatrixCoord lane_offset = lane_layout.inverse(lane_id) * MatrixCoord(Policy::LaneMmaShape::kM, 0);
+        ref.add_coord_offset(lane_offset);
+        ref_.reset(reinterpret_cast<Array<Element, Policy::LaneMmaShape::kM> *>(ref.data()), ref.stride(0) / Policy::LaneMmaShape::kM);
+    }
+
+    /// Advances an iterator along logical dimensions of matrix in units of whole tiles
+    MmaSimtTileIterator & add_tile_offset(TensorCoord const &coord) {
+        ref_.add_coord_offset({ coord.row() * Shape::kRow / Policy::LaneMmaShape::kM, coord.column() * Shape::kColumn });
+        return *this;
+    }
+
+    /// Advances the iterator along the advance dimension
+    MmaSimtTileIterator & operator++() {
+        ref_.add_coord_offset({ 0, Shape::kColumn });
+        return *this;
+    }
+
+    /// Loads a fragment from memory at the location pointed to by the iterator. (vector loads)
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) const {
+        Array<Element, Policy::LaneMmaShape::kM> *dst_ptr = reinterpret_cast<Array<Element, Policy::LaneMmaShape::kM> *>(&frag);
+        for (int k = 0; k < Iterations::kColumn; ++k) {
+            for (int m = 0; m < Iterations::kRow; ++m) {
+                auto src_ptr = ref_.data() + ref_.offset({ m * Policy::WarpShape::kRow, k }) + pointer_offset / Policy::LaneMmaShape::kM;
+                arch::shared_load(dst_ptr[m + k * Iterations::kRow], src_ptr);
+            }
+        }
+    }
+
+    /// Loads a fragment from memory at the location pointed to by the iterator.
+    void load(Fragment &frag) const {
+        load_with_pointer_offset(frag, 0);
+    }
+};
+```
+
+当矩阵C或矩阵D在共享内存中按照行主序存储时，gemm::warp::MmaSimtTileIterator访问器的实现代码如下所示。
+
+```c++
+/// Specialization for C operands of row-major layouts
+/// Concept: MutableRandomAccessContiguousTileIteratorConcept
+template <
+    typename Shape_,    /// Size of the matrix to load (concept: MatrixShape)
+    typename Element_,  /// Data type of A elements
+    typename Policy_    /// Shape of the warp in units of thread (concept: MmaSimtPolicy)
+>
+class MmaSimtTileIterator<Shape_, Operand::kC, Element_, layout::RowMajor, Policy_> {
+public:
+    using Shape = Shape_;
+    static Operand const kOperand = Operand::kC;
+    using Element = Element_;
+    using Layout = layout::RowMajor;
+    using Policy = Policy_;
+    using TensorRef = TensorRef<Element, Layout>;         /// TensorRef type for loading element from a tensor
+    using Index = typename TensorRef::Index;              /// Index type
+    using LongIndex = typename TensorRef::LongIndex;      /// Long Index type
+    using TensorCoord = typename TensorRef::TensorCoord;  /// Coordinate for an element in the tensor
+
+    /// Thraed-level shape of a fragment
+    using ThreadShape = MatrixShape<Shape::kRow / Policy::WarpShape::kRow, Shape::kColumn / Policy::WarpShape::kColumn>;
+    /// Number of individual loads
+    using Iterations = MatrixShape<ThreadShape::kRow / Policy::LaneMmaShape::kM, ThreadShape::kColumn / Policy::LaneMmaShape::kN>;
+    /// Delta of MmaShape in unit of element in shared memory
+    using Delta = MatrixShape<Policy::WarpShape::kRow * Policy::LaneMmaShape::kM, Policy::WarpShape::kColumn * Policy::LaneMmaShape::kN>;
+    /// Fragment object holding a thread's part of a tile
+    using Fragment = Array<Element, ThreadShape::kCount>;
+
+private:
+    TensorRef ref_;  /// Internal reference
+
+public:
+    /// Default ctor constructs null iterator
+    MmaSimtTileIterator() {}
+    
+    /// Constructor from TensorRef
+    MmaSimtTileIterator(TensorRef const &ref, int lane_id) : ref_(ref) {
+        // compute offset based on thread ID and lane layout
+        typename Policy::LaneLayout lane_layout = Policy::get_lane_layout();
+        MatrixCoord lane_offset = lane_layout.inverse(lane_id) * MatrixCoord(Policy::LaneMmaShape::kM, Policy::LaneMmaShape::kN);
+        ref_.add_coord_offset(lane_offset);
+    }
+
+    /// Advances an iterator along logical dimensions of matrix in units of whole tiles
+    MmaSimtTileIterator & add_tile_offset(TensorCoord const &coord) {
+        ref_.add_coord_offset({ coord.row() * Shape::kRow, coord.column() * Shape::kColumn });
+        return *this;
+    }
+    
+    /// Advances the iterator along the advance dimension
+    MmaSimtTileIterator & operator++() {
+        ref_.add_coord_offset({ Shape::kRow, 0 });
+        return *this;
+    }
+
+    /// Loads a fragment from memory with additional logical offset; linear offset (in units of Element) when loading
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) const {
+        for (int mma_m = 0; mma_m < Iterations::kRow; ++mma_m) {
+            for (int m = 0; m < Policy::LaneMmaShape::kM; ++m) {
+                Array<Element, Policy::LaneMmaShape::kN> const *src_ptr = reinterpret_cast<Array<Element, Policy::LaneMmaShape::kN> const *>
+                    (ref_.data() + pointer_offset + ref_.offset({ mma_m * Delta::kRow + m, 0 }));
+                for (int mma_n = 0; mma_n < Iterations::kColumn; ++mma_n) {
+                    Array<Element, Policy::LaneMmaShape::kN> *dst_ptr = reinterpret_cast<Array<Element, Policy::LaneMmaShape::kN> *>
+                        (&frag) + mma_n + Iterations::kColumn * (m + mma_m * Policy::LaneMmaShape::kM);
+                    *dst_ptr = src_ptr[mma_n * Policy::WarpShape::kColumn];
+                }
+            }
+        }
+    }
+
+    /// Loads a fragment from memory at the location pointed to by the iterator.
+    void load(Fragment &frag) const {
+        load_with_pointer_offset(frag, 0);
+    }
+
+    /// Stores a fragment to memory at the location pointed to by the iterator
+    void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) const {
+        for (int mma_m = 0; mma_m < Iterations::kRow; ++mma_m) {
+            for (int m = 0; m < Policy::LaneMmaShape::kM; ++m) {
+                Array<Element, Policy::LaneMmaShape::kN> *dst_ptr = reinterpret_cast<Array<Element, Policy::LaneMmaShape::kN> *>
+                    (ref_.data() + pointer_offset + ref_.offset({ mma_m * Delta::kRow + m, 0 }));
+                for (int mma_n = 0; mma_n < Iterations::kColumn; ++mma_n) {
+                    Array<Element, Policy::LaneMmaShape::kN> const *src_ptr = reinterpret_cast<Array<Element, Policy::LaneMmaShape::kN> const *>
+                        (&frag) + mma_n + Iterations::kColumn * (m + mma_m * Policy::LaneMmaShape::kM);
+                    dst_ptr[mma_n * Policy::WarpShape::kColumn] = *src_ptr;
+                }
+            }
+        }
+    }
+
+    /// Stores a fragment to memory at the location pointed to by the iterator
+    void store(Fragment const &frag) const {
+        store_with_pointer_offset(frag, 0);
+    }
+};
+```
+
+### MmaSimt
+
+当在CUDA Core硬件上使用SIMD指令实现矩阵乘加操作时，在Warp线程束层级的实现被抽象为gemm::warp::MmaSimt模板类。
+
+在cutlass/gemm/warp/mma_simt.h头文件中，提供gemm::warp::MmaSimt的定义，如下所示。
+
+```c++
+/// Structure to compute the matrix product targeting CUDA cores and SIMT math instructions.
+template <
+    typename Shape_,      /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    typename ElementA_,   /// Data type of A elements
+    typename LayoutA_,    /// Layout of A matrix (concept: MatrixLayout)
+    typename ElementB_,   /// Data type of B elements
+    typename LayoutB_,    /// Layout of B matrix (concept: MatrixLayout)
+    typename ElementC_,   /// Element type of C matrix
+    typename LayoutC_,    /// Layout of C matrix (concept: MatrixLayout)
+    typename Policy_,     /// Shape of the warp in units of thread (concept: MmaSimtPolicy)
+    int PartitionsK = 1,  /// Number of partitions along K dimension
+    ComplexTransform TransformA = ComplexTransform::kNone,  /// Complex transformation on operand A
+    ComplexTransform TransformB = ComplexTransform::kNone,  /// Complex transformation on operand B
+    typename Enable = bool                                  /// Used for partial specialization
+>
+class MmaSimt {
+public:
+    using Shape = Shape_;                     /// Shape of warp-level matrix operation (concept: GemmShape)
+    using ElementA = ElementA_;               /// Data type of multiplicand A
+    using LayoutA = LayoutA_;                 /// Layout of multiplicand A
+    using ElementB = ElementB_;               /// Data type of multiplicand B
+    using LayoutB = LayoutB_;                 /// Layout of multiplicand B
+    using ElementC = ElementC_;               /// Data type of accumulator matrix C
+    using LayoutC = LayoutC_;                 /// Layout of accumulator matrix C
+    using Policy = Policy_;                   /// Shape of the warp in units of thread (concept: MmaLanePolicySimt)
+    using ArchTag = arch::Sm50;               /// Hard-coded for now
+    using OperatorClass = arch::OpClassSimt;  /// Indicates class of matrix operator
+    static ComplexTransform const kTransformA = TransformA;  /// Complex transform on A operand
+    static ComplexTransform const kTransformB = TransformB;  /// Complex transform on B operand
+
+    /// Layout of element at thread level
+    using ThreadLayoutA = typename platform::conditional<
+        platform::is_same<layout::ColumnMajorInterleaved<4>, LayoutA>::value, layout::ColumnMajor,
+        typename platform::conditional<platform::is_same<layout::RowMajorInterleaved<4>, LayoutA>::value, layout::RowMajor, LayoutA>::type
+    >::type;
+    using ThreadLayoutB = typename platform::conditional<
+        platform::is_same<layout::ColumnMajorInterleaved<4>, LayoutB >::value, layout::ColumnMajor,
+        typename platform::conditional<platform::is_same<layout::RowMajorInterleaved<4>, LayoutB >::value, layout::RowMajor, LayoutB>::type
+    >::type;
+
+    /// Thread-level matrix multiply accumulate operator
+    using ThreadMma = thread::Mma<
+        GemmShape<Shape::kM / Policy::WarpShape::kRow, Shape::kN / Policy::WarpShape::kColumn, Policy::LaneMmaShape::kK>,
+        ElementA, ThreadLayoutA, ElementB, ThreadLayoutB, ElementC, LayoutC, arch::OpMultiplyAdd>;
+    using ArchMmaOperator = typename ThreadMma::ArchMmaOperator;  /// Underlying matrix multiply operator (concept: arch::Mma)
+    using MathOperator = typename ArchMmaOperator::Operator;      /// Indicates math operator
+    using InstructionShape = GemmShape<1, 1, 1>;                  /// Shape of the underlying instruction
+
+public:
+    /// Iterates over the A operand in memory
+    using IteratorA = MmaSimtTileIterator<MatrixShape<Shape::kM, Policy::LaneMmaShape::kK>,
+        Operand::kA, ElementA, LayoutA, Policy, PartitionsK, Shape::kK>;
+    using FragmentA = typename IteratorA::Fragment;  /// Storage for A tile
+
+    /// Iterates over the B operand in memory
+    using IteratorB = MmaSimtTileIterator<MatrixShape<Policy::LaneMmaShape::kK, Shape::kN>,
+        Operand::kB, ElementB, LayoutB, Policy, PartitionsK, Shape::kK>;
+    using FragmentB = typename IteratorB::Fragment;  /// Storage for B tile
+
+    /// Iterates over the C operand in memory
+    using IteratorC = MmaSimtTileIterator<MatrixShape<Shape::kM, Shape::kN>, Operand::kC, ElementC, LayoutC, Policy>;
+    using FragmentC = typename ThreadMma::FragmentC;  /// Storage for C tile
+
+public:
+    /// Constructor
+    MmaSimt() {}
+
+    /// Performs a warp-level matrix multiply-accumulate operation
+    void operator()(FragmentC &d, FragmentA a, FragmentB b, FragmentC const &c, int group_idx = 0) const {
+        ThreadMma mma;
+        if (kTransformA == ComplexTransform::kConjugate) { a = conjugate<FragmentA>()(a); }
+        if (kTransformB == ComplexTransform::kConjugate) { b = conjugate<FragmentB>()(b); }
+        mma(d, a, b, c);
+    }
+};
+```
+
+### DefaultMmaTensorOp
+
+当使用Tensor Core硬件实现矩阵乘加操作时，CUTLASS提供一个默认的模板配置，抽象为gemm::warp::DefaultMmaTensorOp模板类。
+
+在cutlass/gemm/warp/default_mma_tensor_op.h头文件中，提供gemm::warp::DefaultMmaTensorOp的定义，如下所示。
+
+```c++
+template <
+    typename WarpShape_,                       /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    typename InstructionShape_,                /// Shape of one matrix production operation (concept: GemmShape)
+    typename ElementA_,                        /// Data type of A elements
+    typename LayoutA_,                         /// Layout of A matrix (concept: MatrixLayout)
+    typename ElementB_,                        /// Data type of B elements
+    typename LayoutB_,                         /// Layout of B matrix (concept: MatrixLayout)
+    typename ElementC_,                        /// Element type of C matrix
+    typename LayoutC_,                         /// Layout of C matrix (concept: MatrixLayout)
+    typename Operator_ = arch::OpMultiplyAdd,  /// Operator describing the tensor operation
+    int PartitionsK = 1,                       /// Number of partitions along K dimension
+    /// Store the accumulators in row major or column major. Row major is used when output layout is interleaved.
+    bool AccumulatorsInRowMajor = false
+>
+struct DefaultMmaTensorOp;
+
+/// Partial specialization for m-by-n-by-kgroup
+template <
+    typename WarpShape_,         /// Shape of one matrix production operation (concept: GemmShape)
+    typename InstructionShape_,  /// Shape of one matrix production operation (concept: GemmShape)
+    typename ElementA,           /// Data type of A elements
+    typename LayoutA,            /// Layout of A matrix (concept: MatrixLayout)
+    typename ElementB,           /// Data type of B elements
+    typename LayoutB,            /// Layout of B matrix (concept: MatrixLayout)
+    typename ElementC,           /// Element type of C matrix
+    typename LayoutC,            /// Layout of C matrix (concept: MatrixLayout)
+    typename Operator_,          /// Operator describing the tensor operation
+    int PartitionsK,             /// Number of partitions along K dimension
+    /// Store the accumulators in row major or column major. Row major is used when output layout is interleaved.
+    bool AccumulatorsInRowMajor
+>
+struct DefaultMmaTensorOp {
+    using Policy = cutlass::gemm::warp::MmaTensorOpPolicy<cutlass::arch::Mma<InstructionShape_, 32, ElementA, cutlass::layout::RowMajor,
+            ElementB, cutlass::layout::ColumnMajor, ElementC, cutlass::layout::RowMajor, Operator_>, cutlass::MatrixShape<1, 1>>;
+
+    // Define the warp-level tensor op
+    using Type = cutlass::gemm::warp::MmaTensorOp<WarpShape_, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC,
+        Policy, PartitionsK, AccumulatorsInRowMajor>;
+};
+```
+
+### MmaTensorOpPolicy
+
+当使用Tensor Core硬件实现矩阵乘加操作时，需要明确，所使用的底层arch::Mma<>操作，由此指定具体使用的mma.xxx指令，以及一个Warp线程束所负责的多个MMA形状之间的间距，间距以一个MMA形状为单位。这些属性被抽象为gemm::warp::MmaTensorOpPolicy模板类。
+
+在cutlass/gemm/warp/mma_tensor_op_policy.h头文件中，提供gemm::warp::MmaTensorOpPolicy的定义，如下所示。
+
+```c++
+/// Mma Tensor Op Policy
+template <
+    typename Operator_,  ///< hardware instruction(s) performing TensorOp (concept: arch::Mma)
+    typename OpDelta_    ///< distance between operations (concept: MatrixShape)
+>
+struct MmaTensorOpPolicy {
+    using Operator = Operator_;  ///< hardware instruction(s) performing TensorOp (concept: arch::Mma)
+    using OpDelta = OpDelta_;    ///< distance between operations (concept: MatrixShape)
+    using MmaShape = typename Operator::Shape;
+};
+```
+
+### MmaTensorOpMultipicandTileIterator
+
+当在线程束Warp层级执行矩阵乘加计算时，需要将数据从共享内存中读取到寄存器中，这被抽象为gemm::warp::MmaTensorOpMultipicandTileIterator模板类，分别适用于操作数矩阵A和矩阵B。值得注意的是，在从共享内存中加载矩阵数据时，使用的是ldmatrix指令。
+
+![](CUTLASS模板库.assets/gemm-warp-MmaTensorOpMultiplicandTileIterator.png)
+
+在cutlass/gemm/warp/mma_tensor_op_tile_iterator.h头文件中，提供gemm::warp::MmaTensorOpMultipicandTileIterator的定义，如下所示。
+
+```c++
+template <
+    typename Shape_,             /// Size of the matrix to load (concept: MatrixShape)
+    Operand Operand,             /// Operand identity
+    typename Element_,           /// Data type of A elements
+    typename Layout_,            /// Layout of operand
+    typename InstructionShape_,  /// Shape of one matrix production operation (concept: GemmShape)
+    int OpDelta_,                /// Delta between *MMA operations (in units of *MMA operations, concept: MatrixShape)
+    int Threads,                 /// Number of threads participating in one matrix operation
+    int PartitionsK_ = 1         /// Number of partitions along K dimension
+>
+class MmaTensorOpMultiplicandTileIterator;
+```
+
+当使用layout::TensorOpMultiplicandCongruous基础布局时，gemm::warp::MmaTensorOpMultipicandTileIterator访问器的实现代码如下所示。
+
+```c++
+/// This tile iterator is specialized for 32-thread TensorOps. 
+/// It uses LDSM to load from shared memory and therefore must be initialized with a TensorRef to shared memory.
+/// Satisfies: ReadableRandomAccessContiguousTileIteratorConcept
+template <
+    typename Shape_,             /// Size of the matrix to load (concept: PitchLinearShape)
+    Operand Operand_,            /// Identifies A or B multiplicand
+    typename Element_,           /// Data type of elements
+    typename InstructionShape_,  /// Shape of one matrix product operation (concept: PitchLinearShape)
+    int OpDelta_,                /// Interval between adjacent *MMA instructions (in units of MMA instructions)
+    int PartitionsK_             /// Number of partitions along K dimension
+>
+class MmaTensorOpMultiplicandTileIterator<Shape_, Operand_, Element_,
+    cutlass::layout::TensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, 64>,
+    InstructionShape_, OpDelta_, 32, PartitionsK_
+> {
+public:
+    using Shape = Shape_;                      /// Shape of tile to load (concept: PitchLinearShape)
+    static Operand const kOperand = Operand_;  /// Operand tag
+    using Element = Element_;                  /// Element type
+    using Layout = cutlass::layout::TensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, 64>;  /// Layout of source tile
+    using InstructionShape = InstructionShape_;    /// Shape of one matrix product operation (concept: GemmShape)
+    static int const kOpDelta = OpDelta_;          /// Delta between *MMA operations (in units of *MMA operations, concept: MatrixShape)
+    static int const kThreads = 32;                /// Number of participating threads
+    static int const kPartitionsK = PartitionsK_;  /// Number of partitions along K dimension
+
+    using TensorRef = TensorRef<Element, Layout>;                   /// TensorRef type for loading element from a tensor
+    using Index = typename TensorRef::Index;                        /// Index type
+    using LongIndex = typename TensorRef::LongIndex;                /// Long Index type
+    using StrideIndex = typename TensorRef::Layout::Stride::Index;  /// Long Index type
+    using TensorCoord = typename TensorRef::TensorCoord;            /// Coordinate for an element in the tensor
+
+    /// Internal structure of iterator - made public to enable introspection
+    struct Policy {
+        /// Determine number of elements along outer and inner dimension per individual LDSM op (.m8n8)
+        static int const kLdsmOpOuter = Layout::kElementsPerAccess;  /// along InstructionShape::kContiguous
+        static int const kLdsmOpInner = 8;                           /// along InstructionShape::kStrided
+
+        /// Shape of one individual LDSM instruction.
+        /// 使用一条`ldmatrix.sync.aligned.m8n8.x4.shared.b16`指令，同时加载4个矩阵（8x8），这4个矩阵的排布即是LdsmShape
+        static int const LdsmShapeStrided = InstructionShape::kStrided / kLdsmOpInner;
+        static int const LdsmShapeContiguous = 4 / LdsmShapeStrided;
+        using LdsmShape = layout::PitchLinearShape<LdsmShapeContiguous, LdsmShapeStrided>;  // <4, 1> or <2, 2>
+
+        /// Number and arrangement of LDSM instructions
+        using LdsmIterations = layout::PitchLinearShape<Shape::kContiguous / Layout::kElementsPerAccess / LdsmShapeContiguous, 1>;
+        /// Number of groups for each tile
+        static int const kGroupsPerTile = Shape::kStrided / InstructionShape::kStrided;
+    };
+
+    /// Fragment object holding a thread's part of a tile
+    using Fragment = Array<Element, Shape::kContiguous * InstructionShape::kStrided / kThreads>;
+
+private:
+    /// Pointer type used for accesses
+    using AccessType = Array<Element, Layout::kElementsPerAccess>;
+
+    /// Number of internal pointers needed to reference shared memory
+    static int const kPointerCount = Layout::TileShape::kContiguous / Policy::LdsmShape::kContiguous;
+
+    AccessType const *pointer_[kPointerCount];  /// Shared memory base pointers - not advanced
+    StrideIndex stride_;                        /// Layout object storing stride values
+    Index byte_offset_;                         /// Byte offset incremented as iterator advances
+    int k_group_idx_;                           /// Internal counter used to jump to next K partition
+
+public:
+    /// Default ctor constructs null iterator
+    MmaTensorOpMultiplicandTileIterator() : stride_(0), byte_offset_(0) {}
+
+    /// Constructor from TensorRef
+    MmaTensorOpMultiplicandTileIterator(TensorRef const &ref, int lane_id)
+        : stride_(ref.stride(0) / Layout::kElementsPerAccess), byte_offset_(0), k_group_idx_(0) {
+        // 因为一个`ldmatrix.x4`指令加载4个矩阵（8×8），共32个行地址由32个线程负责，那么
+        // 一个quad指的是32的1/4，即是8；一个quad_pair指的是32的1/4的1/2，即是4；一个quad_quad指的是32的1/4的1/4，即是2
+        int quad_pair = (lane_id >> 3);          // 0 ~ 3
+        int quad_quad = (lane_id >> 4);          // 0 ~ 1
+        int lane_in_quad = (lane_id & 3);        // 0 ~ 3
+        int lane_in_quad_pair = (lane_id & 7);   // 0 ~ 7
+        int lane_in_quad_quad = (lane_id & 15);  // 0 ~ 15
+        
+        for (int i = 0; i < kPointerCount; ++i) {
+            int partition_contiguous_idx = -1;
+            int access_contiguous_idx = -1;
+            int access_strided_idx = -1;
+            // Q stands for one 8x128bit block, i.e. one 8x8 matrix with .b16 type
+            if (Policy::LdsmShape::kContiguous == 4) {
+                // Matrix multiply .m16n8k8 A/B
+                // Q0 Q1 Q2 Q3
+                // Four blocks are next to each other in the contiguous dimension.
+                partition_contiguous_idx = ((lane_in_quad_pair >> 2) ^ i);
+                access_contiguous_idx = (quad_pair ^ lane_in_quad);
+                access_strided_idx = lane_in_quad_pair;
+            } else if (Policy::LdsmShape::kContiguous == 2 && kOperand == Operand::kA) {
+                // Matrix multiply .m16n8k16 A
+                // Q0 Q1
+                // Q2 Q3
+                partition_contiguous_idx = ((lane_in_quad_pair >> 2) ^ (i >> 1));
+                access_contiguous_idx = (((quad_pair & 1) + ((i & 1) << 1)) ^ lane_in_quad);
+                access_strided_idx = lane_in_quad_pair + (lane_id >> 4 << 3);
+            } else if (Policy::LdsmShape::kContiguous == 2 && kOperand == Operand::kB) {
+                // Matrix multiply .m16n8k16 B
+                // Q0 Q2
+                // Q1 Q3
+                partition_contiguous_idx = ((lane_in_quad_pair >> 2) ^ (i >> 1));
+                access_contiguous_idx = ((quad_quad + ((i & 1) << 1)) ^ lane_in_quad);
+                access_strided_idx = lane_in_quad_quad;
+            } else if (Policy::LdsmShape::kContiguous == 1) {
+                // Matrix multiply .m16n8k32.SP B
+                // Q0
+                // Q1
+                // Q2
+                // Q3
+                partition_contiguous_idx = ((lane_in_quad_pair >> 2) ^ (i >> 2));
+                access_contiguous_idx = ((i & 3) ^ lane_in_quad);
+                access_strided_idx = lane_id;
+            }
+            int access_contiguous = partition_contiguous_idx * Layout::PartitionShape::kContiguous + access_contiguous_idx;
+            int access_strided = access_strided_idx;
+            pointer_[i] = reinterpret_cast<AccessType const *>(ref.data()) + access_contiguous + access_strided * stride_;
+        }
+    }
+
+    /// Adds a pointer offset to internal pointer(s) to advance through memory
+    MmaTensorOpMultiplicandTileIterator & add_pointer_offset(LongIndex offset) {
+        byte_offset_ += offset * sizeof(Element);
+        return *this;
+    }
+
+    /// Advances an iterator along logical dimensions of matrix in units of whole tiles
+    MmaTensorOpMultiplicandTileIterator & add_tile_offset(TensorCoord const &tile_offset) {
+        int contiguous_offset = tile_offset.contiguous();
+        if (Shape::kContiguous == Layout::PartitionShape::kContiguous * Layout::kElementsPerAccess) {
+            if (tile_offset.contiguous() % 2) {
+                for (int i = 0; i < kPointerCount / 2; ++i) {
+                    AccessType const *tmp_pointer = pointer_[i];
+                    pointer_[i] = pointer_[i + kPointerCount / 2];
+                    pointer_[i + kPointerCount / 2] = tmp_pointer;
+                }
+            }
+            contiguous_offset = (tile_offset.contiguous() >> 1) << 1;
+        }
+        int offset = (tile_offset.strided() * InstructionShape::kStrided) * stride_ * Layout::kElementsPerAccess
+            + contiguous_offset * Shape::kContiguous;
+        add_pointer_offset(offset);
+        return *this;
+    }
+
+    /// Advances the iterator along the advance dimension
+    MmaTensorOpMultiplicandTileIterator & operator++() {
+        add_tile_offset({ 0, 1 });
+        if (kPartitionsK > 1) {
+            ++k_group_idx_;
+            // Jump to next stage
+            if (k_group_idx_ == Policy::kGroupsPerTile) {
+                k_group_idx_ = 0;
+                add_tile_offset({ 0, ((kPartitionsK - 1) * Policy::kGroupsPerTile) });
+            }
+        }
+        return *this;
+    }
+
+    /// Loads a fragment from memory with additional logical offset
+    void load_with_byte_offset(Fragment &frag, Index byte_offset) const {
+        Array<unsigned, Policy::LdsmShape::kCount> *fetch_ptr = reinterpret_cast<Array<unsigned, Policy::LdsmShape::kCount> *>(&frag);
+        for (int s = 0; s < Policy::LdsmIterations::kStrided; ++s) {
+            for (int c = 0; c < Policy::LdsmIterations::kContiguous; ++c) {
+                int access_idx = c + s * Policy::LdsmIterations::kContiguous;
+                AccessType const *source_ptr = pointer_[c % kPointerCount] + Layout::TileShape::kContiguous * (c / kPointerCount)
+                    + Policy::kLdsmOpInner * Policy::LdsmShape::kStrided * s * stride_;
+                char const *source_byte_ptr = reinterpret_cast<char const *>(source_ptr) + byte_offset + byte_offset_;
+                cutlass::arch::ldsm<layout::ColumnMajor, Policy::LdsmShape::kCount>(fetch_ptr[access_idx], source_byte_ptr);
+            }
+        }
+    }
+
+    /// Loads a fragment from memory at the location pointed to by the iterator.
+    void load(Fragment &frag) const {
+        load_with_byte_offset(frag, 0);
+    }
+        
+    /// Notify the iterator which k-group it is currently pointing to.
+    /// This does not advance the iterator. Rather, it overrides its internal tracking with constant-valued k-group index
+    /// to enable the compiler to fold constants and achieve more efficient code.
+    /// This is used by some nontrivial permuted layouts.
+    void set_kgroup_index(int k_group) {
+        // no op
+    }
+};
+```
+
+在实现时，会根据所访问的矩阵操作数，以及矩阵操作数的排列布局，来提供最高效的访问方式，即模板类的部分实例化。例如，对于矩阵A而言，最优布局是layout::ColumnMajorTensorOpMultiplicandCongruous布局，对于矩阵B而言，最优布局是layout::RowMajorTensorOpMultiplicandCongruous布局。
+
+当矩阵A使用layout::ColumnMajorTensorOpMultiplicandCongruous布局时，gemm::warp::MmaTensorOpMultipicandTileIterator访问器的实现代码如下。当矩阵B使用layout::RowMajorTensorOpMultiplicandCongruous布局时，gemm::warp::MmaTensorOpMultipicandTileIterator访问器的实现代码与矩阵A的情况类似，此处不再赘述。
+
+```c++
+/// This tile iterator is specialized for 32-thread TensorOps.
+/// It uses LDSM to load from shared memory and therefore must be initialized with a TensorRef to shared memory. 
+/// Satisfies: ReadableRandomAccessContiguousTileIteratorConcept
+template <
+    typename Shape_,             /// Size of the matrix to load (concept: MatrixShape)
+    Operand Operand_,            /// Identifies A or B multiplicand
+    typename Element_,           /// Data type of elements
+    typename InstructionShape_,  /// Shape of one matrix product operation (concept: MatrixShape)
+    int OpDelta_,                /// Interval between adjacent *MMA instructions (in units of MMA instructions)
+    int Crosswise,               /// Element number when the layout crosses (in units of elements)
+    int PartitionsK_             /// Number of partitions along K dimension
+>
+class MmaTensorOpMultiplicandTileIterator<Shape_, Operand_, Element_,
+    cutlass::layout::ColumnMajorTensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>,
+    InstructionShape_, OpDelta_, 32, PartitionsK_
+> {
+public:
+    using Shape = Shape_;                      /// Shape of tile to load (concept: PitchLinearShape)
+    static Operand const kOperand = Operand_;  /// Operand tag
+    using Element = Element_;                  /// Element type
+    static int const kCrosswise = Crosswise;   /// MBlock or NBlock size
+    using Layout = cutlass::layout::ColumnMajorTensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, kCrosswise>;  /// source layout
+    using InstructionShape = InstructionShape_;  /// Shape of one matrix product operation (concept: MatrixShape)
+    static int const kOpDelta = OpDelta_;        /// Delta between *MMA operations (in units of *MMA operations, concept: MatrixShape)
+    static int const kThreads = 32;              /// Number of participating threads
+
+    using TensorRef = TensorRef<Element, Layout>;                   /// TensorRef type for loading element from a tensor
+    using Index = typename TensorRef::Index;                        /// Index type
+    using LongIndex = typename TensorRef::LongIndex;                /// Long Index type
+    using StrideIndex = typename TensorRef::Layout::Stride::Index;  /// Long Index type
+    using TensorCoord = typename TensorRef::TensorCoord;            /// Coordinate for an element in the tensor
+
+    /// Underlying tile iterator implementation
+    using Base = MmaTensorOpMultiplicandTileIterator<
+        layout::PitchLinearShape<Shape::kRow, Shape::kColumn>, kOperand, Element,
+        layout::TensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, kCrosswise>,
+        layout::PitchLinearShape<InstructionShape::kRow, InstructionShape::kColumn>,
+        kOpDelta, kThreads, PartitionsK_>;
+
+    /// Underlying tile iterator
+    Base iterator_;
+        
+    /// Fragment object holding a thread's part of a tile
+    using Fragment = typename Base::Fragment;
+
+public:
+    /// Default Constructor constructs null iterator
+    MmaTensorOpMultiplicandTileIterator() {}
+
+    /// Constructor from TensorRef
+    MmaTensorOpMultiplicandTileIterator(TensorRef const &ref, int lane_id) : iterator_({ ref.data(), ref.stride() }, lane_id) {}
+
+    /// Adds a pointer offset to internal pointer(s) to advance through memory
+    MmaTensorOpMultiplicandTileIterator & add_pointer_offset(LongIndex offset) {
+        iterator_.add_pointer_offset(offset);
+        return *this;
+    }
+
+    /// Advances an iterator along logical dimensions of matrix in units of whole tiles
+    MmaTensorOpMultiplicandTileIterator & add_tile_offset(TensorCoord const &tile_offset) {
+        iterator_.add_tile_offset({ tile_offset.row(), tile_offset.column() });
+        return *this;
+    }
+
+    /// Advances the iterator along the advance dimension
+    MmaTensorOpMultiplicandTileIterator & operator++() {
+        ++iterator_;
+        return *this;
+    }
+
+    /// Loads a fragment from memory with additional logical offset
+    void load_with_byte_offset(Fragment &frag, Index byte_offset) const {
+        iterator_.load_with_byte_offset(frag, byte_offset);
+    }
+
+    /// Loads a fragment from memory at the location pointed to by the iterator.
+    void load(Fragment &frag) const {
+        iterator_.load(frag);
+    }
+
+    /// Notify the iterator which k-group it is currently pointing to.
+    /// This does not advance the iterator. Rather, it overrides its internal tracking with constant-valued k-group index 
+    /// to enable the compiler to fold constants and achieve more efficient code.
+    /// This is used by some nontrivial permuted layouts.
+    void set_kgroup_index(int k_group) {
+        iterator_.set_kgroup_index(k_group);
+    }
+};
+```
+
+### MmaTensorOpAccumulatorTileIterator
+
+当在线程束Warp层级执行矩阵乘加计算时，需要将数据从共享内存中读取到寄存器中，并将计算结果从寄存器中写入到共享内存中，这被抽象为gemm::warp::MmaTensorOpAccumulatorTileIterator模板类，适用于累加器矩阵C和矩阵D。
+
+![](CUTLASS模板库.assets/gemm-warp-MmaTensorOpAccumulatorTileIterator.png)
+
+在cutlass/gemm/warp/mma_tensor_op_tile_iterator.h头文件中，提供gemm::warp::MmaTensorOpAccumulatorTileIterator的定义，如下所示。
+
+```c++
+template <
+    typename Shape_,             /// Size of the matrix to load (concept: MatrixShape)
+    typename Element_,           /// Element type
+    typename Layout_,            /// Layout of operand in memory
+    typename InstructionShape_,  /// Shape of one matrix product operation (concept: MatrixShape)
+    typename OpDelta_            /// Interval between adjacent *MMA instructions (in units of MMA instructions, concept: MatrixShape)
+>
+class MmaTensorOpAccumulatorTileIterator;
+```
+
+当矩阵C和矩阵D使用layout::RowMajor布局时，性能最优，gemm::warp::MmaTensorOpAccumulatorTileIterator访问器的实现代码如下。
+
+```c++
+/// This tile iterator is specialized for 32-thread TensorOps.
+/// It is used to load or store accumulators from memory and is agnostic to layout.
+/// It could be faster if it assumed row-major accumulator layout.
+/// Satisfies: ReadableRandomAccessContiguousTileIteratorConcept | WriteableRandomAccessContiguousTileIteratorConcept
+template <
+    typename Shape_,             /// Size of the matrix to load (concept: MatrixShape)
+    typename Element_,           /// Element type
+    typename InstructionShape_,  /// Shape of one matrix product operation (concept: MatrixShape)
+    typename OpDelta_            /// Interval between adjacent *MMA instructions (in units of MMA instructions, concept: MatrixShape)
+>
+class MmaTensorOpAccumulatorTileIterator<Shape_, Element_, cutlass::layout::RowMajor, InstructionShape_, OpDelta_> {
+public:
+    using Shape = Shape_;                         /// Shape of tile to load (concept: MatrixShape)
+    static Operand const kOperand = Operand::kC;  /// Operand tag
+    using Element = Element_;                     /// Element type
+    using Layout = cutlass::layout::RowMajor;     /// Layout of source tile
+    using InstructionShape = InstructionShape_;   /// Shape of one matrix product operation (concept: MatrixShape)
+    using OpDelta = OpDelta_;                     /// Delta between *MMA operations (in units of *MMA operations, concept: MatrixShape)
+    static int const kThreads = 32;               /// Number of participating threads
+
+    using TensorRef = TensorRef<Element, Layout>;         /// TensorRef type for loading element from a tensor
+    using Index = typename TensorRef::Index;              /// Index type
+    using LongIndex = typename TensorRef::LongIndex;      /// Long Index type
+    using TensorCoord = typename TensorRef::TensorCoord;  /// Coordinate for an element in the tensor
+
+    /// Internal structure of iterator - made public to enable introspection
+    struct Policy {
+        /// Number of mma operations performed
+        using MmaIterations = MatrixShape<(Shape::kRow + InstructionShape::kM - 1) / InstructionShape::kM,
+            (Shape::kColumn + InstructionShape::kN - 1) / InstructionShape::kN>;
+    };
+
+    /// Fragment object holding a thread's part of a tile
+    using Fragment = Array<Element, Policy::MmaIterations::kCount * InstructionShape::kMN / kThreads>;
+
+private:
+    // Assume accumulator tile is an arrangement of 8-by-8 tiles replicated over the entire shape,
+    // with each quad mapped to one row and each thread mapped to 1/4 of the elements of that row.
+    // The accumulators within one row are assumed to be consecutive.
+    static int const kElementsPerAccess = InstructionShape::kN / 4;
+    static int const kRowsPerTile = 8;
+    static int const kAccumulatorRows = InstructionShape::kM / kRowsPerTile;
+
+    /// Reference to output tensor
+    TensorRef ref_;
+
+public:
+    /// Default Constructor constructs null iterator
+    MmaTensorOpAccumulatorTileIterator() {}
+
+    /// Constructor from TensorRef
+    MmaTensorOpAccumulatorTileIterator(TensorRef const &ref, int lane_id) : ref_(ref) {
+        // Each thread has two elements with .b16 type
+        // | T0  | T1  | T2  | T3  |
+        // | T4  | T5  | T6  | T7  |
+        // | T8  | T9  | T10 | T11 |
+        // | T12 | T13 | T14 | T15 |
+        // | T16 | T17 | T18 | T19 |
+        // | T20 | T21 | T22 | T23 |
+        // | T24 | T25 | T26 | T27 |
+        // | T28 | T29 | T30 | T31 |
+        int quad = (lane_id >> 2);
+        int lane_in_quad = (lane_id & 3);
+        MatrixCoord lane_offset(quad, lane_in_quad * kElementsPerAccess);
+        ref_.add_coord_offset(lane_offset);
+    }
+
+    /// Advances an iterator along logical dimensions of matrix in units of whole tiles
+    MmaTensorOpAccumulatorTileIterator & add_tile_offset(TensorCoord const &tile_offset) {
+        ref_.add_coord_offset(tile_offset * make_Coord(Shape::kRow, Shape::kColumn));
+        return *this;
+    }
+
+    /// Loads a fragment from memory with additional logical offset
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) const {
+        TensorRef offset_ref(ref_);
+        offset_ref.add_pointer_offset(pointer_offset);
+        for (int mma_n = 0; mma_n < Policy::MmaIterations::kColumn; ++mma_n) {
+            for (int mma_m = 0; mma_m < Policy::MmaIterations::kRow; ++mma_m) {
+                int mma_accum_start = kAccumulatorRows * kElementsPerAccess * (mma_n * Policy::MmaIterations::kRow + mma_m);
+                for (int row = 0; row < kAccumulatorRows; ++row) {
+                    for (int col = 0; col < kElementsPerAccess; ++col) {
+                        int accum_m = mma_m * InstructionShape::kM * OpDelta::kRow + row * kRowsPerTile;
+                        int accum_n = mma_n * InstructionShape::kN * OpDelta::kColumn + col;
+                        frag[mma_accum_start + row * kElementsPerAccess + col] = offset_ref.at({ accum_m, accum_n });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Loads a fragment from memory at the location pointed to by the iterator.
+    void load(Fragment &frag) const {
+        load_with_pointer_offset(frag, 0);
+    }
+
+    /// Stores a fragment to memory with additional pointer offset
+    void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) const {
+        TensorRef offset_ref(ref_);
+        offset_ref.add_pointer_offset(pointer_offset);
+        for (int mma_n = 0; mma_n < Policy::MmaIterations::kColumn; ++mma_n) {
+            for (int mma_m = 0; mma_m < Policy::MmaIterations::kRow; ++mma_m) {
+                int mma_accum_start = kAccumulatorRows * kElementsPerAccess * (mma_n * Policy::MmaIterations::kRow + mma_m);
+                for (int row = 0; row < kAccumulatorRows; ++row) {
+                    for (int col = 0; col < kElementsPerAccess; ++col) {
+                        int accum_m = mma_m * InstructionShape::kM * OpDelta::kRow + row * kRowsPerTile;
+                        int accum_n = mma_n * InstructionShape::kN * OpDelta::kColumn + col;
+                        offset_ref.at({ accum_m, accum_n }) = frag[mma_accum_start + row * kElementsPerAccess + col];
+                    }
+                }
+            }
+        }
+    }
+
+    /// Stores a fragment to memory
+    void store(Fragment const &frag) const {
+        store_with_pointer_offset(frag, 0);
+    }
+};
+```
+
+### MmaTensorOp
+
+当在Tensor Core硬件上使用mma.xxx系列指令实现矩阵乘加操作时，在Warp线程束层级的实现被抽象为gemm::warp::MmaTensorOp模板类。
+
+在cutlass/gemm/warp/mma_tensor_op.h头文件中，提供gemm::warp::MmaTensorOp的定义，如下所示。
+
+```c++
+/// Structure to compute the matrix product targeting Tensor Cores.
+template <
+    typename Shape_,        /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    typename ElementA_,     /// Data type of A elements
+    typename LayoutA_,      /// Layout of A matrix (concept: MatrixLayout)
+    typename ElementB_,     /// Data type of B elements
+    typename LayoutB_,      /// Layout of B matrix (concept: MatrixLayout)
+    typename ElementC_,     /// Element type of C matrix
+    typename LayoutC_,      /// Layout of C matrix (concept: MatrixLayout)
+    typename Policy_,       /// Policy describing warp-level MmaTensorOp (concept: MmaTensorOp policy)
+    int PartitionsK_ = 1,   /// Number of partitions along K dimension
+    /// Store the accumulators in row major or column major. Row major is used when output layout is interleaved.
+    bool AccumulatorsInRowMajor = false,
+    typename Enable = bool  /// Used for partial specialization
+>
+class MmaTensorOp {
+public:
+    using Shape = Shape_;        /// Shape of warp-level matrix operation (concept: GemmShape)
+    using ElementA = ElementA_;  /// Data type of multiplicand A
+    using LayoutA = LayoutA_;    /// Layout of multiplicand A
+    using ElementB = ElementB_;  /// Data type of multiplicand B
+    using LayoutB = LayoutB_;    /// Layout of multiplicand B
+    using ElementC = ElementC_;  /// Data type of accumulator matrix C
+    using LayoutC = LayoutC_;    /// Layout of accumulator matrix C
+
+    using Policy = Policy_;                                    /// Shape of the warp in units of thread (concept: MmaLanePolicySimt)
+    using ArchMmaOperator = typename Policy::Operator;         /// Underlying matrix multiply operator (concept: arch::Mma)
+    using MathOperator = typename ArchMmaOperator::Operator;   /// Indicates math operator
+    using ArchTag = typename ArchMmaOperator::ArchTag;         /// Architecture tag from underlying instruction
+    using OperatorClass = arch::OpClassTensorOp;               /// Indicates class of matrix operator
+    using InstructionShape = typename ArchMmaOperator::Shape;  /// Shape of underlying instruction
+
+    static int const kThreadCount = 32;            /// Number of threads participating in warp-level matrix product
+    static int const kPartitionsK = PartitionsK_;  /// Number of partitions along K dimension
+
+public:
+    /// Iterates over the A operand in memory
+    using IteratorA = MmaTensorOpMultiplicandTileIterator<MatrixShape<Shape::kM, Shape::kK>, Operand::kA, ElementA, LayoutA,
+        MatrixShape<ArchMmaOperator::Shape::kM, ArchMmaOperator::Shape::kK>, Policy::OpDelta::kRow, kThreadCount, kPartitionsK>;
+    using FragmentA = typename IteratorA::Fragment;  /// Storage for A tile
+    using TransformedFragmentA = Array<typename ArchMmaOperator::ElementA, FragmentA::kElements>;  /// Storage for transformed A tile
+
+    /// Iterates over the B operand in memory
+    using IteratorB = MmaTensorOpMultiplicandTileIterator<MatrixShape<Shape::kK, Shape::kN>, Operand::kB, ElementB, LayoutB,
+        MatrixShape<ArchMmaOperator::Shape::kK, ArchMmaOperator::Shape::kN>, Policy::OpDelta::kRow, kThreadCount, kPartitionsK>;
+    using FragmentB = typename IteratorB::Fragment;  /// Storage for B tile
+    using TransformedFragmentB = Array<typename ArchMmaOperator::ElementB, FragmentB::kElements>;  /// Storage for transformed B tile
+
+    /// Iterates over the C operand in memory
+    using IteratorC = MmaTensorOpAccumulatorTileIterator<MatrixShape<Shape::kM, Shape::kN>, ElementC, LayoutC,
+        typename ArchMmaOperator::Shape, typename Policy::OpDelta>;
+    using FragmentC = typename IteratorC::Fragment;  /// Storage for C tile
+
+    /// Number of mma operations performed
+    using MmaIterations = MatrixShape<(Shape::kM + ArchMmaOperator::Shape::kM - 1) / ArchMmaOperator::Shape::kM,
+        (Shape::kN + ArchMmaOperator::Shape::kN - 1) / ArchMmaOperator::Shape::kN>;
+
+public:
+    /// Underlying matrix multiply operator (concept: arch::Mma)
+    ArchMmaOperator mma;
+
+public:
+    /// Constructor
+    MmaTensorOp() {}
+
+    /// Performs a warp-level matrix multiply-accumulate operation
+    void operator()(FragmentC &D, TransformedFragmentA const &A, TransformedFragmentB const &B, FragmentC const &C) const {
+        using MmaOperandA = typename ArchMmaOperator::FragmentA;
+        using MmaOperandB = typename ArchMmaOperator::FragmentB;
+        using MmaOperandC = typename ArchMmaOperator::FragmentC;
+        D = C;
+        MmaOperandA const *ptr_A = reinterpret_cast<MmaOperandA const *>(&A);
+        MmaOperandB const *ptr_B = reinterpret_cast<MmaOperandB const *>(&B);
+        MmaOperandC *ptr_D = reinterpret_cast<MmaOperandC *>(&D);
+
+        for (int n = 0; n < MmaIterations::kColumn; ++n) {
+            for (int m = 0; m < MmaIterations::kRow; ++m) {
+                int m_serpentine = ((n % 2) ? (MmaIterations::kRow - 1 - m) : m);
+                mma(ptr_D[m_serpentine + n * MmaIterations::kRow], ptr_A[m_serpentine], ptr_B[n],
+                    ptr_D[m_serpentine + n * MmaIterations::kRow]
+                );
+            }
+        }
+    }
+};
+```
