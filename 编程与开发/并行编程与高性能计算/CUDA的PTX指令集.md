@@ -1404,7 +1404,7 @@ cp.async.ca.shared{::cta}.global{.L2::cache_hint}{.L2::prefetch_size} [dst], [sr
 cy_size            = { 4, 8, 16 };
 ```
 
-cp.size指令允许使用32位整数作为可选的src_size操作数，指定要从src地址复制的数据量的大小，以字节为单位，必须小于等于cp_size。这种情况下，只会从src地址处复制src_size字节的数据到dst地址处，而剩余的cp_size－src_size字节的数据将使用0值进行填充。当src_size大于cp_size时，行为未定义。cp.size指令还允许使用.pred谓词作为ignore_src操作数，指定是否完全忽略来自src源地址的数据，缺省默认为False值，如果忽略则使用0值填充dst地址处数据。可选的src_size操作数和ignore_src操作数允许程序在PTX指令层面，正确处理数据加载过程中的边界问题。
+cp_async指令允许使用32位整数作为可选的src_size操作数，指定要从src地址复制的数据量的大小，以字节为单位，必须小于等于cp_size。这种情况下，只会从src地址处复制src_size字节的数据到dst地址处，而剩余的cp_size－src_size字节的数据将使用0值进行填充。当src_size大于cp_size时，行为未定义。cp_async指令还允许使用.pred谓词作为ignore_src操作数，指定是否完全忽略来自src源地址的数据，缺省默认为False值，如果忽略则使用0值填充dst地址处数据。可选的src_size操作数和ignore_src操作数允许程序在PTX指令层面，正确处理数据加载过程中的边界问题。
 
 必须的.async限定符指示cp指令将启动异步内存复制操作，并且程序的控制权在复制作完成之前就会返回给执行线程。然后，执行线程可以使用异步组完成机制，即cp.async.wait_group指令或cp.async.wait_all指令，来等待异步复制操作的完成。或者，执行线程使用mbarrier内存栅障完成机制，即mbarrier指令，来等待异步复制操作的完成。
 

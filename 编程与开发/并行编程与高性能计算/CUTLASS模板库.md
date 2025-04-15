@@ -1810,10 +1810,10 @@ template <
 class TensorView : public TensorRef<Element_, Layout_> {
 public:
     using Base = cutlass::TensorRef<Element_, Layout_>;  /// Base tensor reference
-    using Layout = Layout_;      /// Mapping function from logical coordinate to internal n-D array
-    using TensorRef = Base;      /// Underlying TensorRef type
-    using Element = Element_;    /// Data type of individual access
-    using Reference = Element&;  /// Reference type to an element
+    using Layout = Layout_;                              /// Mapping function from logical coordinate to internal n-D array
+    using TensorRef = Base;                              /// Underlying TensorRef type
+    using Element = Element_;                            /// Data type of individual access
+    using Reference = Element&;                          /// Reference type to an element
 
     static int const kRank = Layout::kRank;  /// Logical rank of tensor index space
 
@@ -2336,7 +2336,7 @@ struct Wmma;
 
 ```c++
 // WMMA template structure defines nvcuda::wmma::fragments and static assert for
-// wmma native instruction sizes supported for half
+// wmma native instruction sizes supported for half.
 template <typename Shape_, typename LayoutA_, typename LayoutB_, typename ElementC_, typename LayoutC_>
 struct Wmma<
     Shape_,                       ///< Size of the matrix product (concept: GemmShape)
@@ -3436,3 +3436,859 @@ public:
     }
 };
 ```
+
+## Threadblock Level
+
+在cutlass/gemm/threadblock目录中，提供矩阵乘加操作在Threadblock线程块层级的实现，主要包括双缓冲的实现与多级流水线的实现，这些操作被抽象为gemm::threadblock::MmaPipelined模板类和gemm::threadblock::MmaMultiStage模板类。此外，还提供一些相关的辅助类型，例如默认执行配置等。此外，在线程块级别，负责将数据从全局内存加载到寄存器当中，以及将寄存器中数据写入到共享内存当中，这需要cutlass/transform目录中提供的数据转移器。
+
+![](CUTLASS模板库.assets/gemm-threadblock.png)
+
+### MmaPolicy
+
+当在Threadblock线程块层级实现矩阵乘加操作时，需要明确，一个Warp线程束所使用的矩阵乘加实现、共享内存偏移、维度K上的划分数目。这些属性被抽象为gemm::threadblock::MmaPolicy模板类。
+
+在cutlass/gemm/threadblock/mma_base.h头文件中，提供gemm::threadblock::MmaPolicy的定义，如下所示。
+
+```c++
+/// Policy object describing MmaTensorOp and MmaSimt
+template <
+    typename Operator_,      /// Warp-level GEMM operator (concept: gemm::warp::Mma)
+    typename SmemPaddingA_,  /// Padding used for A operand in shared memory (concept: MatrixShape)
+    typename SmemPaddingB_,  /// Padding used for B operand in shared memory (concept: MatrixShape)
+    int PartitionsK = 1      /// Number of partitions of K dimension of GEMM
+>
+struct MmaPolicy {
+    using Operator = Operator_;             /// Warp-level GEMM operator (concept: gemm::warp::MmaTensorOp or gemm::warp::MmaSimt)
+    using SmemPaddingA = SmemPaddingA_;     /// Padding used for A operand in shared memory
+    using SmemPaddingB = SmemPaddingB_;     /// Padding used for B operand in shared memory
+    static int kPartitionsK = PartitionsK;  /// Number of partitions of K dimension
+};
+```
+
+### DefaultMma
+
+当在Threadblock线程块层级实现矩阵乘加操作时，CUTLASS提供一个默认的模板配置，抽象为gemm::threadblock::DefaultMma模板类。在默认的模板配置中，会使用一个默认的核心模板配置，抽象为gemm::threadblock::DefaultMmaCore模板类，见下一小节所述。此外，根据底层实现使用的CUDA Core硬件或Tensor Core硬件的不同，以及底层实现使用的双缓冲或多级流水线的方式不同，默认的核心模板配置会使用不同的Warp线程束层级的矩阵乘加实现，以及使用不同的数据转移器。
+
+在cutlass/gemm/threadblock/default_mma.h头文件中，提供gemm::threadblock::DefaultMma的定义，如下所示。
+
+```c++
+template <
+    typename ElementA_,            /// Element type for A matrix operand
+    typename LayoutA_,             /// Layout type for A matrix operand
+    int kAlignmentA,               /// Access granularity of A matrix in units of elements
+    typename ElementB_,            /// Element type for B matrix operand
+    typename LayoutB_,             /// Layout type for B matrix operand
+    int kAlignmentB,               /// Access granularity of B matrix in units of elements
+    typename ElementAccumulator_,  /// Element type for internal accumulation
+    typename LayoutC_,             /// Layout type for C and D matrix operands
+    typename OperatorClass_,       /// Operator class tag
+    typename ArchTag_,             /// Tag indicating architecture to tune for
+    typename ThreadblockShape_,    /// Threadblock-level tile size (concept: GemmShape)
+    typename WarpShape_,           /// Warp-level tile size (concept: GemmShape)
+    typename InstructionShape_,    /// Instruction-level tile size (concept: GemmShape)
+    int Stages,                    /// Number of stages used in the pipelined mainloop
+    typename Operator,             /// Operation perfomed by GEMM
+    /// Store the accumulators in row major or column major. Row major is used when output layout is interleaved.
+    bool AccumulatorsInRowMajor = false,
+    /// Use zfill or predicate for out-of-bound cp.async
+    SharedMemoryClearOption SharedMemoryClear = SharedMemoryClearOption::kNone,
+    bool GatherA = false,                         /// Gather operand A by using an index array
+    bool GatherB = false,                         /// Gather operand B by using an index array
+    typename PermuteALayout = layout::NoPermute,  /// Permute operand A
+    typename PermuteBLayout = layout::NoPermute   /// Permute operand B
+>
+struct DefaultMma;
+```
+
+当使用gemm::threadblock::MmaPipelined实现时，gemm::threadblock::DefaultMma的实现代码如下所示，这可用CUDA Core或Tensor Core实现。
+
+```c++
+/// Specialization for row-major output (OperatorClass Simt)
+template <
+    typename ElementA,            /// Element type for A matrix operand
+    typename LayoutA,             /// Layout type for A matrix operand
+    int kAlignmentA,              /// Access granularity of A matrix in units of elements
+    typename ElementB,            /// Element type for B matrix operand
+    typename LayoutB,             /// Layout type for B matrix operand
+    int kAlignmentB,              /// Access granularity of B matrix in units of elements
+    typename ElementAccumulator,  /// Element type for internal accumulation
+    typename LayoutC,             /// Layout type for C and D matrix operand
+    typename ArchTag,             /// Tag indicating architecture to tune for
+    typename ThreadblockShape,    /// Threadblock-level tile size (concept: GemmShape)
+    typename WarpShape,           /// Warp-level tile size (concept: GemmShape)
+    typename InstructionShape,    /// Instruction-level tile size (concept: GemmShape)
+    typename Operator,            /// Operation performed by GEMM
+    bool GatherA,                 /// Gather operand A by using an index array
+    bool GatherB,                 /// Gather operand B by using an index array
+    typename PermuteALayout,      /// Permute operand A
+    typename PermuteBLayout       /// Permute operand B
+>
+struct DefaultMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, ElementAccumulator, LayoutC,
+    arch::OpClassSimt, ArchTag, ThreadblockShape, WarpShape, InstructionShape, 2, Operator, false,
+    SharedMemoryClearOption::kNone, GatherA, GatherB, PermuteALayout, PermuteBLayout
+> {
+    // Define the MmaCore components
+    using MmaCore = typename cutlass::gemm::threadblock::DefaultMmaCore<ThreadblockShape, WarpShape, InstructionShape,
+        ElementA, LayoutA, ElementB, LayoutB, ElementAccumulator, LayoutC, arch::OpClassSimt, 2, Operator>;
+
+    // Define iterators over tiles from the A operand. Iterators to read from global memory.
+    using IteratorA = cutlass::transform::threadblock::PredicatedTileIterator<
+        cutlass::MatrixShape<MmaCore::Shape::kM, MmaCore::Shape::kK>,
+        ElementA, LayoutA, 1, typename MmaCore::IteratorThreadMapA, kAlignmentA, GatherA, PermuteALayout>;
+
+    // Define iterators over tiles from the B operand. Iterators to read from global memory.
+    using IteratorB = cutlass::transform::threadblock::PredicatedTileIterator<
+        cutlass::MatrixShape<MmaCore::Shape::kK, MmaCore::Shape::kN>,
+        ElementB, LayoutB, 0, typename MmaCore::IteratorThreadMapB, kAlignmentB, GatherB, PermuteBLayout>;
+
+    // Define the threadblock-scoped pipelined matrix multiply
+    using ThreadblockMma = cutlass::gemm::threadblock::MmaPipelined<typename MmaCore::Shape,
+        IteratorA, typename MmaCore::SmemIteratorA, IteratorB, typename MmaCore::SmemIteratorB,
+        ElementAccumulator, LayoutC, typename MmaCore::MmaPolicy>;
+};
+```
+
+```c++
+/// Specialization for row-major output (OperatorClass TensorOp)
+template <
+    typename ElementA,                          /// Element type for A matrix operand
+    typename LayoutA,                           /// Layout type for A matrix operand
+    int kAlignmentA,                            /// Access granularity of A matrix in units of elements
+    typename ElementB,                          /// Element type for B matrix operand
+    typename LayoutB,                           /// Layout type for B matrix operand
+    int kAlignmentB,                            /// Access granularity of B matrix in units of elements
+    typename ElementAccumulator,                /// Element type for internal accumulation
+    typename ArchTag,                           /// Tag indicating architecture to tune for
+    typename ThreadblockShape,                  /// Threadblock-level tile size (concept: GemmShape)
+    typename WarpShape,                         /// Warp-level tile size (concept: GemmShape)
+    typename InstructionShape,                  /// Instruction-level tile size (concept: GemmShape)
+    typename Operator,                          /// Operation performed by GEMM
+    SharedMemoryClearOption SharedMemoryClear,  /// Use zfill or predicate for out-of-bound cp.async
+    bool GatherA,                               /// Gather operand A by using an index array
+    bool GatherB,                               /// Gather operand B by using an index array
+    typename PermuteALayout,                    /// Permute operand A
+    typename PermuteBLayout                     /// Permute operand B
+>
+struct DefaultMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, ElementAccumulator, layout::RowMajor,
+    arch::OpClassTensorOp, ArchTag, ThreadblockShape, WarpShape, InstructionShape, 2, Operator, false, 
+    SharedMemoryClear, GatherA, GatherB, PermuteALayout, PermuteBLayout
+> {
+    // Define the MmaCore components
+    using MmaCore = typename cutlass::gemm::threadblock::DefaultMmaCore<ThreadblockShape, WarpShape, InstructionShape,
+        ElementA, LayoutA, ElementB, LayoutB, ElementAccumulator, layout::RowMajor, arch::OpClassTensorOp, 2, Operator>;
+
+    // Define iterators over tiles from the A operand. Iterators to read from global memory.
+    using IteratorA = cutlass::transform::threadblock::PredicatedTileIterator<
+        cutlass::MatrixShape<MmaCore::Shape::kM, MmaCore::Shape::kK>,
+        ElementA, LayoutA, 1, typename MmaCore::IteratorThreadMapA, kAlignmentA, GatherA, PermuteALayout>;
+
+    // Define iterators over tiles from the B operand. Iterators to read from global memory.
+    using IteratorB = cutlass::transform::threadblock::PredicatedTileIterator<
+        cutlass::MatrixShape<MmaCore::Shape::kK, MmaCore::Shape::kN>,
+        ElementB, LayoutB, 0, typename MmaCore::IteratorThreadMapB, kAlignmentB, GatherB, PermuteBLayout>;
+
+    // Define the threadblock-scoped pipelined matrix multiply
+    using ThreadblockMma = cutlass::gemm::threadblock::MmaPipelined<typename MmaCore::Shape,
+        IteratorA, typename MmaCore::SmemIteratorA, IteratorB, typename MmaCore::SmemIteratorB,
+        ElementAccumulator, layout::RowMajor, typename MmaCore::MmaPolicy>;
+};
+```
+
+当使用gemm::threadblock::MmaMultiStage实现时，gemm::threadblock::DefaultMma的实现代码如下所示，这可用CUDA Core或Tensor Core实现。
+
+```c++
+/// Specialization for row-major output (OperatorClass Simt)
+template <
+    typename ElementA,            /// Element type for A matrix operand
+    typename LayoutA,             /// Layout type for A matrix operand
+    int kAlignmentA,              /// Access granularity of A matrix in units of elements
+    typename ElementB,            /// Element type for B matrix operand
+    typename LayoutB,             /// Layout type for B matrix operand
+    int kAlignmentB,              /// Access granularity of B matrix in units of elements
+    typename ElementAccumulator,  /// Element type for internal accumulation
+    typename LayoutC,             /// Layout type for C and D matrix operand
+    typename ArchTag,             /// Tag indicating architecture to tune for
+    typename ThreadblockShape,    /// Threadblock-level tile size (concept: GemmShape)
+    typename WarpShape,           /// Warp-level tile size (concept: GemmShape)
+    typename InstructionShape,    /// Instruction-level tile size (concept: GemmShape)
+    int Stages,                   /// Number of stages used in the multistage mainloop
+    typename Operator,            /// Operation perfomed by GEMM
+    bool GatherA,                 /// Gather operand A by using an index array
+    bool GatherB,                 /// Gather operand B by using an index array
+    typename PermuteALayout,      /// Permute operand A
+    typename PermuteBLayout       /// Permute operand B
+>
+struct DefaultMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, ElementAccumulator, LayoutC,
+    arch::OpClassSimt, ArchTag, ThreadblockShape, WarpShape, InstructionShape, Stages, Operator, false,
+    SharedMemoryClearOption::kNone, GatherA, GatherB, PermuteALayout, PermuteBLayout
+> {
+    // Define the MmaCore components
+    using MmaCore = typename cutlass::gemm::threadblock::DefaultMmaCore<ThreadblockShape, WarpShape, InstructionShape,
+        ElementA, LayoutA, ElementB, LayoutB, ElementAccumulator, LayoutC, arch::OpClassSimt, Stages, Operator>;
+
+    // Define iterators over tiles from the A operand. Iterators to read from global memory.
+    using ThreadMapA = typename MmaCore::IteratorThreadMapA;
+    using AccessTypeA = cutlass::Array<ElementA, kAlignmentA>;
+    using IteratorA = cutlass::transform::threadblock::PredicatedTileAccessIterator<
+        cutlass::MatrixShape<ThreadblockShape::kM, ThreadblockShape::kK>,
+        ElementA, LayoutA, 1, ThreadMapA, AccessTypeA, GatherA, PermuteALayout>;
+
+    // Define iterators over tiles from the B operand. Iterators to read from global memory.
+    using ThreadMapB = typename MmaCore::IteratorThreadMapB;
+    using AccessTypeB = cutlass::Array<ElementB, kAlignmentB>;
+    using IteratorB = cutlass::transform::threadblock::PredicatedTileAccessIterator<
+        cutlass::MatrixShape<ThreadblockShape::kK, ThreadblockShape::kN>,
+        ElementB, LayoutB, 0, ThreadMapB, AccessTypeB, GatherB, PermuteBLayout>;
+
+    // Define the threadblock-scoped multistage matrix multiply
+    using ThreadblockMma = cutlass::gemm::threadblock::MmaMultistage<typename MmaCore::Shape,
+        IteratorA, typename MmaCore::SmemIteratorA, MmaCore::kCacheOpA, IteratorB, typename MmaCore::SmemIteratorB, MmaCore::kCacheOpB,
+        ElementAccumulator, LayoutC, typename MmaCore::MmaPolicy, Stages>;
+};
+```
+
+```c++
+/// Specialization for row-major output (OperatorClass TensorOp)
+template <
+    typename ElementA,                          /// Element type for A matrix operand
+    typename LayoutA,                           /// Layout type for A matrix operand
+    int kAlignmentA,                            /// Access granularity of A matrix in units of elements
+    typename ElementB,                          /// Element type for B matrix operand
+    typename LayoutB,                           /// Layout type for B matrix operand
+    int kAlignmentB,                            /// Access granularity of B matrix in units of elements
+    typename ElementAccumulator,                /// Element type for internal accumulation
+    typename LayoutC,                           /// Layout type for C and D matrix operand
+    typename ArchTag,                           /// Tag indicating architecture to tune for
+    typename ThreadblockShape,                  /// Threadblock-level tile size (concept: GemmShape)
+    typename WarpShape,                         /// Warp-level tile size (concept: GemmShape)
+    typename InstructionShape,                  /// Instruction-level tile size (concept: GemmShape)
+    int Stages,                                 /// Number of stages used in the multistage mainloop
+    typename Operator,                          /// Operation perfomed by GEMM
+    SharedMemoryClearOption SharedMemoryClear,  /// Use zfill or predicate for out-of-bound cp.async
+    bool GatherA,                               /// Gather operand A by using an index array
+    bool GatherB,                               /// Gather operand B by using an index array
+    typename PermuteALayout,                    /// Permute operand A
+    typename PermuteBLayout                     /// Permute operand B
+>
+struct DefaultMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, ElementAccumulator, LayoutC,
+    arch::OpClassTensorOp, ArchTag, ThreadblockShape, WarpShape, InstructionShape, Stages, Operator, false,
+    SharedMemoryClear, GatherA, GatherB, PermuteALayout, PermuteBLayout
+> {
+    static cutlass::arch::CacheOperation::Kind const CacheOpA = ((sizeof_bits<ElementA>::value * kAlignmentA) == 128)
+        ? cutlass::arch::CacheOperation::Global : cutlass::arch::CacheOperation::Always;
+
+    static cutlass::arch::CacheOperation::Kind const CacheOpB = ((sizeof_bits<ElementB>::value * kAlignmentB) == 128)
+        ? cutlass::arch::CacheOperation::Global : cutlass::arch::CacheOperation::Always;
+
+    // Define the MmaCore components
+    using MmaCore = typename cutlass::gemm::threadblock::DefaultMmaCore<ThreadblockShape, WarpShape, InstructionShape,
+        ElementA, LayoutA, ElementB, LayoutB, ElementAccumulator, LayoutC, arch::OpClassTensorOp, Stages, Operator, false, CacheOpA, CacheOpB>;
+
+    // Define iterators over tiles from the A operand. Iterators to read from global memory.
+    using ThreadMapA = typename MmaCore::IteratorThreadMapA;
+    using AccessTypeA = cutlass::Array<ElementA, kAlignmentA>;
+    using IteratorA = cutlass::transform::threadblock::PredicatedTileAccessIterator<
+        cutlass::MatrixShape<ThreadblockShape::kM, ThreadblockShape::kK>,
+        ElementA, LayoutA, 1, ThreadMapA, AccessTypeA, GatherA, PermuteALayout>;
+
+    // Define iterators over tiles from the B operand. Iterators to read from global memory.
+    using ThreadMapB = typename MmaCore::IteratorThreadMapB;
+    using AccessTypeB = cutlass::Array<ElementB, kAlignmentB>;
+    using IteratorB = cutlass::transform::threadblock::PredicatedTileAccessIterator<
+        cutlass::MatrixShape<ThreadblockShape::kK, ThreadblockShape::kN>,
+        ElementB, LayoutB, 0, ThreadMapB, AccessTypeB, GatherB, PermuteBLayout>;
+
+    // Define the threadblock-scoped multistage matrix multiply
+    using ThreadblockMma = cutlass::gemm::threadblock::MmaMultistage<typename MmaCore::Shape,
+        IteratorA, typename MmaCore::SmemIteratorA, MmaCore::kCacheOpA, IteratorB, typename MmaCore::SmemIteratorB, MmaCore::kCacheOpB,
+        ElementAccumulator, LayoutC, typename MmaCore::MmaPolicy, Stages, SharedMemoryClear>;
+};
+```
+
+### DefaultMmaCore
+
+当在Threadblock线程块层级实现矩阵乘加操作时，CUTLASS提供一个默认的核心模板配置，抽象为gemm::threadblock::DefaultMmaCore模板类。此外，根据底层实现使用的CUDA Core硬件或Tensor Core硬件的不同，以及底层实现使用的双缓冲或多级流水线的方式不同，默认的核心模板配置会使用不同的Warp线程束层级的矩阵乘加实现，以及使用不同的数据转移器。
+
+在cutlass/gemm/threadblock/default_mma_core.h头文件中，提供gemm::warp::DefaultMmaCore的定义，如下所示。
+
+```c++
+/// Template defininng default matrix multiply operators inferred from threadblock tile size,
+/// global memory data layout, and target math instruction.
+template <
+    typename Shape,                                    /// Shape of threadblock-scoped matrix multiply operator
+    typename WarpShape,                                /// Shape of warp-level matrix multiply operator
+    typename InstructionShape,                         /// Shape of one matrix production operation (concept: GemmShape)
+    typename ElementA,                                 /// Element data type of A operand
+    typename LayoutA,                                  /// Layout of operand A
+    typename ElementB,                                 /// Element data type of B operand
+    typename LayoutB,                                  /// Layout of operand B
+    typename ElementC,                                 /// Data type of accumulator
+    typename LayoutC,                                  /// Layout of accumulator
+    typename OperatorClass,                            /// Indicates type of math operator (arch::OpClassSimt or arch::OpClassTensorOp)
+    int Stages = 2,                                    /// Number of stages
+    typename Operator = cutlass::arch::OpMultiplyAdd,  /// Operation performed by MMA
+    /// Store the accumulators in row major or column major. Row major is used when output layout is interleaved.
+    bool AccumulatorsInRowMajor = false,
+    cutlass::arch::CacheOperation::Kind CacheOpA = cutlass::arch::CacheOperation::Global,  /// Cache operation of operand A
+    cutlass::arch::CacheOperation::Kind CacheOpB = cutlass::arch::CacheOperation::Global,  /// Cache operation of operand B
+    ComplexTransform TransformA = ComplexTransform::kNone,  /// per-element transformation for elements of A
+    ComplexTransform TransformB = ComplexTransform::kNone,  /// per-element transformation for elements of B
+    bool IsComplex = false                                  /// (is_complex<ElementA>::value || is_complex<ElementB>::value)
+>
+struct DefaultMmaCore;
+```
+
+在cutlass/gemm/threadblock/default_mma_core_simt.h头文件中，CUTLASS在CUDA Core硬件上使用SIMD指令，gemm::threadblock::DefaultMmaCore的实现代码如下所示。
+
+```c++
+namespace detail {
+// convert a WarpShape which is the whole tile of elements into warp num threads.
+// The goal is for each thread's tile of elements to be as square as possible for performance (4x4 will be faster than 2x8).
+template<typename WarpShape>
+constexpr int simt_get_warp_threads_m() {
+    return (WarpShape::kM > WarpShape::kN) ? 8 : 4;
+}
+// Computes padding in shared memory to perform efficient transpose without bank conflicts.
+constexpr int simt_transpose_padding(int threads, int crosswise, int size_in_bits) {
+    return (size_in_bits >= 32
+        ? threads / crosswise / (size_in_bits / 32)
+        : threads / crosswise * (32 / size_in_bits));
+}
+}
+```
+
+```c++
+/// A: row-major    : needs transposition and smem padding
+/// B: column-major : needs transposition and smem padding
+/// Operator: simt class
+/// This uses the default warp-level operator given tile sizes.
+template <
+    typename Shape_,      /// Shape of threadblock-scoped matrix multiply operator (concept: GemmShape)
+    typename WarpShape_,  /// Shape of warp-level matrix multiply operator (concept: GemmShape)
+    typename ElementA_,   /// Data type of A operand
+    typename ElementB_,   /// Data type of B operand
+    typename ElementC_,   /// Data type of accumulator
+    typename LayoutC_,    /// Layout of accumulator
+    typename Operator_    /// Operation performed by GEMM
+>
+struct DefaultMmaCore<Shape_, WarpShape_, GemmShape<1, 1, 1>,
+    ElementA_, layout::RowMajor, ElementB_, layout::ColumnMajor, ElementC_, LayoutC_, arch::OpClassSimt, 2, Operator_
+> {
+    using Shape = Shape_;
+    using WarpShape = WarpShape_;
+    using InstructionShape = GemmShape<1, 1, 1>;
+    using ElementA = ElementA_;
+    using LayoutA = layout::ColumnMajor;
+    using ElementB = ElementB_;
+    using LayoutB = layout::RowMajor;
+    using ElementC = ElementC_;
+    using LayoutC = LayoutC_;
+    using OperatorClass = arch::OpClassSimt;
+    using Operator = Operator_;  /// Default Operator
+
+    static int const PartitionsK = Shape::kK / WarpShape::kK;
+    /// Number of warps present
+    using WarpCount = GemmShape<Shape::kM / WarpShape::kM, Shape::kN / WarpShape::kN, PartitionsK>;
+    static int const kWarpSize = warp::WarpSize<arch::OpClassSimt>::value;  /// Number of threads per warp
+    static int const kThreads = WarpCount::kCount * kWarpSize;              /// Number of threads total
+    static int const kElementsPerAccess = 1;
+
+    /// ThreadMap of iterator A
+    using IteratorThreadMapA = transform::PitchLinearStripminedThreadMap<
+        layout::PitchLinearShape<Shape::kK, Shape::kM>, kThreads, kElementsPerAccess>;
+    /// Transpose the ThreadMap of iterator A
+    using SmemThreadMapA = transform::TransposePitchLinearThreadMapSimt<IteratorThreadMapA>;
+    /// Shared memory layout of A
+    using SmemLayoutA = layout::ColumnMajor;
+    /// Shared memory iterator of A operand. Iterators to write to shared memory.
+    using SmemIteratorA = transform::threadblock::RegularTileIterator<
+        MatrixShape<Shape::kM, Shape::kK>, ElementA, SmemLayoutA, 1, SmemThreadMapA>;  /// SmemThreadMapA was IteratorThreadMapA
+
+    /// ThreadMap of iterator B
+    using IteratorThreadMapB = transform::PitchLinearStripminedThreadMap<
+        layout::PitchLinearShape<Shape::kK, Shape::kN>, kThreads, kElementsPerAccess>;
+    /// Transpose the ThreadMap of iterator B
+    using SmemThreadMapB = transform::TransposePitchLinearThreadMapSimt<IteratorThreadMapB>;
+    /// Shared memory layout of B
+    using SmemLayoutB = layout::RowMajor;
+    /// Shared memory iterator to B operand. Iterators to write to shared memory.
+    using SmemIteratorB = transform::threadblock::RegularTileIterator<
+        MatrixShape<Shape::kK, Shape::kN>, ElementB, SmemLayoutB, 0, SmemThreadMapB>;  /// SmemThreadMapB was IteratorThreadMapB
+
+    /// Warp-level matrix multiply operator
+    static const int WarpNumThreadsM = detail::simt_get_warp_threads_m<WarpShape>();
+    static const int WarpNumThreadsN = kWarpSize / WarpNumThreadsM;
+    static const int ThreadTileM = WarpShape::kM / WarpNumThreadsM;
+    static const int ThreadTileN = WarpShape::kN / WarpNumThreadsN;
+    static const int LaneLayoutKI = ThreadTileM > 4 && ThreadTileN > 4 ? 2 : 1;
+    static const int numElementsA = 128 / sizeof_bits<ElementA>::value;
+    static const int numElementsB = 128 / sizeof_bits<ElementB>::value;
+    static const int LaneM = cutlass::const_min(numElementsA, ThreadTileM);
+    static const int LaneN = cutlass::const_min(numElementsB, ThreadTileN);
+    /// these should have max of thread tile also
+    using LaneMmaShape = cutlass::gemm::GemmShape<LaneM, LaneN, 1>;
+    using Policy = cutlass::gemm::warp::MmaSimtPolicy<
+        cutlass::MatrixShape<WarpNumThreadsM, WarpNumThreadsN>,   /// WarpShape in unit of Thread
+        cutlass::layout::RowMajorInterleaved<LaneLayoutKI>,       /// LaneLayout
+        LaneMmaShape
+    >;
+
+    using MmaWarpSimt = cutlass::gemm::warp::MmaSimt<
+        WarpShape,    /// Size of the Gemm problem - concept: gemm::GemmShape<> 128, 128, 8
+        ElementA,     /// Data type of A elements
+        SmemLayoutA,  /// Layout of A matrix (concept: MatrixLayout)
+        ElementB,     /// Data type of B elements
+        SmemLayoutB,  /// Layout of B matrix (concept: MatrixLayout)
+        ElementC,     /// Element type of C matrix
+        LayoutC,      /// Layout of C matrix (concept: MatrixLayout)
+        Policy        /// Policy describing warp-level MmaSimtOp (concept: MmaSimtOp policy)
+    >;
+
+    static int const kPaddingM = detail::simt_transpose_padding(kWarpSize, Shape::kK, sizeof_bits<ElementA>::value);
+    static int const kPaddingN = detail::simt_transpose_padding(kWarpSize, Shape::kK, sizeof_bits<ElementB>::value);
+
+    /// Policy used to define MmaPipelined 
+    using MmaPolicy = MmaPolicy<
+        MmaWarpSimt,
+        MatrixShape<kPaddingM, 0>,    // skew for A matrix to avoid SMEM bank conflicts
+        MatrixShape<0, kPaddingN>,    // skew for B matrix to avoid SMEM bank conflicts
+        WarpCount::kK
+    >;
+};
+```
+
+在cutlass/gemm/threadblock/default_mma_core_sm75.h头文件中，CUTLASS在Tensor Core硬件上使用mma指令，gemm::threadblock::DefaultMmaCore的实现代码如下所示。
+
+```c++
+/// A: column-major
+/// B: row-major
+/// Operator: tensor op class
+/// This uses the default warp-level operator given tile sizes
+template <
+    typename Shape_,             /// Shape of threadblock-scoped matrix multiply operator (concept: GemmShape)
+    typename WarpShape_,         /// Shape of warp-level matrix multiply operator (concept: GemmShape)
+    typename InstructionShape_,  /// Shape of one matrix production operation (concept: GemmShape)
+    typename ElementA_,          /// Data type of A operand
+    typename ElementB_,          /// Data type of B operand
+    typename ElementC_,          /// Data type of accumulator
+    typename LayoutC_,           /// Layout of accumulator
+    typename Operator_           /// Operation performed by GEMM
+>
+struct DefaultMmaCore<Shape_, WarpShape_, InstructionShape_,
+    ElementA_, layout::ColumnMajor, ElementB_, layout::RowMajor, ElementC_, LayoutC_, arch::OpClassTensorOp, 2, Operator_
+> {
+    using Shape = Shape_;
+    using WarpShape = WarpShape_;
+    using InstructionShape = InstructionShape_;
+    using ElementA = ElementA_;
+    using LayoutA = layout::ColumnMajor;
+    using ElementB = ElementB_;
+    using LayoutB = layout::RowMajor;
+    using ElementC = ElementC_;
+    using LayoutC = LayoutC_;
+    using OperatorClass = arch::OpClassTensorOp;
+    using Operator = Operator_;  /// Default Operator
+
+    /// Number of warps present
+    using WarpCount = GemmShape<Shape::kM / WarpShape::kM, Shape::kN / WarpShape::kN, Shape::kK / WarpShape::kK>;
+    static int const kWarpSize = warp::WarpSize<arch::OpClassTensorOp>::value;  /// Number of threads per warp
+    static int const kThreads = WarpCount::kCount * kWarpSize;                  /// Number of threads total
+    static int const kAccessSizeInBits = 128;                                   /// Size of a threadblock-scoped access
+
+    /// Warp thread arrangement
+    static int const kWarpThreadArrangementContiguousA = platform::min(Shape::kM / (kAccessSizeInBits / sizeof_bits<ElementA>::value), 8);
+    static int const kWarpThreadArrangementStridedA = kWarpSize / kWarpThreadArrangementContiguousA;
+    /// ThreadMap of iterator A
+    using IteratorThreadMapA = transform::PitchLinearWarpRakedThreadMap<layout::PitchLinearShape<Shape::kM, Shape::kK>,
+        kThreads, layout::PitchLinearShape<kWarpThreadArrangementContiguousA, kWarpThreadArrangementStridedA>,
+        kAccessSizeInBits / sizeof_bits<ElementA>::value>;
+    /// Shared memory layout of A
+    static int const Crosswise_A = platform::min(int(128 / sizeof(ElementA)), Shape::kM);
+    using SmemLayoutA = layout::ColumnMajorTensorOpMultiplicandCongruous<sizeof_bits<ElementA>::value, Crosswise_A>;
+    /// Shared memory iterator to A operand. Iterators to write to shared memory.
+    using SmemIteratorA = transform::threadblock::RegularTileIterator<
+        MatrixShape<Shape::kM, Shape::kK>, ElementA, SmemLayoutA, 1, IteratorThreadMapA>;
+
+    /// Warp thread arrangement
+    static int const kWarpThreadArrangementContiguousB = platform::min(Shape::kN / (kAccessSizeInBits / sizeof_bits<ElementB>::value), 8);
+    static int const kWarpThreadArrangementStridedB = kWarpSize / kWarpThreadArrangementContiguousB;
+    /// ThreadMap of iterator B
+    using IteratorThreadMapB = transform::PitchLinearWarpRakedThreadMap<layout::PitchLinearShape<Shape::kN, Shape::kK>,
+        kThreads, layout::PitchLinearShape<kWarpThreadArrangementContiguousB, kWarpThreadArrangementStridedB>,
+        kAccessSizeInBits / sizeof_bits<ElementB>::value>;
+    /// Shared memory layout of B
+    static int const Crosswise_B = platform::min(int(128 / sizeof(ElementB)), Shape::kN);
+    using SmemLayoutB = layout::RowMajorTensorOpMultiplicandCongruous<sizeof_bits<ElementB>::value, Crosswise_B>;
+    /// Shared memory iterator to B operand. Iterators to write to shared memory.
+    using SmemIteratorB = transform::threadblock::RegularTileIterator<
+        MatrixShape<Shape::kK, Shape::kN>, ElementB, SmemLayoutB, 0, IteratorThreadMapB>;
+
+    /// Warp-level matrix multiply operator
+    using MmaTensorOp = typename cutlass::gemm::warp::DefaultMmaTensorOp<WarpShape, InstructionShape,
+        ElementA, SmemLayoutA, ElementB, SmemLayoutB, ElementC, LayoutC, Operator, WarpCount::kK>::Type;
+
+    /// Policy used to define MmaPipelined
+    using MmaPolicy = MmaPolicy<MmaTensorOp, MatrixShape<0, 0>, MatrixShape<0, 0>, WarpCount::kK>;
+};
+```
+
+### MmaBase
+
+矩阵乘加操作在Threadblock线程块层级实现时，包括双缓冲的实现与多级流水线的实现，这些实现都派生自一个gemm::threadblock::MmaBase模板类。
+
+在cutlass/gemm/threadblock/mma_base.h头文件中，提供gemm::threadblock::MmaBase的定义，如下所示。
+
+```c++
+/// Policy object describing MmaTensorOp and MmaSimt
+template <
+    typename Operator_,      /// Warp-level GEMM operator (concept: gemm::warp::Mma)
+    typename SmemPaddingA_,  /// Padding used for A operand in shared memory (concept: MatrixShape)
+    typename SmemPaddingB_,  /// Padding used for B operand in shared memory (concept: MatrixShape)
+    int PartitionsK = 1      /// Number of partitions of K dimension of GEMM
+>
+struct MmaPolicy {
+    using Operator = Operator_;          /// Warp-level GEMM operator (concept: gemm::warp::MmaTensorOp or gemm::warp::MmaSimt)
+    using SmemPaddingA = SmemPaddingA_;  /// Padding used for A operand in shared memory
+    using SmemPaddingB = SmemPaddingB_;  /// Padding used for B operand in shared memory
+    static int const kPartitionsK = PartitionsK;  /// Number of partitions of K dimension
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// Structure to compute the matrix product targeting CUDA cores and SIMT math instructions.
+template <
+    typename Shape_,        /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    typename Policy_,       /// Policy describing tuning details (concept: MmaPolicy)
+    int Stages,             /// Number of stages,
+    typename Enable = bool  /// Used for partial specialization
+>
+class MmaBase {
+public:
+    using Shape = Shape_;               /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    using Policy = Policy_;             /// Policy describing tuning details
+    static int const kStages = Stages;  /// Number of stages
+
+    /// Warp-level Mma
+    using Operator = typename Policy::Operator;
+    /// Shape describing the overall GEMM computed from shared memory by each warp.
+    using WarpGemm = typename Policy::Operator::Shape;
+    /// Shape describing the number of warps filling the CTA
+    using WarpCount = GemmShape<Shape::kM / WarpGemm::kM, Shape::kN / WarpGemm::kN, Shape::kK / WarpGemm::kK>;
+    /// Number of warp-level GEMM oeprations
+    static int const kWarpGemmIterations = (WarpGemm::kK / Operator::Policy::MmaShape::kK);
+
+    using TensorRefA = TensorRef<typename Operator::ElementA, typename Operator::LayoutA>;  /// Tensor reference to the A operand
+    using TensorRefB = TensorRef<typename Operator::ElementB, typename Operator::LayoutB>;  /// Tensor reference to the B operand
+
+    /// Shared storage object needed by threadblock-scoped GEMM
+    class SharedStorage {
+    public:
+        /// Shape of the A matrix operand in shared memory
+        using ShapeA = MatrixShape<Shape::kM + Policy::SmemPaddingA::kRow, Shape::kK * kStages + Policy::SmemPaddingA::kColumn>;
+        /// Shape of the B matrix operand in shared memory
+        using ShapeB = MatrixShape<Shape::kK * kStages + Policy::SmemPaddingB::kRow, Shape::kN + Policy::SmemPaddingB::kColumn>;
+
+        AlignedBuffer<typename Operator::ElementA, ShapeA::kCount> operand_A;  /// Buffer for A operand
+        AlignedBuffer<typename Operator::ElementB, ShapeB::kCount> operand_B;  /// Buffer for B operand
+
+    public:
+        /// Returns a layout object for the A matrix
+        static typename Operator::LayoutA LayoutA() {
+            return Operator::LayoutA::packed({ ShapeA::kRow, ShapeA::kColumn });
+        }
+
+        /// Returns a layout object for the B matrix
+        static typename Operator::LayoutB LayoutB() {
+            return Operator::LayoutB::packed({ ShapeB::kRow, ShapeB::kColumn });
+        }
+
+        /// Returns a TensorRef to the A operand
+        TensorRefA operand_A_ref() {
+            return TensorRefA{ operand_A.data(), LayoutA() };
+        }
+
+        /// Returns a TensorRef to the B operand
+        TensorRefB operand_B_ref() {
+            return TensorRefB{ operand_B.data(), LayoutB() };
+        }
+    };
+
+protected:
+    typename Operator::IteratorA warp_tile_iterator_A_;  /// Iterator to load a warp-scoped tile of A operand from shared memory
+    typename Operator::IteratorB warp_tile_iterator_B_;  /// Iterator to load a warp-scoped tile of B operand from shared memory
+
+public:
+    /// Construct from tensor references
+    /// @param shared_storage : Shared storage needed for internal use by threadblock-scoped GEMM
+    MmaBase(SharedStorage &shared_storage, int thread_idx, int warp_idx, int lane_idx) :
+        warp_tile_iterator_A_(shared_storage.operand_A_ref(), lane_idx),
+        warp_tile_iterator_B_(shared_storage.operand_B_ref(), lane_idx) {}
+};
+```
+
+### MmaPipelined
+
+当使用双缓冲实现在Threadblock线程块层级的矩阵乘加操作时，相关实现被抽象为gemm::threadblock::MmaPipelined模板类。
+
+在cutlass/gemm/threadblock/mma_pipelined.h头文件中，提供gemm::threadblock::MmaPipelined的定义，如下所示。
+
+```c++
+/// Structure to compute the matrix product targeting CUDA cores and SIMT math instructions.
+template <
+    /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    typename Shape_,
+    /// Iterates over tiles of A operand in global memory. (concept: ReadableTileIterator | ForwardTileIterator | MaskedTileIterator)
+    typename IteratorA_,
+    /// Iterates over tiles of A operand in shared memory. (concept: WriteableTileIterator | RandomAccessTileIterator)
+    typename SmemIteratorA_,
+    /// Iterates over tiles of B operand in global memory. (concept: ReadableTileIterator | ForwardTileIterator | MaskedTileIterator)
+    typename IteratorB_,
+    /// Iterates over tiles of B operand in shared memory. (concept: WriteableTileIterator | RandomAccessTileIterator)
+    typename SmemIteratorB_,
+    typename ElementC_,  /// Data type of accumulator matrix
+    typename LayoutC_,   /// Data type of accumulator matrix
+    typename Policy_,    /// Policy describing tuning details (concept: MmaPolicy)
+    /// Transformation applied to A operand
+    typename TransformA_ = NumericArrayConverter<
+        typename SmemIteratorA_::Element, typename IteratorA_::Element, IteratorA_::Fragment::kElements>,
+    /// Transformation applied to B operand
+    typename TransformB_ = NumericArrayConverter<
+        typename SmemIteratorB_::Element, typename IteratorB_::Element, IteratorB_::Fragment::kElements>,
+    /// Used for partial specialization
+    typename Enable = bool
+>
+class MmaPipelined : public MmaBase<Shape_, Policy_, 2> {
+public:
+    using Base = MmaBase<Shape_, Policy_, 2>;  /// Base class
+    using Shape = Shape_;                      /// Size of the Gemm problem - concept: gemm::GemmShape<>
+    using IteratorA = IteratorA_;              /// Iterates over tiles of A operand in global memory
+    using IteratorB = IteratorB_;              /// Iterates over tiles of B operand in global memory
+    using SmemIteratorA = SmemIteratorA_;      /// Iterates over tiles of A operand in shared memory
+    using SmemIteratorB = SmemIteratorB_;      /// Iterates over tiles of B operand in shared memory
+    using ElementC = ElementC_;                /// Data type of accumulator matrix
+    using LayoutC = LayoutC_;                  /// Layout of accumulator matrix
+    using Policy = Policy_;                    /// Policy describing tuning details
+    using TransformA = TransformA_;            /// Transformation applied to A operand
+    using TransformB = TransformB_;            /// Transformation applied to B operand
+
+    using FragmentA = typename IteratorA::Fragment;          /// Fragment of operand A loaded from global memory
+    using FragmentB = typename IteratorB::Fragment;          /// Fragment of operand B loaded from global memory
+    using FragmentC = typename Policy::Operator::FragmentC;  /// Fragment of accumulator tile
+    using Operator = typename Policy::Operator;              /// Warp-level Mma
+    using ArchTag = typename Policy::Operator::ArchTag;      /// Obtain the arch tag from the warp-level operator
+    
+    static ComplexTransform const kTransformA = Operator::kTransformA;  /// Complex transform on A operand
+    static ComplexTransform const kTransformB = Operator::kTransformB;  /// Complex transform on B operand
+
+protected:
+    Operator warp_mma;               /// Warp-level MMA operator
+    SmemIteratorA smem_iterator_A_;  /// Iterator to write threadblock-scoped tile of A operand to shared memory
+    SmemIteratorB smem_iterator_B_;  /// Iterator to write threadblock-scoped tile of B operand to shared memory
+    TransformA transform_A_;         /// transformation applied to A fragment
+    TransformB transform_B_;         /// transformation applied to B fragment
+    int smem_write_stage_idx;        /// Shared memory write stage index
+
+public:
+    /// Construct from tensor references
+    /// @param shared_storage : Shared storage needed for internal use by threadblock-scoped GEMM
+    /// @param thread_idx     : ID of each thread within the threadblock
+    /// @param warp_idx       : ID of each warp within the threadblock
+    /// @param lane_idx       : ID of each thread within a warp
+    /// @param transform_A    : transformation applied to A fragment
+    /// @param transform_B    : transformation applied to B fragment
+    MmaPipelined(typename Base::SharedStorage &shared_storage, int thread_idx, int warp_idx, int lane_idx,
+        TransformA transform_A = TransformA(), TransformB transform_B = TransformB()) :
+        Base(shared_storage, thread_idx, warp_idx, lane_idx),
+        smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx),
+        smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx),
+        transform_A_(transform_A), transform_B_(transform_B), smem_write_stage_idx(0)
+    {
+        // Compute warp location within threadblock tile by mapping the warp_id to three coordinates:
+        // idx_m: the warp's position within the threadblock along the M dimension
+        // idx_n: the warp's position within the threadblock along the N dimension
+        // idx_k: the warp's position within the threadblock along the K dimension
+        int warp_idx_mn = warp_idx % (Base::WarpCount::kM * Base::WarpCount::kN);
+        int warp_idx_m = warp_idx_mn % Base::WarpCount::kM;
+        int warp_idx_n = warp_idx_mn / Base::WarpCount::kM;
+        int warp_idx_k = warp_idx / (Base::WarpCount::kM * Base::WarpCount::kN);
+        // Add per-warp offsets in units of warp-level tiles
+        this->warp_tile_iterator_A_.add_tile_offset({ warp_idx_m, Base::kWarpGemmIterations * warp_idx_k });
+        this->warp_tile_iterator_B_.add_tile_offset({ Base::kWarpGemmIterations * warp_idx_k, warp_idx_n });
+    }
+
+    /// Advance shared memory write-iterators to the next stage
+    void advance_smem_write_stage() {
+        ++this->smem_iterator_A_;
+        ++this->smem_iterator_B_;
+        // Add negative offsets to return iterators to the 'start' of the circular buffer in shared memory
+        if (smem_write_stage_idx == 1) {
+            this->smem_iterator_A_.add_tile_offset({ 0, -Base::kStages });
+            this->smem_iterator_B_.add_tile_offset({ -Base::kStages, 0 });
+        }
+        smem_write_stage_idx ^= 1;
+    }
+
+    /// Advance shared memory read-iterators and write-iterators to the next stage
+    void advance_smem_stages() {
+        ++this->smem_iterator_A_;
+        ++this->smem_iterator_B_;
+        // Add negative offsets to return iterators to the 'start' of the circular buffer in shared memory
+        if (smem_write_stage_idx == 1) {
+            // wrap write stage
+            this->smem_iterator_A_.add_tile_offset({ 0, -Base::kStages });
+            this->smem_iterator_B_.add_tile_offset({ -Base::kStages, 0 });
+        } else {
+            // wrap read stage
+            this->warp_tile_iterator_A_.add_tile_offset({ 0, -Base::kStages * Policy::kPartitionsK * Base::kWarpGemmIterations });
+            this->warp_tile_iterator_B_.add_tile_offset({ -Base::kStages * Policy::kPartitionsK * Base::kWarpGemmIterations, 0 });
+        }
+        smem_write_stage_idx ^= 1;
+    }
+
+    /// GEMM prologue. `gmem --> smem`.
+    /// The last kblock is loaded in the prologue.
+    /// Bootstrap the global->shared memory pipeline by fetching the global fragments
+    /// needed by the first `kStages - 1` threadblock mainloop iterations.
+    /// @param iterator_A        : [in|out] iterator over A operand in global memory
+    /// @param iterator_B        : [in|out] iterator over B operand in global memory
+    /// @param gemm_k_iterations : [in|out] number of threadblock mainloop iterations remaining
+    void prologue(IteratorA &iterator_A, IteratorB &iterator_B, int &gemm_k_iterations) {
+        // Load A fragment from global A
+        FragmentA tb_frag_A;
+        tb_frag_A.clear();
+        iterator_A.load(tb_frag_A);
+        ++iterator_A;
+        // Load B fragment from global B
+        FragmentB tb_frag_B;
+        tb_frag_B.clear();
+        iterator_B.load(tb_frag_B);
+        ++iterator_B;
+        // Store A and B fragments to shared
+        this->smem_iterator_A_.store(transform_A_(tb_frag_A));
+        this->smem_iterator_B_.store(transform_B_(tb_frag_B));
+        // Advance write stage
+        advance_smem_write_stage();
+    }
+
+    /// Wait until we have at least one completed global fetch stage
+    void gmem_wait() {
+        __syncthreads();
+    }
+
+    /// Perform the specified number of threadblock mainloop iterations of matrix multiply-accumulate.
+    /// Assumes prologue has been initiated.
+    /// @param gemm_k_iterations :     [in] number of threadblock mainloop iterations
+    /// @param accum             : [in|out] accumulator tile
+    /// @param iterator_A        : [in|out] iterator over A operand in global memory
+    /// @param iterator_B        : [in|out] iterator over B operand in global memory
+    void gemm_iters(int gemm_k_iterations, FragmentC &accum, IteratorA &iterator_A, IteratorB &iterator_B) {
+        // Avoid reading out of bounds
+        iterator_A.clear_mask(gemm_k_iterations <= 1);
+        iterator_B.clear_mask(gemm_k_iterations <= 1);
+
+        using WarpFragmentA = typename Operator::FragmentA;
+        using WarpFragmentB = typename Operator::FragmentB;
+        // Pair of fragments used to overlap shared memory loads and math instructions
+        WarpFragmentA warp_frag_A[2];
+        WarpFragmentB warp_frag_B[2];
+        // Load A fragment from shared A
+        this->warp_tile_iterator_A_.set_kgroup_index(0);
+        this->warp_tile_iterator_A_.load(warp_frag_A[0]);
+        ++this->warp_tile_iterator_A_;
+        // Load B fragment from shared B
+        this->warp_tile_iterator_B_.set_kgroup_index(0);
+        this->warp_tile_iterator_B_.load(warp_frag_B[0]);
+        ++this->warp_tile_iterator_B_;
+
+        // Pair of fragments used to overlap global memory loads and math instructions
+        FragmentA tb_frag_A;
+        FragmentB tb_frag_B;
+
+        // Mainloop.
+        // Note: The main loop does not support Base::kWarpGemmIterations == 2.
+        for (; gemm_k_iterations > 0; --gemm_k_iterations) {
+            // Loop over GEMM K dimension
+            for (int warp_mma_k = 0; warp_mma_k < Base::kWarpGemmIterations; ++warp_mma_k) {
+                // Load warp-level tiles from shared memory, wrapping to k offset if this is the last group as the case may be.
+                if (warp_mma_k == Base::kWarpGemmIterations - 1) {
+                    // Write fragments to shared memory
+                    this->smem_iterator_A_.store(transform_A_(tb_frag_A));
+                    this->smem_iterator_B_.store(transform_B_(tb_frag_B));
+                    // Wait until we have at least one completed global fetch stage
+                    gmem_wait();
+                    // Advance smem read and write stages
+                    advance_smem_stages();
+                }
+                this->warp_tile_iterator_A_.set_kgroup_index((warp_mma_k + 1) % Base::kWarpGemmIterations);
+                this->warp_tile_iterator_B_.set_kgroup_index((warp_mma_k + 1) % Base::kWarpGemmIterations);
+                this->warp_tile_iterator_A_.load(warp_frag_A[(warp_mma_k + 1) % 2]);
+                this->warp_tile_iterator_B_.load(warp_frag_B[(warp_mma_k + 1) % 2]);
+                ++this->warp_tile_iterator_A_;
+                ++this->warp_tile_iterator_B_;
+                if (warp_mma_k == 0) {
+                    // Load fragment from global A
+                    tb_frag_A.clear();
+                    iterator_A.load(tb_frag_A);
+                    ++iterator_A;
+                    // Load fragment from global B
+                    tb_frag_B.clear();
+                    iterator_B.load(tb_frag_B);
+                    ++iterator_B;
+                    // Avoid reading out of bounds if this was the last loop iteration
+                    iterator_A.clear_mask(gemm_k_iterations <= 2);
+                    iterator_B.clear_mask(gemm_k_iterations <= 2);
+                }
+                warp_mma(accum, warp_frag_A[warp_mma_k % 2], warp_frag_B[warp_mma_k % 2], accum);
+            }
+        }
+    }
+
+    /// Prepares the class for another prologue.
+    void wind_down() {
+        // First, increment remaining warp tiles to catch it up with the write stage.
+        for (int warp_mma_k = 1; warp_mma_k < Base::kWarpGemmIterations; ++warp_mma_k) {
+            this->warp_tile_iterator_A_.set_kgroup_index(warp_mma_k);
+            this->warp_tile_iterator_B_.set_kgroup_index(warp_mma_k);
+            ++this->warp_tile_iterator_A_;
+            ++this->warp_tile_iterator_B_;
+        }
+        // If we bumped the read iterators to the end of the circular buffer, wrap them around to align them with the write iterators.
+        if (smem_write_stage_idx == 0) {
+            this->warp_tile_iterator_A_.add_tile_offset({ 0, -Base::kStages * Policy::kPartitionsK * Base::kWarpGemmIterations });
+            this->warp_tile_iterator_B_.add_tile_offset({ -Base::kStages * Policy::kPartitionsK * Base::kWarpGemmIterations, 0 });
+        }
+    }
+
+    /// Perform a threadblock-scoped matrix multiply-accumulate
+    /// @param gemm_k_iterations : number of iterations of the mainloop
+    /// @param accum             : destination accumulator tile
+    /// @param iterator_A        : iterator over A operand in global memory
+    /// @param iterator_B        : iterator over B operand in global memory
+    /// @param src_accum         : source accumulator tile
+    void operator()(int gemm_k_iterations, FragmentC &accum, IteratorA iterator_A, IteratorB iterator_B, FragmentC const &src_accum) {
+        // Prologue
+        prologue(iterator_A, iterator_B, gemm_k_iterations);
+        // Wait until we have at least one completed global fetch stage
+        gmem_wait();
+        // Perform accumulation in the 'd' output operand
+        accum = src_accum;
+        // Perform the MAC-iterations
+        gemm_iters(gemm_k_iterations, accum, iterator_A, iterator_B);
+    }
+};
+```
+
+### MmaMultiStage
+
+当使用多级流水线实现在Threadblock线程块层级的矩阵乘加操作时，相关实现被抽象为gemm::threadblock::MmaMultiStage模板类。
+
+在cutlass/gemm/threadblock/mma_multistage.h头文件中，提供gemm::threadblock::MmaMultiStage的定义，如下所示。
+
+```c++
+
+```
+
+## Transform API ^$
+
+在cutlass/transform目录中，提供在不同域之间进行数据转移的代码实现，主要用于解决数据布局变换带来的问题。该功能主要用在Threadblock线程块层级，用于将数据从设备全局内存加载到寄存器，以及将寄存器中的数据写入到共享内存。其中，从全局内存加载数据的操作被抽象为XXX模板类，向共享内存写入数据的操作被抽象为XXX模板类。
+
