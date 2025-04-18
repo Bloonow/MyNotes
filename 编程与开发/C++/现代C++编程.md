@@ -1,3 +1,5 @@
+[toc]
+
 # 现代C++建议
 
 正确编写的C++程序快速、高效，它可以在最高的抽象级别上运行，还可以在最低的抽象级别（如硅级别）上运行。C++提供高度优化的标准库，它支持访问低级别硬件功能，从而最大限度地提高速度并最大程度地降低内存需求。
@@ -641,11 +643,11 @@ C++允许使用C风格或函数调用样式的显式类型转换（explicit type
 ### C风格类型转换
 
 ```c++
-type_id val = (type_id)expression_cast;  // C-style casting
-type_id val = type_id(expression_list);  // function-call style casting
+type_name val = (type_name)expression_cast;  // C-style casting
+type_name val = type_name(expression_list);  // function-call style casting
 ```
 
-其中，type_id是目标类型，expression_cast是参与转换的表达式，expression_list是参与转换的表达式列表。当从单个值转换时，C风格转换和函数调用样式转换都有相同的结果；但是，在函数样式的语法中，可以为转换指定多个自变量，此差异对用户定义的类型非常重要。
+其中，type_name是目标类型，expression_cast是参与转换的表达式，expression_list是参与转换的表达式列表。当从单个值转换时，C风格转换和函数调用样式转换都有相同的结果；但是，在函数样式的语法中，可以为转换指定多个自变量，此差异对用户定义的类型非常重要。
 
 ```c++
 struct Point {
@@ -669,10 +671,10 @@ int main() {
 
 ### static_cast
 
-运算符`static_cast<type_id>`用于非多态类型（nonpolymorphic type）的转换，根据表达式中存在的类型，将expression转换为type_id类型，如下所示。
+运算符`static_cast<type_name>`用于非多态类型（nonpolymorphic type）的转换，根据表达式中存在的类型，将expression转换为type_name类型，如下所示。
 
 ```c++
-type_id val = static_cast<type_id>(expression);
+type_name val = static_cast<type_name>(expression);
 ```
 
 运算符static_cast可用于执行任何隐式转换，包括标准转换和用户定义的转换。static_cast可以将整数值显式转换为枚举类型，如果整型值不在枚举值的范围内，生成的枚举值是不确定的。任何表达式都可以通过static_cast显式转换为void类型，目标void类型可以选择性地包含const属性。
@@ -725,17 +727,17 @@ int main(int argc, char *argv[]) {
 
 ### dynamic_cast
 
-运算符`dynamic_cast<type_id>`用于多态类型（polymorphic type）的转换，根据表达式中存在的类型，将expression转换为type_id类型，如下所示。
+运算符`dynamic_cast<type_name>`用于多态类型（polymorphic type）的转换，根据表达式中存在的类型，将expression转换为type_name类型，如下所示。
 
 ```c++
-type_id val = dynamic_cast<type_id>(expression);
+type_name val = dynamic_cast<type_name>(expression);
 ```
 
-类型type_id必须是已定义类型的指针或引用，或是void\*指针。如果type_id是指针，则expression类型必须为指针，如果type_id是引用，则expression必须为左值。运算符dynamic_cast在类型转换时，会执行运行时类型检查（run-time type check），以确保多态转换的正确性。
+类型type_name必须是已定义类型的指针或引用，或是void\*指针。如果type_name是指针，则expression类型必须为指针，如果type_name是引用，则expression必须为左值。运算符dynamic_cast在类型转换时，会执行运行时类型检查（run-time type check），以确保多态转换的正确性。
 
-如果type_id是一个指针，且指向的是expression可明确访问（unambiguous accessible）的直接或间接基类，则转换结果是指向type_id类型的唯一子对象（unique subobject）的指针。这种类型转换称为向上转换（upcast），因为它将指针向上移动一个类层次结构，从派生类移至它的基类，向上转换是一种隐式转换。
+如果type_name是一个指针，且指向的是expression可明确访问（unambiguous accessible）的直接或间接基类，则转换结果是指向type_name类型的唯一子对象（unique subobject）的指针。这种类型转换称为向上转换（upcast），因为它将指针向上移动一个类层次结构，从派生类移至它的基类，向上转换是一种隐式转换。
 
-如果type_id是一个指针，且指向的是expression可明确访问（unambiguous accessible）的直接或间接派生类，则会进行运行时类型检查，检查expression是否实际指向type_id类型的完整对象，如果是，则转换结果是指向type_id类型的完整对象的指针。这种类型转换称为向下转换（downcast），因为它将指针向下移动一个类层次结构，从基类移至它的派生类。
+如果type_name是一个指针，且指向的是expression可明确访问（unambiguous accessible）的直接或间接派生类，则会进行运行时类型检查，检查expression是否实际指向type_name类型的完整对象，如果是，则转换结果是指向type_name类型的完整对象的指针。这种类型转换称为向下转换（downcast），因为它将指针向下移动一个类层次结构，从基类移至它的派生类。
 
 ```c++
 class A { virtual void foo() {} };
@@ -756,7 +758,7 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-使用dynamic_cast时，如果expression无法安全地转换为type_id类型，运行时检查将导致强制转换失败，未能强制转换的指针类型的值是空指针。如果对引用类型的强制转换失败，会引发std::bad_cast异常。
+使用dynamic_cast时，如果expression无法安全地转换为type_name类型，运行时检查将导致强制转换失败，未能强制转换的指针类型的值是空指针。如果对引用类型的强制转换失败，会引发std::bad_cast异常。
 
 ```c++
 class Base { public: virtual ~Base() {}  /* make class polynomial */ };
@@ -776,10 +778,10 @@ int main() {
 
 ### const_cast
 
-运算符`const_cast<type_id>`用于删除名称的const属性、volatile属性、\_\_unaligned属性。
+运算符`const_cast<type_name>`用于删除名称的const属性、volatile属性、\_\_unaligned属性。
 
 ```c++
-type_id val = const_cast<type_id>(expression);
+type_name val = const_cast<type_name>(expression);
 ```
 
 指向任何类型或数据成员的指针，可显式转换为无const属性、无volatile属性、无\_\_unaligned属性的完全相同的类型，转换结果指向原始对象。但通过结果指针或引用对原始对象进行修改，可能会产生未定义的行为。不能使用const_cast运算符直接重写常量变量的常量状态（constant status）。
@@ -810,10 +812,10 @@ int main() {
 
 ### reinterpret_cast
 
-运算符`reinterpret_cast<type_id>`用于对位进行简单的重新解释（simple reinterpretation of bit），允许将任何指针转换为任何其他指针类型，也允许将任何整数类型转换为任何指针类型以及反向转换。滥用reinterpret_cast运算符可能很容易带来风险。
+运算符`reinterpret_cast<type_name>`用于对位进行简单的重新解释（simple reinterpretation of bit），允许将任何指针转换为任何其他指针类型，也允许将任何整数类型转换为任何指针类型以及反向转换。滥用reinterpret_cast运算符可能很容易带来风险。
 
 ```c++
-type_id val = reinterpret_cast<type_id>(expression);
+type_name val = reinterpret_cast<type_name>(expression);
 ```
 
 运算符reinterpret_cast可用于char\*到int\*或OneClass\*到UnrelatedClass\*等完全无关类型之间的转换，这本身并不安全。reinterpret_cast的转换结果，除非转换回原始类型，否则其他任何用途都是不安全且不可移植的。
@@ -842,11 +844,11 @@ int main() {
 运行时类型信息（Run-time Type Information，RTTI）是一种允许在程序执行过程中确定对象类型的机制。目前，RTTI已添加到C++标准库的\<typeinfo\>头文件中。历史遗留问题，此前许多第三方类库供应商自行实现此功能，导致类库之间存在不兼容的情况。此处讨论的C++标准支持的RTTI对指针和引用都适用。
 
 ```c++
-const type_info& ty_info = typeid(type_id);
+const type_info& ty_info = typeid(type_name);
 const type_info& ty_info = typeid(expression);
 ```
 
-其中，typeid运算符允许在运行时确定对象的类型，其返回结果是const type_info&类型的实例，用于对type_id或expression的类型信息提供描述。
+其中，typeid运算符允许在运行时确定对象的类型，其返回结果是const type_info&类型的实例，用于对type_name或expression的类型信息提供描述。
 
 运算符typeid在用于访问多态类型的对象时，会执行运行时检查，因为其实际类型不能由提供的静态信息确定。例如，对类的实例对象的引用，对指针的取消引用（dereference）访问的实例对象，对指针的下标运算（subscript）访问的实例对象；如果不取消引用指针，则结果是指针的type_info类型信息，而不是它指向的实例对象。
 
@@ -3125,11 +3127,11 @@ int main(int argc, char *argv[]) {
 
 在继承中，派生类包含基类的成员以及新添加的所有新成员。因此，在派生类中可以引用基类的成员，除非在派生类中重新定义这些成员。即使当在派生类中重新定义了基类的成员（覆盖），仍然可以使用范围解析运算符`::`访问到这些基类成员。这实际上只是在派生类中，通过新的定义实现，将基类中的同名成员覆盖而已，基类中的同名成员仍然存在。需要注意的是，这种直接覆盖并不能实现面向对象的动态多态性，而应该使用virtual虚函数实现动态多态性。
 
-### 虚函数
+### 虚函数与重写
 
 虚函数指的是应该在派生类中重新定义的成员函数，这些成员函数在基类中声明或者定义，并使用`virtual`关键字修饰。不能将全局函数、静态成员函数、构造函数声明为virtual虚函数，但能将析构函数声明为虚函数。在派生类中声明重写函数时可使用virtual关键字，但不是必需的，因为虚函数的重写始终是虚拟的。
 
-当使用基类的指针或引用来访问派生类的实例对象时，在该对象上调用虚函数会执行该函数的正确的派生类版本。虚函数能够确保为该对象调用正确的函数，这与用于进行函数调用的表达式类型无关，从而实现动态多态性。这种在派生类中重新定义基类中虚函数的行为称为重写，只有派生类函数与基类函数的签名完全一致（返回类型、函数名称、参数列表）时才起作用，否则就只是普通的函数重载，而不是虚函数重写。
+当使用基类的指针或引用来访问派生类的实例对象时，在该对象上调用虚函数会执行该函数的正确的派生类版本。虚函数能够确保为该对象调用正确的函数，这与用于进行函数调用的表达式类型无关，从而实现动态多态性。这种在派生类中重新定义基类中虚函数的行为称为重写（override），只有派生类函数与基类函数的签名完全一致（返回类型、函数名称、参数列表）时才起作用，否则就只是普通的函数重载，而不是虚函数重写。
 
 对于形如`Type* ptr = new Object;`的指针声明或引用声明而言，将左侧的Type称为声明变量类型，将右侧的Object称为实际对象类型。则对于虚函数来说，在调用时是根据对象的实际类型Object动态选择的；对于普通的非虚函数来说，在调用时是根据声明类型Type在编译时选择的。
 
@@ -3312,6 +3314,146 @@ int main(int argc, char *argv[]) {
 }
 ```
 
+## 运算符重载
+
+在C++中，一个函数由函数签名（function signature）唯一确定，函数签名是由函数返回类型、函数名称、参数类型列表组成的一串字符，如果一个函数是某个类的成员函数，则该函数的签名同时会包含类的名称。如下面一个函数所示，它的函数签名可以是"MyStruct_int_add_int_int"之类的字符串。实际上，在编译过程中，由编译器生成的函数签名通常会包含一些混淆字符修饰，并且具体生成的风格与编译器有关。
+
+```c++
+struct MyStruct {
+    int add(int x, int y) { return x + y; }
+};
+```
+
+函数的重载（overload）指的是，定义多个函数名称相同而参数列表不同的函数，编译器通过区分参数列表来判断具体调用哪个函数。参数列表不同，可以是参数个数不同、参数类型不同、参数顺序不同。注意，仅仅是函数的返回值类型不同，不足以定义重载函数。此外，重载函数不应该与带有默认值的函数一起使用。一个基本的函数重载的示例如下所示。
+
+```c++
+float add(float a, float b) { return a + b; }
+float add(float a, float b, float c) { return a + b + c; }
+```
+
+在C++中，函数重载最常用之处在于运算符重载（operator overload），这是因为在C++中，运算符实际上是一个函数，例如一个@运算符，实际上是一个名称为operator@的函数。在C++中，预定义的运算符只能对基本数据类型实现运算，而不适用于用户自定义类型。通过重载运算符函数，可以将已有的运算符应用于自定义类型。
+
+运算符重载的实质就是函数重载。在实现过程中，首先把指定的运算符表达式转化为对运算符函数的调用，运算对象转化为运算符函数的实参，然后根据实参的数据类型（包括自实义类型）来确定要调用的函数，这个过程是在系统编译阶段完成的。
+
+运算符重载应遵循一定的规则，例如，不能改变运算符操作数的个数，不能改变运算符原有的优先级、结合性、语法结构。需要注意的是，一些运算符不可被重载，包括`.`、`.*`、`::`、`?:`、`#`、`##`、`sizeof`运算符，而其余的运算符（包括`new`和`delete`）都可以被重载。一个基本的运算符重载的示例如下所示。
+
+```c++
+struct MyStruct {
+    float value;
+    MyStruct(float value_ = 0) : value(value_) {}
+};
+
+MyStruct operator+(const MyStruct& a, const MyStruct& b) {
+    return MyStruct(a.value + b.value);
+}
+```
+
+在为自定义类型重载运算符时，通常需要访问类的私有成员，这就需要将运算符重载为类的成员函数或友元函数，一个示例如下所示。
+
+```c++
+class MyStruct {
+private:
+    float value;
+
+public:
+    MyStruct(float value_ = 0) : value(value_) {}
+
+    MyStruct operator+(const MyStruct& other) {
+        return MyStruct(this->value + other.value);
+    }
+
+    friend MyStruct operator+(const MyStruct& a, const MyStruct& b);
+};
+
+MyStruct operator+(const MyStruct& a, const MyStruct& b) {
+    return MyStruct(a.value + b.value);
+}
+```
+
+区别在于，类的成员函数持有一个隐式指针this，而友元函数则没有隐式指针。因此对于运算表达式x@y、@x或x@而言，如果是成员函数，则编译器会匹配形如x.operator@(y)和形如x.operator@()的运算符函数，而如果是友元函数，则编译器会匹配形如operator@(x,y)和形如operator@(x)的运算符函数。也就是说，在将运算符函数重载为成员函数时，运算符的第一个操作数（左操作数）是通过this指针传递的，此时第一个操作数就是类的对象本身，因此作为成员函数的运算符函数的参数会比实际操作数个数少一个。
+
+一般情况下，单目运算符重载为类的成员函数，双目运算符重载为类的友元函数。若一个运算符的操作需要修改对象的状态，则推荐将其重载为成员函数。若运算符所需的操作数（尤其是第一个操作数）希望进行隐式的类型转换，则只能将其重载为友元函数。值得注意的是，运算符`=`、`()`、`[]`、`->`和类型转换运算符`(type)`只能重载为类的成员函数，而不能重载为类的友元函数。类型转换运算符没有返回类型，但需要指定返回值，一个示例如下所示。
+
+```c++
+class MyStruct {
+private:
+    float value;
+
+public:
+    MyStruct(float value_ = 0) : value(value_) {}
+
+    explicit operator int() {
+        return static_cast<int>(value);
+    }
+};
+```
+
+一种特殊情况是，自增运算符`++`既可以是前自增，也可以是后自增，自减运算符`--`既可以是前自减，也可以是后自减。在C++中，规定前自增和前自减按照一元运算符重载，规则同前面一样；而后自增和自减按照二元运算符重载，重载函数中添加一个int类型的形式参数，该形式参数无任何实际意义，仅仅是用于和前置运算符做出区别。一个示例如下所示。
+
+```c++
+class MyStruct {
+private:
+    float value;
+
+public:
+    MyStruct(float value_ = 0) : value(value_) {}
+
+    MyStruct& operator++() {
+        value += 1;
+        return *this;
+    }
+
+    MyStruct operator++(int) {
+        MyStruct old = *this;
+        value += 1;
+        return old;
+    }
+};
+```
+
+这里对运算符重载做一些补充说明。
+
+不能对C++内建的类型重载运算符。全局重载运算符函数时，至少有一个参数必须是一个用户自定义类型。唯一一个例外是，内存分配例程operator new和释放例程operator delete，可以替换程序中所有的内存分配和释放的全局例程。
+
+运算符重载函数的返回类型理论上可以是任何类型（包括void类型），但通常情况下，返回的是被调用对象的引用，从而可连续使用运算符。使用引用是为了提高性能。在代码中，应该按引用接受每一个非基本类型的参数。若果不需要修改参数，则应该将每一个参数都设置const常量。如果重载运算符返回的是一个可以修改的左值，则返回值类型必须是非const常量的，否则应该是const常量。将运算符重载为成员函数时，如果不修改对象，则应该将成员函数标记为const常量，以供const对象可以调用这个方法，并通常提供两个版本，一个是const常量版本，另一个是非const常量版本。
+
+当C++编译器遇到运算符时，就会试着查找operator@且具有适当参数类型的函数或者方法。为了找到operator@，编泽器还试图查找合适的类型转换，以及相应的构造函数，这会对问题的类型进行潜在的类型转换。可以使用关键字`explicit`标记构造函数，以禁止隐式转换。而且，自C++11以来，关键字explicit还可以用于转换运算符，以避免潜在类型转换所引发的歧义问题。
+
+## 位域
+
+类和结构体可以持有比整型类型占用更少存储空间的成员，这些成员被指定为位域（bit field）。在声明时必须将位域的类型指定为整数类型（包括枚举类型）。
+
+```c++
+struct Date {
+    unsigned short nWeekDay  : 3;  // 0..7   (3 bits)
+    unsigned short nMonthDay : 6;  // 0..31  (6 bits)
+    unsigned short nMonth    : 5;  // 0..12  (5 bits)
+    unsigned short nYear     : 8;  // 0..100 (8 bits)
+};
+```
+
+自定义类型Date的实例对象在概念上的内存布局示意图如下所示。
+
+![](现代C++编程.assets/位域的内存示意图.png)
+
+可以看到，nYear长度为8位，这会溢出上一个unsigned short的边界，因此，它始于新的unsigned short开头，根据声明中请求的位数来分配新的存储单元。并且，声明为位域的数据从低位到高位进行排序。
+
+如果声明一个长度为0的未命位域，则会强制将下一个位域与下一个类型边界对齐，如下所示。
+
+```c++
+struct Date {
+    unsigned nWeekDay  : 3;  // 0..7   (3 bits)
+    unsigned nMonthDay : 6;  // 0..31  (6 bits)
+    unsigned           : 0;  // Force alignment to next boundary.
+    unsigned nMonth    : 5;  // 0..12  (5 bits)
+    unsigned nYear     : 8;  // 0..100 (8 bits)
+};
+```
+
+![](现代C++编程.assets/位域强制对齐的内存示意图.png)
+
+需要注意的是，无法获取位域成员的地址，无法使用位域初始化非const的引用。
+
 ## 编译时的pimpl封装
 
 术语pimpl是一种新式C++技术，用于隐藏实现、分离接口、最小化耦合、最小化编译依赖、提高可移植性，术语pimpl是短语pointer to implementation的缩写，意为指向实现的指针。这个概念在其它技术描述中，可能存在其它名称，例如Cheshire Cat或Compiler Firewall等术语。
@@ -3348,41 +3490,6 @@ my_class::my_class() : pimpl(new impl) {
     // set impl values
 }
 ```
-
-## 位域
-
-类和结构体可以持有比整型类型占用更少存储空间的成员，这些成员被指定为位域（bit field）。在声明时必须将位域的类型指定为整数类型（包括枚举类型）。
-
-```c++
-![位域强制对齐的内存示意图](位域强制对齐的内存示意图.png)struct Date {
-    unsigned short nWeekDay  : 3;  // 0..7   (3 bits)
-    unsigned short nMonthDay : 6;  // 0..31  (6 bits)
-    unsigned short nMonth    : 5;  // 0..12  (5 bits)
-    unsigned short nYear     : 8;  // 0..100 (8 bits)
-};
-```
-
-自定义类型Date的实例对象在概念上的内存布局示意图如下所示。
-
-![](现代C++编程.assets/位域的内存示意图.png)
-
-可以看到，nYear长度为8位，这会溢出上一个unsigned short的边界，因此，它始于新的unsigned short开头，根据声明中请求的位数来分配新的存储单元。并且，声明为位域的数据从低位到高位进行排序。
-
-如果声明一个长度为0的未命位域，则会强制将下一个位域与下一个类型边界对齐，如下所示。
-
-```c++
-struct Date {
-    unsigned nWeekDay  : 3;  // 0..7   (3 bits)
-    unsigned nMonthDay : 6;  // 0..31  (6 bits)
-    unsigned           : 0;  // Force alignment to next boundary.
-    unsigned nMonth    : 5;  // 0..12  (5 bits)
-    unsigned nYear     : 8;  // 0..100 (8 bits)
-};
-```
-
-![](现代C++编程.assets/位域强制对齐的内存示意图.png)
-
-需要注意的是，无法获取位域成员的地址，无法使用位域初始化非const的引用。
 
 # 模板
 

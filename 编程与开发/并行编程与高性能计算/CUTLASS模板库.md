@@ -91,9 +91,9 @@ public:
     }
     
     // Resizes internal memory allocations without affecting layout or extent
+    // @param count          : size of tensor in elements
+    // @param device_backed_ : if true, device memory is also allocated
     void reserve(size_t count, bool device_backed_ = true) {
-        // @param count             size of tensor in elements
-        // @param device_backed_    if true, device memory is also allocated
         device_.reset();
         host_.clear();
         count = (count + kElementsPerStoredVec - 1) / kElementsPerStoredVec * kNumStoragePerStoredVec;
@@ -1230,6 +1230,11 @@ public:
     TensorCoord inverse(LongIndex index) const {
         return make_Coord(TensorCoord::Index(index % stride_[0]), TensorCoord::Index(index / stride_[0]));
     }
+    
+    /// Returns the stride of the layout
+    LongIndex & stride(int rank) {
+        return stride_[rank];
+    }
 };
 ```
 
@@ -1792,6 +1797,11 @@ public:
     TensorRef & operator-=(TensorCoord const& b) {
         add_pointer_offset(-offset(b));
         return *this;
+    }
+    
+    /// Returns the layout object's stride in a given physical dimension
+    typename Layout::Stride::Index & stride(int dim) {
+        return layout_.stride().at(dim);
     }
 };
 ```
@@ -4101,8 +4111,7 @@ public:
         Base(shared_storage, thread_idx, warp_idx, lane_idx),
         smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx),
         smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx),
-        transform_A_(transform_A), transform_B_(transform_B), smem_write_stage_idx(0)
-    {
+        transform_A_(transform_A), transform_B_(transform_B), smem_write_stage_idx(0) {
         // Compute warp location within threadblock tile by mapping the warp_id to three coordinates:
         // idx_m: the warp's position within the threadblock along the M dimension
         // idx_n: the warp's position within the threadblock along the N dimension
