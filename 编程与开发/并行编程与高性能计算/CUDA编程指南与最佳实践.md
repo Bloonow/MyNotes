@@ -350,7 +350,7 @@ CUDA 11引入了memcpy_async()异步数据复制，以允许显式管理数据�
 CUDA应用程序的主要操作即是计算和访存，并且会通过共享内存暂存数据，即，(1)从全局内存获取数据；(2)将数据存储到共享内存；(3)对共享内存数据执行计算，并将结果写回全局内存。如果不使用异步复制，则从全局内存复制数据到共享内存，需要使用中间寄存器进行搬运。
 
 ```c++
-__device__ void compute_and_stg(float* smem_buf, float* batched_block_out) {
+__device__ void compute_and_store_gmem(float* smem_buf, float* batched_block_out) {
     cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
     // Computes using all values of current batch from shared memory
     float result = compute(smem_buf[block.thread_rank()]);
@@ -371,7 +371,7 @@ __global__ void simple_copy_kernel(float* in, float* out, int N, int batch_size)
         // 2. Wait for all copies to complete
         block.sync();
         // 3. Compute and write result to global memory
-        compute_and_stg(smem_buf, out + block_offset);
+        compute_and_store_gmem(smem_buf, out + block_offset);
         // 4. Wait for compute using shared memory to finish
         block.sync();
         block_offset += grid.size();
@@ -401,7 +401,7 @@ __global__ void memcpy_async_kernel(float* in, float* out, int N, int batch_size
         // 2. Joins all threads, thread-group wait all previously submitted memcpy_async() to complete
         cooperative_groups::wait(block);
         // 3. Compute and wait to finish
-        compute_and_stg(smem_buf, out + block_offset);
+        compute_and_store_gmem(smem_buf, out + block_offset);
         block.sync();
         block_offset += grid.size();
     }
@@ -433,7 +433,7 @@ __global__ void memcpy_async_kernel(float* in, float* out, int N, int batch_size
         // 2. Waits for all copies to complete
         barrier.arrive_and_wait();
         // 3. Compute and wait to finish
-        compute_and_stg(smem_buf, out + block_offset);
+        compute_and_store_gmem(smem_buf, out + block_offset);
         block.sync();
         block_offset += grid.size();
     }
@@ -502,7 +502,7 @@ __global__ void memcpy_async_kernel(float* in, float* out, int N, int batch_size
         // 4. Collectively wait for the operations committed to the previous `compute` stage to complete
         pipeline.consumer_wait();
         // 5. Computation overlapped with the memcpy_async of the `copy` stage
-        compute_and_stg(smem_buf + shared_offset[compute_batch % stages_count], out + global_offset(compute_batch));
+        compute_and_store_gmem(smem_buf + shared_offset[compute_batch % stages_count], out + global_offset(compute_batch));
         // 6. Collectively release the stage resources
         pipeline.consumer_release();
     }
@@ -540,7 +540,7 @@ __global__ void memcpy_async_kernel(float* in, float* out, int N, int batch_size
         pipeline.consumer_wait();
         // __syncthreads(): All memcpy_async of all threads in the block for this stage have completed here
         block.sync();
-        compute_and_stg(smem_buf + shared_offset[compute_batch % stages_count], out + global_offset(compute_batch));
+        compute_and_store_gmem(smem_buf + shared_offset[compute_batch % stages_count], out + global_offset(compute_batch));
         pipeline.consumer_release();
     }
 }

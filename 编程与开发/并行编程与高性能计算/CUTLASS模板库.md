@@ -4287,17 +4287,1906 @@ public:
 };
 ```
 
-### MmaMultiStage
+### MmaMultiStage ^$
 
 当使用多级流水线实现在Threadblock线程块层级的矩阵乘加操作时，相关实现被抽象为gemm::threadblock::MmaMultiStage模板类。
 
 在cutlass/gemm/threadblock/mma_multistage.h头文件中，提供gemm::threadblock::MmaMultiStage的定义，如下所示。
 
 ```c++
-
 ```
 
-## Transform API ^$
+# Transform API
 
-在cutlass/transform目录中，提供在不同域之间进行数据转移的代码实现，主要用于解决数据布局变换带来的问题。该功能主要用在Threadblock线程块层级，用于将数据从设备全局内存加载到寄存器，以及将寄存器中的数据写入到共享内存。其中，从全局内存加载数据的操作被抽象为XXX模板类，向共享内存写入数据的操作被抽象为XXX模板类。
+在cutlass/transform目录中，提供在不同域之间进行数据转移的代码实现，主要用于解决数据布局变换带来的问题。该功能主要用在Threadblock线程块层级，用于将数据从设备全局内存加载到寄存器，以及将寄存器中的数据写入到共享内存。加载全局内存的操作被抽象为transform::threadblock::PredicatedTileIterator模板类，写入共享内存的操作被抽象为transform::threadblock::RegularTileIterator模板类。
 
+## ThreadMap
+
+当一个线程块从设备的全局内存中加载数据时，或向设备的全局内存中写入数据时；当一个线程块向共享内存中写入数据时，或从共享内存中读取数据时。这需要指定一个线程所负责的数据位置，即指定线程到数据的映射关系，这是一个名为线程映射（ThreadMap）的概念。
+
+在CUTLASS中，常用映射是PitchLinearStripminedThreadMap映射、TransposePitchLinearThreadMapSimt映射、PitchLinearWarpRakedThreadMap映射。
+
+![](CUTLASS模板库.assets/ThreadMap.png)
+
+在cutlass/transform/pitch_linear_thread_map.h头文件中，提供transform::PitchLinearStripminedThreadMap的定义，如下所示。
+
+```c++
+/// Strip-mines a pitch-linear tile among a given number of threads,
+/// first along the contiguous dimension then along the strided dimension.
+/// The tile must be divisible by the thread count such that all threads
+/// may execute the same number of iterations with the same delta to exhaustively cover the tile.
+/// This ThreadMap is used by SIMT kernels and operand E of the sparse tensor kernels.
+/// Satisfies: RegularThreadMapping
+template <
+    typename Shape_,           /// Overall shape to partition in units of elements - concept: layout::PitchLinearShape<>
+    int Threads,               /// Number of partiticipation threads
+    /// Number of elements accessed by each thread per memory operation (i.e. vector size). 1 for SIMT.
+    int ElementsPerAccess = 1
+>
+struct PitchLinearStripminedThreadMap {
+    using TensorCoord = layout::PitchLinearCoord;             /// Tensor coordinate
+    using Shape = Shape_;  /// Tile shape. The contiguous dimension matches leading dimension of data in global memory.
+    static int const kThreads = Threads;                      /// Number of threads total
+    static int const kElementsPerAccess = ElementsPerAccess;  /// Extract vector length from Layout
+    using ThreadAccessShape = layout::PitchLinearShape<kElementsPerAccess, 1>;  /// Shape of access by each thread
+
+    /// Shape of the tile in units of vectors
+    using ShapeVec = layout::PitchLinearShape<Shape::kContiguous / kElementsPerAccess, Shape::kStrided>;
+
+    /// Number of iterations by each thread
+    using Iterations = typename platform::conditional<Threads >= ShapeVec::kContiguous,
+        layout::PitchLinearShape<1, (ShapeVec::kStrided + (kThreads / ShapeVec::kContiguous - 1)) / (kThreads / ShapeVec::kContiguous)>,
+        layout::PitchLinearShape<ShapeVec::kContiguous / kThreads, ShapeVec::kStrided>
+    >::type;
+
+    /// Interval between accesses along each dimension of the tensor's logical coordinate space. (in units of Elements)
+    using Delta = typename platform::conditional<Threads >= ShapeVec::kContiguous,
+        layout::PitchLinearShape<1, kThreads / ShapeVec::kContiguous>,
+        layout::PitchLinearShape<kThreads * kElementsPerAccess, 1>
+    >::type;
+
+    /// Maps thread ID to a coordinate offset within the tensor's logical coordinate space. (in units of Elements)
+    static TensorCoord initial_offset(int thread_id) {
+        return TensorCoord((thread_id % ShapeVec::kContiguous) * kElementsPerAccess, thread_id / ShapeVec::kContiguous);
+    }
+};
+```
+
+在cutlass/transform/pitch_linear_thread_map.h头文件中，提供transform::TransposePitchLinearThreadMapSimt的定义，如下所示。
+
+```c++
+template <typename ThreadMap_>
+struct TransposePitchLinearThreadMapSimt {
+    using ThreadMap = ThreadMap_;                                         /// Underlying ThreadMap
+    using TensorCoord = typename ThreadMap::TensorCoord;                  /// Tensor coordinate
+    using Shape = typename ThreadMap::Shape;                              /// Tile shape
+    static int const kThreads = ThreadMap::kThreads;                      /// Number of threads total
+    static int const kElementsPerAccess = ThreadMap::kElementsPerAccess;  /// Extract vector length from Layout
+    using ThreadAccessShape = typename ThreadMap::ThreadAccessShape;      /// Shape of access by each thread
+
+    /// Iterations along each dimension (concept: PitchLinearShape)
+    using Iterations = layout::PitchLinearShape<ThreadMap::Iterations::kStrided, ThreadMap::Iterations::kContiguous>;
+
+    /// Delta betweeen accesses (units of elements, concept: PitchLinearShape)
+    using Delta = layout::PitchLinearShape<ThreadMap::Delta::kStrided, ThreadMap::Delta::kContiguous>;
+
+    /// Maps thread ID to a coordinate offset within the tensor's logical coordinate space.
+    /// Note this is slightly different from the one of PitchLinearWarpRakedThreadMap.
+    static TensorCoord initial_offset(int thread_id) {
+        TensorCoord coord = ThreadMap::initial_offset(thread_id);
+        return TensorCoord(coord.strided(), coord.contiguous());
+    }
+};
+```
+
+在cutlass/transform/pitch_linear_thread_map.h头文件中，提供transform::PitchLinearWarpRakedThreadMap的定义，如下所示。
+
+```c++
+/// Policy defining a warp-raked arrangement in which a shape is partitioned into contiguous elements.
+/// This ThreadMap is used by tensor core kernels.
+/// Satisfies: RegularThreadMapping
+template <
+    typename Shape_,                  /// Overall shape to partition in units of elements - concept: layout::PitchLinearShape<>
+    int Threads,                      /// Number of partiticipation threads
+    typename WarpThreadArrangement_,  /// Warp thread arrangement
+    /// Number of elements accessed by each thread per memory operation (i.e. vector size). `128 / sizeof_bits<Element>::value` for TensorOp.
+    int ElementsPerAccess = 1
+>
+struct PitchLinearWarpRakedThreadMap {
+    using TensorCoord = layout::PitchLinearCoord;  /// Tensor coordinate
+    using Shape = Shape_;  /// Tile shape. The contiguous dimension matches leading dimension of data in global memory.
+    static int const kThreads = Threads;                      /// Number of threads total
+    static int const kElementsPerAccess = ElementsPerAccess;  /// Extract vector length from Layout
+    using ThreadAccessShape = layout::PitchLinearShape<kElementsPerAccess, 1>;  /// Shape of access by each thread
+
+    /// Internal details made public to facilitate introspection
+    struct Detail {
+        using WarpThreadArrangement = WarpThreadArrangement_;        /// Fixed arrangement of threads within a warp (units of threads).
+        static int const kWarpSize = WarpThreadArrangement::kCount;  /// Number of threads per warp
+        static int const kWarpCount = kThreads / kWarpSize;          /// Number of participating warps
+
+        /// Compute the 'shape' of the overall tile in units of vectors
+        using ShapeInAccesses = layout::PitchLinearShape<Shape::kContiguous / kElementsPerAccess, Shape::kStrided>;
+
+        /// Compute number of warp-level accesses total. Assuming there is only one warp to access all vectors.
+        using WarpAccessIterations = layout::PitchLinearShape<
+            ShapeInAccesses::kContiguous / WarpThreadArrangement::kContiguous, ShapeInAccesses::kStrided / WarpThreadArrangement::kStrided>;
+
+        /// Divide it into the number of warps, first partitioning the strided dimension then the contiguous.
+        static int const kWarpsStrided = (WarpAccessIterations::kStrided >= kWarpCount ? kWarpCount : WarpAccessIterations::kStrided);
+        static int const kWarpsContiguous = (kWarpCount > WarpAccessIterations::kStrided ? kWarpCount / kWarpsStrided : 1);
+
+        /// Arrangement of warps within a threadblock-scoped tile
+        using WarpArrangement = layout::PitchLinearShape<kWarpsContiguous, kWarpsStrided>;
+    };
+
+    /// Iterations along each dimension (concept: PitchLinearShape)
+    using Iterations = layout::PitchLinearShape<
+        Detail::WarpAccessIterations::kContiguous / Detail::kWarpsContiguous,
+        Detail::WarpAccessIterations::kStrided / Detail::kWarpsStrided
+    >;
+
+    /// Delta betweeen accesses (units of elements, concept: PitchLinearShape)
+    using Delta = layout::PitchLinearShape<
+        Detail::WarpThreadArrangement::kContiguous * kElementsPerAccess,
+        Detail::WarpThreadArrangement::kStrided
+    >;
+
+    /// Maps thread ID to a coordinate offset within the tensor's logical coordinate space
+    static TensorCoord initial_offset(int thread_id) {
+        int warp_id = (thread_id / Detail::kWarpSize);
+        int lane_id = (thread_id % Detail::kWarpSize);
+
+        // compute warp-level offset
+        // This is the shape of the entire area covered by a warp's memory access (in units of vectors)
+        layout::PitchLinearCoord warp_footprint{
+            Detail::WarpThreadArrangement::kContiguous * Iterations::kContiguous,
+            Detail::WarpThreadArrangement::kStrided * Iterations::kStrided
+        };
+
+        // This is the offset of a specific warp (in units of vectors)
+        layout::PitchLinearCoord warp_offset{
+            (warp_id % Detail::kWarpsContiguous),
+            (warp_id / Detail::kWarpsContiguous)
+        };
+
+        // This is the offset of a specific thread within a warp (units of vectors)
+        layout::PitchLinearCoord thread_offset_in_warp{
+            lane_id % Detail::WarpThreadArrangement::kContiguous,
+            lane_id / Detail::WarpThreadArrangement::kContiguous
+        };
+
+        // This is the offset of a thread within a threadblock tile (units of vectors)
+        layout::PitchLinearCoord thread_offset_in_threadblock_tile_vec = warp_footprint * warp_offset + thread_offset_in_warp;
+
+        // This is the offset of a thread within a threadblock tile (units of elements)
+        layout::PitchLinearCoord thread_offset_in_threadblock_tile_base{
+            thread_offset_in_threadblock_tile_vec.contiguous() * kElementsPerAccess,
+            thread_offset_in_threadblock_tile_vec.strided()
+        };
+
+        return thread_offset_in_threadblock_tile_base;
+    }
+};
+```
+
+## Load Global Memory
+
+在从设备的全局内存中加载数据时，或向设备的全局内存中写入数据时，需要一块一块的迭代进行，当迭代到边界位置时，需要判断一个线程要访问的数据是否越界。谓词迭代器（PredicatedTileIterator）使用一个预计算的谓词向量来控制线程的访问行为，是进行访问或是进行零填充或是什么也不做，并使用@p条件谓词来控制访存指令是否执行，这样就可用避免在每次访问时都使用条件语句判断边界条件。这被抽象为transform::threadblock::PredicatedTileIterator模板类。
+
+在CUTLASS中实现transform::threadblock::PredicatedTileIterator时，需要用到一个名为谓词访问迭代器（PredicatedTileAccessIterator）的概念，这是一个底层的负责计算地址和谓词掩码的迭代器，该迭代器首先访问一个“最后剩余部分（last residual partial）的Tile分块”，然后之后再访问的都是“稳定完整（steady state complete）的Tile分块”。这被抽象为transform::threadblock::PredicatedTileAccessIterator模板类。
+
+在CUTLASS中实现transform::threadblock::PredicatedTileAccessIterator时，需要用到一个专门用于表示谓词并预计算谓词条件的结构体，这被抽象为transform::threadblock::PredicatedTileAccessIteratorPredicates模板类。同时，需要使用一个结构体表示谓词访问迭代器在初始化时所用到的配置参数，这被抽象为transform::threadblock::PredicatedTileAccessIteratorParams模板类。
+
+### PredicatedTileAccessIteratorParams
+
+在CUTLASS中实现transform::threadblock::PredicatedTileAccessIterator时，需要使用一个结构体表示谓词访问迭代器在初始化时所用到的配置参数，这被抽象为transform::threadblock::PredicatedTileAccessIteratorParams模板类。
+
+在cutlass/transform/threadblock/predicated_tile_access_iterator_params.h头文件中，提供transform::threadblock::PredicatedTileAccessIteratorDesc的定义，如下所示。
+
+```c++
+/// Predicated tile access iterator descriptor object containing template dependent state
+struct PredicatedTileAccessIteratorDesc {
+    int element_size_bits = -1;
+    int advance_rank = -1;
+    layout::PitchLinearCoord threadblock_shape;
+    layout::PitchLinearCoord threadmap_iterations;
+    layout::PitchLinearCoord threadmap_delta;
+
+    PredicatedTileAccessIteratorDesc() = default;
+    
+    PredicatedTileAccessIteratorDesc(
+        int element_size_bits_,
+        int advance_rank_,
+        layout::PitchLinearCoord threadblock_shape_,
+        layout::PitchLinearCoord threadmap_iterations_,
+        layout::PitchLinearCoord threadmap_delta_
+    ) : element_size_bits(element_size_bits_),
+        advance_rank(advance_rank_),
+        threadblock_shape(threadblock_shape_),
+        threadmap_iterations(threadmap_iterations_),
+        threadmap_delta(threadmap_delta_) {}
+};
+
+/// Helper template to construct an PredicatedTileAccessIteratorDesc from a template dependent state.
+template <typename Shape, typename Element, typename Layout, int AdvanceRank, typename ThreadMap>
+struct MakePredicatedTileAccessIteratorDesc;
+
+/// Specialization of PredicatedTileAccessIterator for pitch-linear data.
+template <typename Shape, typename Element, int AdvanceRank, typename ThreadMap>
+struct MakePredicatedTileAccessIteratorDesc<Shape, Element, layout::PitchLinear, AdvanceRank, ThreadMap> {
+    PredicatedTileAccessIteratorDesc operator()() {
+        return PredicatedTileAccessIteratorDesc(
+            sizeof_bits<Element>::value, AdvanceRank,
+            { Shape::kContiguous, Shape::kStrided },
+            { ThreadMap::Iterations::kContiguous, ThreadMap::Iterations::kStrided },
+            { ThreadMap::Delta::kContiguous, ThreadMap::Delta::kStrided }
+        );
+    }
+};
+
+/// Specialization of PredicatedTileAccessIterator for column-major data.
+template <typename Shape, typename Element, int AdvanceRank, typename ThreadMap>
+struct MakePredicatedTileAccessIteratorDesc<Shape, Element, layout::ColumnMajor, AdvanceRank, ThreadMap> {
+    static int const kAdvanceRank = AdvanceRank;
+    using UnderlyingMakeOperator = MakePredicatedTileAccessIteratorDesc<
+        layout::PitchLinearShape<Shape::kRow, Shape::kColumn>, Element,
+        layout::PitchLinear, (kAdvanceRank == 0 ? 0 : 1), ThreadMap>;
+
+    PredicatedTileAccessIteratorDesc operator()() {
+        return UnderlyingMakeOperator()();
+    }
+};
+
+/// Specialization of PredicatedTileAccessIterator for row-major data.
+template <typename Shape, typename Element, int AdvanceRank, typename ThreadMap>
+struct MakePredicatedTileAccessIteratorDesc<Shape, Element, layout::RowMajor, AdvanceRank, ThreadMap> {
+    static int const kAdvanceRank = AdvanceRank;
+    using UnderlyingMakeOperator = MakePredicatedTileAccessIteratorDesc<
+        layout::PitchLinearShape<Shape::kColumn, Shape::kRow>, Element,
+        layout::PitchLinear, (kAdvanceRank == 0 ? 1 : 0), ThreadMap>;
+
+    PredicatedTileAccessIteratorDesc operator()() {
+        return UnderlyingMakeOperator()();
+    }
+};
+```
+
+在cutlass/transform/threadblock/predicated_tile_access_iterator_params.h头文件中，提供transform::threadblock::PredicatedTileAccessIteratorParams的定义，如下所示。
+
+```c++
+struct PredicatedTileAccessIteratorParams {
+    using Index = int32_t;
+    using LongIndex = int64_t;
+
+    LongIndex stride_ = 0;       /// stride of pitch-linear layout (units of Element)
+    LongIndex inc_strided_ = 0;  /// amount (in byte) to increment pointer to move to next access along strided dimension
+    LongIndex inc_next_ = 0;     /// amount (in byte) to increment pointer from last access to first access of next tile
+    LongIndex inc_advance_ = 0;  /// amount (in byte) to increment pointer from first access of current tile to first access of next tile
+
+    PredicatedTileAccessIteratorParams() = default;
+    
+    PredicatedTileAccessIteratorParams(LongIndex stride, PredicatedTileAccessIteratorDesc desc) {
+        initialize(stride, desc);
+    }
+
+    Status initialize(LongIndex stride, PredicatedTileAccessIteratorDesc desc) {
+        stride_ = stride;
+        inc_strided_ = LongIndex(stride_) * desc.threadmap_delta.strided() * desc.element_size_bits / 8;
+        if (desc.advance_rank == 1) {
+            // Advance along strided dimension. When using RowMajor and ColumnMajor as PitchLinear, advance_rank is always 1.
+            inc_advance_ = desc.threadblock_shape.strided() * LongIndex(stride_) * desc.element_size_bits / 8;
+        } else /* desc.advance_rank == 0 */ {
+            // Advance along contiguous dimension.
+            inc_advance_ = desc.threadblock_shape.contiguous() * desc.element_size_bits / 8;
+        }
+        inc_next_ = inc_advance_ - LongIndex(desc.threadmap_iterations.strided() - 1) * desc.threadmap_delta.strided()
+            * LongIndex(stride_) * desc.element_size_bits / 8;
+        return Status::kSuccess;
+    }
+};
+```
+
+### PredicatedTileAccessIteratorPredicates
+
+在CUTLASS中实现transform::threadblock::PredicatedTileAccessIterator时，需要用到一个专门用于表示谓词并预计算谓词条件的结构体，这被抽象为transform::threadblock::PredicatedTileAccessIteratorPredicates模板类。
+
+在cutlass/transform/threadblock/predicated_tile_access_iterator.h头文件中，提供transform::threadblock::PredicatedTileAccessIteratorPredicates的定义，如下所示。
+
+```c++
+/// PredicatedTileAccessIteratorPredicates
+template <
+    typename Shape_,      /// Shape of threadblock-scoped matrix multiply operator (concept: PitchLinearShape)
+    typename Element_,    /// Data type of matrix operand
+    typename Layout_,     /// Layout of matrix operand
+    int AdvanceRank,      /// Advancing dimension within Shape. { Contiguous, Strided } = { 0, 1 }.
+    typename ThreadMap_,  /// Mapping a thread to element location
+    typename AccessType_  /// AlignedArray<Element, ThreadMap::kElementsPerAccess>
+>
+class PredicatedTileAccessIteratorPredicates {
+public:
+    using Shape = Shape_;
+    using Element = Element_;
+    using Layout = Layout_;
+    static int const kAdvanceRank = AdvanceRank;
+    using ThreadMap = ThreadMap_;
+    using AccessType = AccessType_;
+    
+    using Index = typename Layout::Index;
+    using LongIndex = typename Layout::LongIndex;
+    using TensorCoord = typename Layout::TensorCoord;
+
+    static int const kAccessesPerVector = ThreadMap::kElementsPerAccess / AccessType::kElements;  // Always 1
+    static int const kPredicateCount = ThreadMap::Iterations::kCount * kAccessesPerVector;        // Predicates needed by one thread
+    static int const kPredicatesPerByte = 4;                       // One Byte (8-bits), containing 4 predicates
+    static int const kPredicatesPerWord = 4 * kPredicatesPerByte;  // One Word (32-bits), containing 16 predicates
+    static int const kPredicateByteCount = (kPredicateCount + kPredicatesPerByte - 1) / kPredicatesPerByte;
+    static int const kPredicateWordCount = (kPredicateByteCount + 3) / 4;        // Number of 32b words containing predicates
+    static unsigned int const kPredicateMask = (1u << kPredicatesPerByte) - 1u;  // 0b00001111
+
+    using Mask = Array<uint32_t, kPredicateWordCount>;  /// Predicate vector stores mask to guard accesses
+    uint32_t predicates_[kPredicateWordCount];          /// Guard predicates
+    TensorCoord extent_;          /// Size of Tensor. From the actual Problem_Size GemmShape<M, N, K>.
+    TensorCoord thread_offset_;   /// Initial offset for each thread
+    TensorCoord residue_offset_;  /// Offset to the first steady-state tile
+    int iteration_vector_;        /// Iteration along vectors implied by the thread map
+    int iteration_contiguous_;    /// Iteration in the contiguous dimension
+    int iteration_strided_;       /// Iteration in the strided dimension
+
+public:
+    /// Default constructor
+    PredicatedTileAccessIteratorPredicates() = default;
+
+    /// Constructor. extent from the actual Problem_Size GemmShape<M, N, K>.
+    PredicatedTileAccessIteratorPredicates(TensorCoord extent) : extent_(extent) {}
+
+    /// Computes predicates based on internally tracked per-thread offset.
+    /// @param extent          : Extent of the matrix window
+    /// @param is_steady_state : optionally, simplify predicate calculation during 'steady state' phase
+    void compute_predicates_(TensorCoord extent, bool is_steady_state = false) {
+        for (int i = 0; i < kPredicateWordCount; ++i) {
+            predicates_[i] = 0u;
+        }
+        for (int access_idx = 0; access_idx < ThreadMap::Iterations::kCount * kAccessesPerVector; ++access_idx) {
+            int s = access_idx / (ThreadMap::Iterations::kContiguous * kAccessesPerVector);
+            int access_residual = access_idx % (ThreadMap::Iterations::kContiguous * kAccessesPerVector);
+            int c = access_residual / kAccessesPerVector;
+            int v = access_residual % kAccessesPerVector;
+            TensorCoord iteration_coord(c * ThreadMap::Delta::kContiguous + v * AccessType::kElements, s * ThreadMap::Delta::kStrided);
+            TensorCoord coord = thread_offset_ + iteration_coord;
+            bool guard;
+            if (is_steady_state) {
+                if (kAdvanceRank == 0) {
+                    // Contiguous dimension is already in 'steady state' phase
+                    guard = (coord.strided() < extent.strided());
+                } else /* kAdvanceRank == 1 */ {
+                    // Strided dimension is already in 'steady state' phase
+                    guard = (coord.contiguous() < extent.contiguous());
+                }
+            } else {
+                // Contiguous dimension and Strided dimension are not in 'steady state', and extent is residue_extent.
+                guard = (coord.strided() < extent.strided() && coord.contiguous() < extent.contiguous());
+            }
+            int pred_idx = v + kAccessesPerVector * (c + ThreadMap::Iterations::kContiguous * s);
+            int word_idx = pred_idx / kPredicatesPerWord;
+            int residual = pred_idx % kPredicatesPerWord;
+            int byte_idx = residual / kPredicatesPerByte;
+            int bit_idx = residual % kPredicatesPerByte;
+            // One Word[31:0] is `0b 0000???? 0000???? 0000???? 0000????`, where `0` is meaningless placeholder and `?` is the guard.
+            predicates_[word_idx] |= (static_cast<unsigned int>(guard) << (byte_idx * 8 + bit_idx));
+        }
+    }
+
+    void set_predicates(int thread_id, TensorCoord const &threadblock_offset) {
+        TensorCoord residue_extent;
+        if (kAdvanceRank == 1) {
+            typename TensorCoord::Index residue_size = (extent_[kAdvanceRank] - threadblock_offset.strided()) % Shape::kStrided;
+            if (residue_size == 0) {
+                residue_size = Shape::kStrided;
+            }
+            residue_offset_ = make_Coord(0, residue_size);
+            residue_extent = make_Coord(extent_.contiguous(), min(threadblock_offset.strided() + residue_size, extent_.strided()));
+        } else /* kAdvanceRank == 0 */ {
+            typename TensorCoord::Index residue_size = (extent_[kAdvanceRank] - threadblock_offset.contiguous()) % Shape::kContiguous;
+            if (residue_size == 0) {
+                residue_size = Shape::kContiguous;
+            }
+            residue_offset_ = make_Coord(residue_size, 0);
+            residue_extent = make_Coord(min(extent_.contiguous(), threadblock_offset.contiguous() + residue_size), extent_.strided());
+        }
+        // Per-thread offset in logical coordinates of tensor
+        thread_offset_ = threadblock_offset + ThreadMap::initial_offset(thread_id);
+        compute_predicates_(residue_extent, false);
+        set_iteration_index(0);
+    }
+    
+    /// Increment and return an instance to self.
+    PredicatedTileAccessIteratorPredicates &operator++() {
+        return *this;
+    }
+    
+    /// Sets the predicate mask, overriding value stored in predicate iterator
+    void set_mask(Mask const &mask) {
+        for (int i = 0; i < kPredicateWordCount; ++i) {
+            predicates_[i] = mask[i];
+        }
+    }
+
+    /// Gets the mask
+    void get_mask(Mask &mask) {
+        for (int i = 0; i < kPredicateWordCount; ++i) {
+            mask[i] = predicates_[i];
+        }
+    }
+
+    /// Enables the predicate set efficiently
+    void enable_mask() {
+        for (int i = 0; i < kPredicateWordCount; ++i) {
+            predicates_[i] = 0xFFFFFFFF;
+        }
+    }
+
+    /// Clears the predicate set efficiently
+    void clear_mask(bool enable = true) {
+        for (int i = 0; i < kPredicateWordCount; ++i) {
+            predicates_[i] = enable ? 0u : predicates_[i];
+        }
+    }
+
+    /// Overrides the internal iteration index
+    void set_iteration_index(int index) {
+        iteration_vector_ = index % kAccessesPerVector;
+        int residual_access = index / kAccessesPerVector;
+        iteration_contiguous_ = residual_access % ThreadMap::Iterations::kContiguous;
+        iteration_strided_ = residual_access / ThreadMap::Iterations::kContiguous;
+    }
+
+    /// Returns whether access is valid or not
+    bool valid() const {
+        int pred_idx = (iteration_contiguous_ + iteration_strided_ * ThreadMap::Iterations::kContiguous) * kAccessesPerVector
+            + iteration_vector_;
+        int word_idx = pred_idx / kPredicatesPerWord;
+        int residual = pred_idx % kPredicatesPerWord;
+        int byte_idx = residual / kPredicatesPerByte;
+        int bit_idx = residual % kPredicatesPerByte;
+        bool pred = (predicates_[word_idx] & (1u << (byte_idx * 8 + bit_idx))) != 0;
+        return pred;
+    }
+};
+```
+
+### PredicatedTileAccessIterator
+
+在CUTLASS中实现transform::threadblock::PredicatedTileIterator时，需要用到一个名为谓词访问迭代器（PredicatedTileAccessIterator）的概念，这是一个底层的用于计算地址和谓词掩码的迭代器，这被抽象为transform::threadblock::PredicatedTileAccessIterator模板类。
+
+在cutlass/transform/threadblock/predicated_tile_access_iterator.h头文件中，提供transform::threadblock::PredicatedTileAccessIterator的定义，如下。
+
+```c++
+/// PredicatedTileAccessIterator
+/// Satisfies: ForwardTileIteratorConcept | MaskedTileIteratorConcept |
+///            ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <
+    typename Shape,       /// Shape of threadblock-scoped matrix multiply operator (concept: MatrixShape | PitchLinearShape)
+    typename Element,     /// Data type of matrix operand
+    typename Layout,      /// Layout of matrix operand
+    int AdvanceRank,      /// Advancing dimension within Shape. { Row, Column } = { 0, 1 }. { Contiguous, Strided } = { 0, 1 }.
+    typename ThreadMap,   /// Mapping a thread to element location
+    typename AccessType,  /// AlignedArray<Element, ThreadMap::kElementsPerAccess>
+    bool Gather = false,
+    typename PermuteLayout = layout::NoPermute
+>
+class PredicatedTileAccessIterator;
+```
+
+当数据在设备全局内存中的布局是layout::PitchLinear时，transform::threadblock::PredicatedTileAccessIterator访问器的实现代码如下所示。
+
+```c++
+/// Specialization of PredicatedTileAccessIterator for pitch-linear data.
+/// Satisfies: ForwardTileIteratorConcept | MaskedTileIteratorConcept |
+///            ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, typename AccessType_, bool Gather, typename PermuteLayout>
+class PredicatedTileAccessIterator<Shape_, Element_, layout::PitchLinear, AdvanceRank, ThreadMap_, AccessType_, Gather, PermuteLayout> {
+public:
+    using Shape = Shape_;
+    using Element = Element_;
+    using Layout = layout::PitchLinear;
+    static int const kAdvanceRank = AdvanceRank;
+    using ThreadMap = ThreadMap_;
+    using AccessType = AccessType_;
+    using Pointer = Element*;
+    using NonConstPointer = typename platform::remove_const<Element>::type*;
+
+    using Index = typename Layout::Index;
+    using LongIndex = typename Layout::LongIndex;
+    using TensorRef = TensorRef<Element, Layout>;
+    using TensorView = TensorView<Element, Layout>;
+    using TensorCoord = typename Layout::TensorCoord;
+    using UnderlyingPredicates = PredicatedTileAccessIteratorPredicates<Shape, Element, Layout, AdvanceRank, ThreadMap, AccessType>;
+    using Mask = typename UnderlyingPredicates::Mask;  /// Predicate vector stores mask to guard accesses
+    static int const kAccessesPerVector = ThreadMap::kElementsPerAccess / AccessType::kElements;
+    
+    /// Permute usually is false.
+    static bool constexpr Permute = !(platform::is_same<PermuteLayout, layout::NoPermute>::value)
+        && (!platform::is_same<PermuteLayout, layout::InversePermute<layout::NoPermute>>::value);
+
+    /// Uses a non-template class
+    struct Params : PredicatedTileAccessIteratorParams {
+        using Base = PredicatedTileAccessIteratorParams;
+
+        /// Default constructor
+        Params() = default;
+
+        /// Construct the Params object given a pitch-linear tensor's layout
+        Params(Layout const &layout) : Base(
+            layout.stride(0), MakePredicatedTileAccessIteratorDesc<Shape, Element, Layout, kAdvanceRank, ThreadMap>()()
+        ) {}
+    };
+
+private:
+    using BytePointer = char*;            /// Internal pointer type permits fast address arithmetic
+    BytePointer pointer_;                 /// Internal pointer to first access of tile
+    UnderlyingPredicates the_predicates;  /// PredicatedTileAccessIteratorPredicates
+    bool is_residue_tile_;                /// Used for out-of-order visitation
+    Params params_;                       /// Parameters object with precomputed internal state
+
+    /// Computes predicates based on internally tracked per-thread offset.
+    /// @param extent          : Extent of the matrix window
+    /// @param is_steady_state : optionally, simplify predicate calculation during 'steady state' phase
+    void compute_predicates_(TensorCoord extent, bool is_steady_state = false) {
+        the_predicates.compute_predicates_(extent, is_steady_state);
+    }
+
+public:
+    /// Default constructor
+    PredicatedTileAccessIterator() = default;
+
+    /// Constructs a TileIterator from its precomputed state, threadblock offset, and thread ID
+    PredicatedTileAccessIterator(
+        Params const &params,                   ///< Precomputed parameters object
+        Pointer pointer,                        ///< Pointer to start of tensor
+        TensorCoord extent,                     ///< Size of Tensor. From the actual Problem_Size GemmShape<M, N, K>.
+        int thread_id,                          ///< ID of each participating thread
+        TensorCoord const &threadblock_offset,  ///< Initial offset of threadblock
+        int const *indices = nullptr            ///< Gather indices
+    ) : params_(params),
+        pointer_(reinterpret_cast<BytePointer>(const_cast<NonConstPointer>(pointer))),
+        the_predicates(extent),
+        is_residue_tile_(true),
+        indices_(indices),
+        permute_layout_(TensorCoord(extent.contiguous(), extent.strided()), params.stride_) {
+        // initialize member `the_predicates`, `pointer_` and `coord_offset_`.
+        the_predicates.set_predicates(thread_id, threadblock_offset);
+        // update internal pointers
+        Layout layout(params_.stride_);
+        if (Gather == false && Permute == false) {
+            add_pointer_offset(layout(the_predicates.thread_offset_));
+        }
+    }
+
+    /// Adds a pointer offset in units of Element
+    void add_pointer_offset(LongIndex pointer_offset) {
+        pointer_ += sizeof_bits<Element>::value * pointer_offset / 8;
+    }
+
+    /// Advances an iterator along logical dimensions of matrix in units of whole tiles
+    void add_tile_offset(TensorCoord const &tile_offset) {
+        if (is_residue_tile_ == true) {
+            the_predicates.thread_offset_ += the_predicates.residue_offset_;
+            // when `is_steady_state` is true, simplify predicate calculation during 'steady state' phase
+            the_predicates.compute_predicates_(the_predicates.extent_, true);
+            Layout layout(params_.stride_);
+            if (Gather == false && Permute == false) {
+                add_pointer_offset(layout(the_predicates.residue_offset_));
+                if (kAdvanceRank == 1) {
+                    pointer_ += params_.inc_advance_ * LongIndex(tile_offset.strided() - 1);
+                    pointer_ += Shape::kContiguous * tile_offset.contiguous() * sizeof_bits<Element>::value / 8;
+                } else /* kAdvanceRank == 0 */ {
+                    pointer_ += params_.inc_advance_ * LongIndex(tile_offset.contiguous() - 1);
+                    pointer_ += Shape::kStrided * tile_offset.strided() * sizeof_bits<Element>::value / 8;
+                }
+            }
+        } else /* is_residue_tile_ == false */ {
+            if (Gather == false && Permute == false) {
+                if (kAdvanceRank == 1) {
+                    pointer_ += params_.inc_advance_ * LongIndex(tile_offset.strided());
+                    pointer_ += Shape::kContiguous * tile_offset.contiguous() * sizeof_bits<Element>::value / 8;
+                } else /* kAdvanceRank == 0 */ {
+                    pointer_ += params_.inc_advance_ * LongIndex(tile_offset.contiguous());
+                    pointer_ += Shape::kStrided * tile_offset.strided() * sizeof_bits<Element>::value / 8;
+                }
+            }
+        }
+        is_residue_tile_ = false;
+    }
+
+    /// Increment and return an instance to self.
+    PredicatedTileAccessIterator &operator++() {
+        the_predicates.operator++();
+        ++the_predicates.iteration_vector_;
+        if (the_predicates.iteration_vector_ < kAccessesPerVector) {
+            return *this;
+        }
+        // Enter here only if (iteration_vector_ == kAccessesPerVector)
+        the_predicates.iteration_vector_ = 0;
+        ++the_predicates.iteration_contiguous_;
+        if (the_predicates.iteration_contiguous_ < ThreadMap::Iterations::kContiguous) {
+            return *this;
+        }
+        // Enter here only if (iteration_contiguous_ == ThreadMap::Iteration::kContiguous)
+        the_predicates.iteration_contiguous_ = 0;
+        ++the_predicates.iteration_strided_;
+        if (the_predicates.iteration_strided_ < ThreadMap::Iterations::kStrided) {
+            if (Gather == false && Permute == false) {
+                pointer_ += params_.inc_strided_;
+            }
+            return *this;
+        }
+        // Enter here only if (iteration_stride_ == ThreadMap::Iteration::kStrided), which means we enter the next tile.
+        the_predicates.iteration_strided_ = 0;
+        if (Gather == false && Permute == false) {
+            // Advance to next tile.
+            pointer_ += params_.inc_next_;
+            // Now return to start tile. Guess: Mabey has used `add_tile_offset({0, 1})` to next tile.
+            pointer_ -= params_.inc_advance_;
+            // if the iterator is subsequently advanced, this subtraction as well as the subsequent integer addition 
+            // are both elided by the compiler.
+        }
+        return *this;
+    }
+
+    /// Sets the predicate mask, overriding value stored in predicate iterator
+    void set_mask(Mask const &mask) {
+        the_predicates.set_mask(mask);
+    }
+
+    /// Gets the mask
+    void get_mask(Mask &mask) {
+        the_predicates.get_mask(mask);
+    }
+
+    /// Enables the predicate set efficiently
+    void enable_mask() {
+        the_predicates.enable_mask();
+    }
+
+    /// Clears the predicate set efficiently
+    void clear_mask(bool enable = true) {
+        the_predicates.clear_mask(enable);
+    }
+
+    /// Returns whether access is valid or not
+    bool valid() const {
+        return the_predicates.valid();
+    }
+
+    /// Overrides the internal iteration index
+    void set_iteration_index(int index) {
+        the_predicates.set_iteration_index(index);
+    }
+
+    /// Returns a pointer
+    AccessType *get() const {
+        return reinterpret_cast<AccessType *>
+            (pointer_ + the_predicates.iteration_contiguous_ * ThreadMap::Delta::kContiguous * sizeof_bits<Element>::value / 8)
+            + the_predicates.iteration_vector_;
+    }
+};
+```
+
+当数据在设备全局内存中的布局是layout::ColumnMajor时，transform::threadblock::PredicatedTileAccessIterator访问器的实现代码如下所示（有省略）。
+
+```c++
+/// Specialization of PredicatedTileAccessIterator for column-major data.
+/// Satisfies: ForwardTileIteratorConcept | MaskedTileIteratorConcept |
+///            ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, typename AccessType_, bool Gather, typename PermuteLayout>
+class PredicatedTileAccessIterator<Shape_, Element_, layout::ColumnMajor, AdvanceRank, ThreadMap_, AccessType_, Gather, PermuteLayout> {
+public:
+    /* ... */
+    using Layout = layout::ColumnMajor;
+    using UnderlyingIterator = PredicatedTileAccessIterator<
+        layout::PitchLinearShape<Shape::kRow, Shape::kColumn>, Element,
+        layout::PitchLinear, (kAdvanceRank == 0 ? 0 : 1), ThreadMap, AccessType, Gather, PermuteLayout>;
+    using Mask = typename UnderlyingIterator::Mask;  /// Predicate vector stores mask to guard accesses
+
+    /// Parameters object is precomputed state and is host-constructible
+    class Params {
+    private:
+        friend PredicatedTileAccessIterator;
+        typename UnderlyingIterator::Params params_;  /// Parameters object
+
+    public:
+        /// Construct the Params object given a pitch-linear tensor's layout
+        Params(Layout const &layout) : params_(layout::PitchLinear(layout.stride(0))) {};
+    };
+
+private:
+    UnderlyingIterator iterator_;  /// Underlying pitch-linear tile iterator
+
+public:
+    /// Constructs a TileIterator from its precomputed state, threadblock offset, and thread ID
+    PredicatedTileAccessIterator(
+        Params const &params,                   ///< Precomputed parameters object
+        Pointer pointer,                        ///< Pointer to start of tensor
+        TensorCoord extent,                     ///< Size of Tensor. From the actual Problem_Size GemmShape<M, N, K>.
+        int thread_id,                          ///< ID of each participating thread
+        TensorCoord const &threadblock_offset,  ///< Initial offset of threadblock
+        int const *indices = nullptr            ///< gather/scatter indices. Note: no support at this specialization
+    ) : iterator_(params.params_, pointer, layout::PitchLinearCoord(extent.row(), extent.column()), thread_id,
+        layout::PitchLinearCoord(threadblock_offset.row(), threadblock_offset.column()), indices) {}
+
+    /// Advances an iterator along logical dimensions of matrix in units of whole tiles
+    void add_tile_offset(TensorCoord const &tile_offset) {
+        iterator_.add_tile_offset({ tile_offset.row(), tile_offset.column() });
+    }
+
+    /// Advances to the next tile in memory.
+    /// The first time this method is called, predicates are updated, and 
+    /// the iterator's internal pointer is reverted to the first "steady state" tile.
+    /// Subsequent calls are lightweight and must only update the internal pointer.
+    PredicatedTileAccessIterator &operator++() {
+        ++iterator_;
+        return *this;
+    }
+    
+    /// Returns a pointer
+    AccessType *get() const {
+        return reinterpret_cast<AccessType *>(iterator_.get());
+    }
+};
+```
+
+当数据在设备全局内存中的布局是layout::RowMajor时，transform::threadblock::PredicatedTileAccessIterator访问器的实现代码如下所示（有省略）。
+
+```c++
+/// Specialization of PredicatedTileAccessIterator for row-major data.
+/// Satisfies: ForwardTileIteratorConcept | MaskedTileIteratorConcept |
+///            ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, typename AccessType_, bool Gather, typename PermuteLayout>
+class PredicatedTileAccessIterator<Shape_, Element_, layout::RowMajor, AdvanceRank, ThreadMap_, AccessType_, Gather, PermuteLayout> {
+public:
+    /* ... */
+    using Layout = layout::RowMajor;
+    using UnderlyingIterator = PredicatedTileAccessIterator<
+        layout::PitchLinearShape<Shape::kColumn, Shape::kRow>, Element,
+        layout::PitchLinear, (kAdvanceRank == 0 ? 1 : 0), ThreadMap, AccessType, Gather, PermuteLayout>;
+    using Mask = typename UnderlyingIterator::Mask;  /// Predicate vector stores mask to guard accesses
+
+    /// Parameters object is precomputed state and is host-constructible
+    class Params {
+    private:
+        friend PredicatedTileAccessIterator;
+        typename UnderlyingIterator::Params params_;  /// Parameters object
+
+    public:
+        /// Construct the Params object given a pitch-linear tensor's layout
+        Params(Layout const &layout) : params_(layout::PitchLinear(layout.stride(0))) {};
+    };
+
+private:
+    UnderlyingIterator iterator_;  /// Underlying pitch-linear tile iterator
+
+public:
+    /// Constructs a TileIterator from its precomputed state, threadblock offset, and thread ID
+    PredicatedTileAccessIterator(
+        Params const &params,                   ///< Precomputed parameters object
+        Pointer pointer,                        ///< Pointer to start of tensor
+        TensorCoord extent,                     ///< Size of Tensor. From the actual Problem_Size GemmShape<M, N, K>.
+        int thread_id,                          ///< ID of each participating thread
+        TensorCoord const &threadblock_offset,  ///< Initial offset of threadblock
+        int const *indices = nullptr            ///< gather/scatter indices. Note: no support at this specialization
+    ) : iterator_(params.params_, pointer, layout::PitchLinearCoord(extent.column(), extent.row()), thread_id,
+        layout::PitchLinearCoord(threadblock_offset.column(), threadblock_offset.row()), indices) {}
+
+    /// Advances an iterator along logical dimensions of matrix in units of whole tiles
+    void add_tile_offset(TensorCoord const &tile_offset) {
+        iterator_.add_tile_offset({ tile_offset.column(), tile_offset.row() });
+    }
+
+    /// Advances to the next tile in memory.
+    /// The first time this method is called, predicates are updated, and
+    /// the iterator's internal pointer is reverted to the first "steady state" tile.
+    /// Subsequent calls are lightweight and must only update the internal pointer.
+    PredicatedTileAccessIterator &operator++() {
+        ++iterator_;
+        return *this;
+    }
+
+    /// Returns a pointer
+    AccessType *get() const {
+        return reinterpret_cast<AccessType *>(iterator_.get());
+    }
+};
+```
+
+### PredicatedTileIterator
+
+在从设备的全局内存中加载数据时，或向设备的全局内存中写入数据时，需要一块一块的迭代进行，当迭代到边界位置时，需要判断一个线程要访问的数据是否越界。谓词迭代器（PredicatedTileIterator）使用一个预计算的谓词向量来控制线程的访问行为，是进行访问或是进行零填充或是什么也不做，并使用@p条件谓词来控制访存指令是否执行，这样就可用避免在每次访问时都使用条件语句判断边界条件。这被抽象为transform::threadblock::PredicatedTileIterator模板类。
+
+在cutlass/transform/threadblock/predicated_tile_iterator.h头文件中，提供transform::threadblock::PredicatedTileIterator的定义，如下所示。
+
+```c++
+/* Regular tile iterator using a precomputed control structure to minimize register liveness and integer arithmetic.
+ Base pointer and tensor extents may be specified at the time the iterator is constructed. Layout is assumed to
+ be invariant at the time the precomputed "Params" object is constructed. Subsequently, they are assumed to be immutable.
+ Adding a logical coordinate offset may be performed at the time the iterator is constructed.
+ Subsequent additions to logical coordinate offset may be performed but are relatively expensive.
+
+ Visitation order is intended to first visit a "residual" tile that may be partially full in both the advance dimension
+ and the steady-state dimension. This is assumed to be the last tile in the iteration sequence.
+ Advancing an iterator that has just been constructed moves to the first tile that is full in the advance dimension
+ and recomputes predicates. Subsequent accesses may be performed without updating internal predicates and are efficient
+ in terms of live register state and pointer arithmetic instructions.
+
+ To be efficient, this assumes the iterator will be dereferenced and advanced at least once
+ outside any looping structure to minimize integer arithmetic.
+ Acceses out of bounds are safe so long as `clear_mask()` is called prior to dereferencing the iterator. */
+/// Satisfies: ForwardTileIteratorConcept | MaskedTileIteratorConcept |
+///            ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <
+    typename Shape,      /// Shape of threadblock-scoped matrix multiply operator (concept: MatrixShape | PitchLinearShape)
+    typename Element,    /// Data type of matrix operand
+    typename Layout,     /// Layout of matrix operand
+    int AdvanceRank,     /// Advancing dimension within Shape. { Row, Column } = { 0, 1 }. { Contiguous, Strided } = { 0, 1 }.
+    typename ThreadMap,  /// Mapping a thread to element location
+    /// Namely `kAlignment`. 1 for SIMT, and `128 / sizeof_bits<Element>::value` for TensorOp.
+    int AccessSize = ThreadMap::kElementsPerAccess,
+    bool Gather = false,
+    typename PermuteLayout = layout::NoPermute
+>
+class PredicatedTileIterator;
+```
+
+当数据在设备全局内存中的布局是layout::PitchLinear时，transform::threadblock::PredicatedTileIterator访问器的实现代码如下所示。
+
+```c++
+/// Specialization of PredicatedTileIterator for pitch-linear data.
+/// Satisfies: ForwardTileIteratorConcept | MaskedTileIteratorConcept
+///            ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int AccessSize, bool Gather, typename PermuteLayout>
+class PredicatedTileIterator<Shape_, Element_, layout::PitchLinear, AdvanceRank, ThreadMap_, AccessSize, Gather, PermuteLayout> {
+public:
+    using Shape = Shape_;
+    using Element = Element_;
+    using Layout = layout::PitchLinear;
+    static int const kAdvanceRank = AdvanceRank;
+    using ThreadMap = ThreadMap_;
+    using Pointer = Element*;
+    using NonConstPointer = typename platform::remove_const<Element>::type*;
+
+    using Index = typename Layout::Index;
+    using LongIndex = typename Layout::LongIndex;
+    using TensorRef = TensorRef<Element, Layout>;
+    using TensorView = TensorView<Element, Layout>;
+    using TensorCoord = typename Layout::TensorCoord;
+
+    /// Underlying iterator to compute the addresses
+    using TileAccessIterator = PredicatedTileAccessIterator<
+        Shape, Element, Layout, kAdvanceRank, ThreadMap, AccessType, Gather, PermuteLayout>;
+    using Mask = typename TileAccessIterator::Mask;  /// Predicate vector stores mask to guard accesses
+    static int const kAccessesPerVector = TileAccessIterator::kAccessesPerVector;
+    
+    /// Type used for internal memory accesses.
+    /// AccessSize namely is `kAlignment`. 1 for SIMT, and `128 / sizeof_bits<Element>::value` for TensorOp.
+    using AccessType = AlignedArray<Element, AccessSize, (AccessSize * sizeof_bits<Element>::value / 8)>;
+
+    /// Fragment object to be loaded or stored
+    using Fragment = cutlass::Array<Element, ThreadMap::Iterations::kCount * ThreadMap::kElementsPerAccess>;
+
+    /// Parameters object is precomputed state and is host-constructible
+    class Params {
+    private:
+        typename TileAccessIterator::Params params_;  /// Parameters object
+
+    public:
+        friend PredicatedTileIterator;
+        using Base = typename TileAccessIterator::Params::Base;
+
+        /// Default constructor
+        Params() = default;
+
+        /// Construct the Params object given a pitch-linear tensor's layout
+        Params(Layout const &layout) : params_(layout) {}
+    };
+
+private:
+    using BytePointer = char*;             /// Internal pointer type permits fast address arithmetic
+    TileAccessIterator address_iterator_;  /// Data member to the tile access iterator
+
+public:
+    /// Default constructor
+    PredicatedTileIterator() = default;
+
+    /// Constructs a TileIterator from its precomputed state, threadblock offset, and thread ID
+    PredicatedTileIterator(
+        Params const &params,                   ///< Precomputed parameters object
+        Pointer pointer,                        ///< Pointer to start of tensor
+        TensorCoord extent,                     ///< Size of Tensor. From the actual Problem_Size GemmShape<M, N, K>.
+        int thread_id,                          ///< ID of each participating thread
+        TensorCoord const &threadblock_offset,  ///< Initial offset of threadblock
+        int const *indices = nullptr            ///< Gather indices
+    ) : address_iterator_(params.params_, pointer, extent, thread_id, threadblock_offset, indices) {}
+
+    /// Adds a pointer offset in units of Element
+    void add_pointer_offset(LongIndex pointer_offset) {
+        address_iterator_.add_pointer_offset(pointer_offset);
+    }
+
+    /// Advances to the next tile in memory.
+    /// The first time this method is called, predicates are updated, and 
+    /// the iterator's internal pointer is reverted to the first "steady state" tile.
+    /// Subsequent calls are lightweight and must only update the internal pointer.
+    PredicatedTileIterator &operator++() {
+        if (kAdvanceRank) {
+            address_iterator_.add_tile_offset({ 0, 1 });
+        } else {
+            address_iterator_.add_tile_offset({ 1, 0 });
+        }
+        return *this;
+    }
+
+    /// Sets the predicate mask, overriding value stored in predicate iterator
+    void set_mask(Mask const &mask) {
+        address_iterator_.set_mask(mask);
+    }
+
+    /// Gets the mask
+    void get_mask(Mask &mask) {
+        address_iterator_.get_mask(mask);
+    }
+
+    /// Enables the predicate set efficiently
+    void enable_mask() {
+        address_iterator_.enable_mask();
+    }
+
+    /// Clears the predicate set efficiently
+    void clear_mask(bool enable = true) {
+        address_iterator_.clear_mask(enable);
+    }
+
+    void load_with_byte_offset(Fragment &frag, LongIndex byte_offset) {
+        AccessType *frag_ptr = reinterpret_cast<AccessType *>(&frag);
+        for (int s = 0; s < ThreadMap::Iterations::kStrided; ++s) {
+            for (int c = 0; c < ThreadMap::Iterations::kContiguous; ++c) {
+                for (int v = 0; v < kAccessesPerVector; ++v) {
+                    int idx = v + kAccessesPerVector * (c + s * ThreadMap::Iterations::kContiguous);
+                    address_iterator_.set_iteration_index(idx);
+                    char const *byte_ptr = reinterpret_cast<char const *>(address_iterator_.get()) + byte_offset;
+                    AccessType const *access_ptr = reinterpret_cast<AccessType const *>(byte_ptr);
+                    cutlass::arch::global_load<AccessType, sizeof(AccessType)>(frag_ptr[idx], access_ptr, address_iterator_.valid());
+                    ++address_iterator_;
+                }
+            }
+        }
+    }
+
+    /// Loads a fragment from memory
+    void load(Fragment &frag) {
+        load_with_byte_offset(frag, 0);
+    }
+
+    /// Store a fragment to memory
+    void store_with_byte_offset(Fragment const &frag, LongIndex byte_offset) {
+        address_iterator_.set_iteration_index(0);
+        AccessType const *frag_ptr = reinterpret_cast<AccessType const *>(&frag);
+        for (int s = 0; s < ThreadMap::Iterations::kStrided; ++s) {
+            for (int c = 0; c < ThreadMap::Iterations::kContiguous; ++c) {
+                for (int v = 0; v < kAccessesPerVector; ++v) {
+                    int idx = v + kAccessesPerVector * (c + s * ThreadMap::Iterations::kContiguous);
+                    char *byte_ptr = reinterpret_cast<char *>(address_iterator_.get()) + byte_offset;
+                    AccessType *access_ptr = reinterpret_cast<AccessType *>(byte_ptr);
+                    if (address_iterator_.valid()) {
+                        *access_ptr = frag_ptr[idx];
+                    }
+                    ++address_iterator_;
+                }
+            }
+        }
+    }
+
+    /// Store a fragment to memory
+    void store(Fragment const &frag) {
+        store_with_byte_offset(frag, 0);
+    }
+};
+```
+
+当数据在设备全局内存中的布局是layout::ColumnMajor时，transform::threadblock::PredicatedTileIterator访问器的实现代码如下所示（有省略）。
+
+```c++
+/// Specialization of PredicatedTileIterator for column-major data.
+/// Satisfies: ForwardTileIteratorConcept | MaskedTileIteratorConcept
+///            ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int AccessSize, bool Gather, typename PermuteLayout>
+class PredicatedTileIterator<Shape_, Element_, layout::ColumnMajor, AdvanceRank, ThreadMap_, AccessSize, Gather, PermuteLayout> {
+public:
+    /* ... */
+    using Layout = layout::ColumnMajor;
+    using UnderlyingIterator = PredicatedTileIterator<
+        layout::PitchLinearShape<Shape::kRow, Shape::kColumn>, Element,
+        layout::PitchLinear, (kAdvanceRank == 0 ? 0 : 1), ThreadMap, AccessSize, Gather, PermuteLayout>;
+    using Mask = typename UnderlyingIterator::Mask;  /// Predicate vector stores mask to guard accesses
+    using AccessType = typename UnderlyingIterator::AccessType;
+
+    /// Parameters object is precomputed state and is host-constructible
+    class Params {
+    private:
+        friend PredicatedTileIterator;
+        typename UnderlyingIterator::Params params_;  /// Parameters object
+
+    public:
+        /// Construct the Params object given a pitch-linear tensor's layout
+        Params(Layout const &layout) : params_(layout::PitchLinear(layout.stride(0))) {}
+    };
+
+private:
+    UnderlyingIterator iterator_;  /// Underlying pitch-linear tile iterator
+
+public:
+    /// Constructs a TileIterator from its precomputed state, threadblock offset, and thread ID
+    PredicatedTileIterator(
+        Params const &params,                   ///< Precomputed parameters object 
+        Pointer pointer,                        ///< Pointer to start of tensor
+        TensorCoord extent,                     ///< Size of Tensor. From the actual Problem_Size GemmShape<M, N, K>.
+        int thread_id,                          ///< ID of each participating thread
+        TensorCoord const &threadblock_offset,  ///< Initial offset of threadblock
+        int const *indices = nullptr            ///< gather/scatter indices. Note: no support at this specialization
+        ) : iterator_(params.params_, pointer, layout::PitchLinearCoord(extent.row(), extent.column()), thread_id,
+            layout::PitchLinearCoord(threadblock_offset.row(), threadblock_offset.column()), indices) {}
+
+    /// Advances an iterator along logical dimensions of matrix in units of whole tiles
+    void add_tile_offset(TensorCoord const &tile_offset) {
+        iterator_.add_tile_offset({tile_offset.row(), tile_offset.column()});
+    }
+
+    /// Advances to the next tile in memory.
+    /// The first time this method is called, predicates are updated, and
+    /// the iterator's internal pointer is reverted to the first "steady state" tile.
+    /// Subsequent calls are lightweight and must only update the internal pointer.
+    PredicatedTileIterator &operator++() {
+        ++iterator_;
+        return *this;
+    }
+
+    /// Loads a fragment from memory
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) {
+        iterator_.load_with_pointer_offset(frag, pointer_offset);
+    }
+
+    /// Store a fragment to memory
+    void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) {
+        iterator_.store_with_pointer_offset(frag, pointer_offset);
+    }
+};
+```
+
+当数据在设备全局内存中的布局是layout::RowMajor时，transform::threadblock::PredicatedTileIterator访问器的实现代码如下所示（有省略）。
+
+```c++
+/// Specialization of PredicatedTileIterator for row-major data.
+/// Satisfies: ForwardTileIteratorConcept | MaskedTileIteratorConcept
+///            ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int AccessSize, bool Gather, typename PermuteLayout>
+class PredicatedTileIterator<Shape_, Element_, layout::RowMajor, AdvanceRank, ThreadMap_, AccessSize, Gather, PermuteLayout> {
+public:
+    /* ... */
+    using Layout = layout::RowMajor;
+    using UnderlyingIterator = PredicatedTileIterator<
+        layout::PitchLinearShape<Shape::kColumn, Shape::kRow>, Element,
+        layout::PitchLinear, (kAdvanceRank == 0 ? 1 : 0), ThreadMap, AccessSize, Gather, PermuteLayout>;
+    using Mask = typename UnderlyingIterator::Mask;  /// Predicate vector stores mask to guard accesses
+    using AccessType = typename UnderlyingIterator::AccessType;
+
+    /// Parameters object is precomputed state and is host-constructible
+    class Params {
+    private:
+        friend PredicatedTileIterator;
+        typename UnderlyingIterator::Params params_;  /// Parameters object
+
+    public:
+        /// Construct the Params object given a pitch-linear tensor's layout
+        Params(Layout const &layout) : params_(layout::PitchLinear(layout.stride(0))) {}
+    };
+
+private:
+    UnderlyingIterator iterator_;  /// Underlying pitch-linear tile iterator
+
+public:
+    /// Constructs a TileIterator from its precomputed state, threadblock offset, and thread ID
+    PredicatedTileIterator(
+        Params const &params,                   ///< Precomputed parameters object 
+        Pointer pointer,                        ///< Pointer to start of tensor
+        TensorCoord extent,                     ///< Size of Tensor. From the actual Problem_Size GemmShape<M, N, K>.
+        int thread_id,                          ///< ID of each participating thread
+        TensorCoord const &threadblock_offset,  ///< Initial offset of threadblock
+        int const *indices = nullptr            ///< gather/scatter indices. Note: no support at this specialization
+    ) : iterator_(params.params_, pointer, layout::PitchLinearCoord(extent.column(), extent.row()), thread_id,
+        layout::PitchLinearCoord(threadblock_offset.column(), threadblock_offset.row()), indices) {}
+
+    /// Advances an iterator along logical dimensions of matrix in units of whole tiles
+    void add_tile_offset(TensorCoord const &tile_offset) {
+        iterator_.add_tile_offset({tile_offset.column(), tile_offset.row()});
+    }
+
+    /// Advances to the next tile in memory.
+    /// The first time this method is called, predicates are updated, and
+    /// the iterator's internal pointer is reverted to the first "steady state" tile.
+    /// Subsequent calls are lightweight and must only update the internal pointer.
+    PredicatedTileIterator &operator++() {
+        ++iterator_;
+        return *this;
+    }
+
+    /// Loads a fragment from memory
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) {
+        iterator_.load_with_pointer_offset(frag, pointer_offset);
+    }
+
+    /// Store a fragment to memory
+    void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) {
+        iterator_.store_with_pointer_offset(frag, pointer_offset);
+    }
+};
+```
+
+## Store Shared Memory
+
+在向共享内存中写入数据时，或从共享内存中读取数据时，需要用到一个名为规则迭代器（RegularTileIterator）的概念，它根据线程的映射ThreadMap，以及共享内存中的数据布局方式，来提供对共享内存的访问操作。这被抽象为transform::threadblock::RegularTileIterator模板类。
+
+在CUTLASS中实现transform::threadblock::RegularTileIterator模板类时，如果数据在共享内存中的布局是layout::PitchLinear布局、layout::ColumnMajor布局、layout::RowMajor布局时，这主要是用于CUDA Core硬件单元的布局，则可以直接提供共享内存的访问操作的实现。
+
+此外，如果数据在共享内存中的布局是layout::TensorOpMultiplicandCongruous时，这主要是用于Tensor Core硬件单元的布局，则需要一个名为规则访问迭代器（RegularTileAccessIterator）的概念，这是一个底层的负责计算地址的迭代器。这被抽象为transform::threadblock::RegularTileAccessIterator模板类。
+
+### RegularTileIterator - SIMT
+
+在cutlass/transform/threadblock/regular_tile_iterator.h头文件中，提供transform::threadblock::RegularTileIterator的定义，如下所示。
+
+```c++
+template <
+    typename Shape,      /// Shape of threadblock-scoped matrix multiply operator (concept: MatrixShape | PitchLinearShape)
+    typename Element,    /// Data type of matrix operand
+    typename Layout,     /// Layout of matrix operand
+    int AdvanceRank,     /// Advancing dimension within Shape. { Row, Column } = { 0, 1 }. { Contiguous, Strided } = { 0, 1 }.
+    typename ThreadMap,  /// Mapping a thread to element location
+    int Alignment = ThreadMap::kElementsPerAccess * sizeof_bits<Element>::value / 8
+>
+class RegularTileIterator;
+```
+
+在cutlass/transform/threadblock/regular_tile_iterator_pitch_linear.h头文件中，当数据在共享内存中的布局是layout::PitchLinear时，transform::threadblock::RegularTileIterator访问器的实现代码如下所示。
+
+```c++
+/// Regular tile iterator specialized for pitch-linear.
+/// This one is used by 2-stage SIMT kernels and sparse tensor core meta data.
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int Alignment>
+class RegularTileIterator<Shape_, Element_, layout::PitchLinear, AdvanceRank, ThreadMap_, Alignment> {
+public:
+    using Shape = Shape_;
+    using Element = Element_;
+    using Layout = layout::PitchLinear;
+    static int const kAdvanceRank = AdvanceRank;
+    using ThreadMap = ThreadMap_;
+    static int const kAlignment = Alignment;
+
+    using Index = typename Layout::Index;
+    using LongIndex = typename Layout::LongIndex;
+    using StrideIndex = typename Layout::Stride::Index;
+    using TensorRef = TensorRef<Element, Layout>;
+    using TensorCoord = typename Layout::TensorCoord;
+    
+    using AccessType = AlignedArray<Element, ThreadMap::kElementsPerAccess, kAlignment>;  /// Element type per access
+    using Fragment = Array<Element, ThreadMap::Iterations::kCount * ThreadMap::kElementsPerAccess>;
+
+private:
+    uint8_t *pointer_;         /// Pointer to memory
+    StrideIndex stride_;       /// Stride quantity
+    Index increment_strided_;  /// Amount to increment pointer along strided dimension
+    Index increment_advance_;  /// Amount to advance pointer between tiles
+
+public:
+    RegularTileIterator() : pointer_(nullptr), increment_strided_(0), increment_advance_(0) {}
+
+    RegularTileIterator(
+        TensorRef ref,  ///< Pointer to start of tensor
+        int thread_id   ///< ID of each participating thread
+    ) : pointer_(reinterpret_cast<uint8_t *>(ref.data())
+        + (ref.offset(ThreadMap::initial_offset(thread_idx)) * sizeof_bits<Element>::value / 8)) {
+        stride_ = ref.stride()[0];
+        increment_strided_ = ThreadMap::Delta::kStrided * ref.stride()[0] * sizeof_bits<Element>::value / 8;
+        increment_advance_ = (kAdvanceRank == 0
+            ? Shape::kContiguous * sizeof_bits<Element>::value / 8
+            : Shape::kStrided * ref.stride()[0] * sizeof_bits<Element>::value / 8);
+    }
+
+    /// Adds a pointer offset in units of Byte
+    void add_pointer_offset(LongIndex pointer_offset) {
+        pointer_ += pointer_offset;
+    }
+
+    /// Adds a tile offset in the unit of tile.
+    /// In GEMM/Conv implementation, this is used to move in the k dimension in the shared memory.
+    /// Below layouts are the shared memory layouts.
+    ///   For row major A operand, k dimension is contiguous dimension;
+    ///   For col major A operand, k dimension is strided dimension;
+    ///   For row major B operand, k dimension is strided dimension;
+    ///   For col major B operand, k dimension is contiguous dimension.
+    /// Below two classes map col/row major to the pitch linear coordinates used in this base class.
+    void add_tile_offset(TensorCoord const &coord) {
+        LongIndex offset = (coord.strided() * Shape::kStrided * stride_ + coord.contiguous() * Shape::kContiguous)
+            * sizeof_bits<Element>::value / 8;
+        add_pointer_offset(offset);
+    }
+
+    /// Advances the pointer
+    RegularTileIterator &operator++() {
+        pointer_ += increment_advance_;
+        return *this;
+    }
+
+    /// Advances the pointer
+    RegularTileIterator &operator--() {
+        pointer_ -= increment_advance_;
+        return *this;
+    }
+
+    /// Overrides the internal iteration index
+    void set_iteration_index(int index) {}
+
+    /// Returns a pointer
+    AccessType *get() const {
+        return reinterpret_cast<AccessType *>(pointer_);
+    }
+
+    /// Loads a fragment
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) {
+        AccessType *frag_ptr = reinterpret_cast<AccessType *>(&frag);
+        uint8_t const *byte_pointer = pointer_ + pointer_offset * sizeof_bits<Element>::value / 8;
+        for (int s = 0; s < ThreadMap::Iterations::kStrided; ++s) {
+            AccessType const *access_ptr = reinterpret_cast<AccessType const *>(byte_pointer);
+            for (int c = 0; c < ThreadMap::Iterations::kContiguous; ++c) {
+                int idx = c + s * ThreadMap::Iterations::kContiguous;
+                frag_ptr[idx] = access_ptr[c * ThreadMap::Delta::kContiguous / ThreadMap::kElementsPerAccess];
+            }
+            if (s + 1 < ThreadMap::Iterations::kStrided) {
+                byte_pointer += increment_strided_;
+            }
+        }
+    }
+
+    /// Loads a fragment
+    void load(Fragment &frag) {
+        load_with_pointer_offset(frag, 0);
+    }
+
+    /// Stores a fragment
+    void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) {
+        AccessType const *frag_ptr = reinterpret_cast<AccessType const*>(&frag);
+        uint8_t *byte_pointer = pointer_ + pointer_offset * sizeof_bits<Element>::value / 8;
+        for (int s = 0; s < ThreadMap::Iterations::kStrided; ++s) {
+            AccessType *access_ptr = reinterpret_cast<AccessType *>(byte_pointer);
+            for (int c = 0; c < ThreadMap::Iterations::kContiguous; ++c) {
+                int idx = c + s * ThreadMap::Iterations::kContiguous;
+                access_ptr[c * ThreadMap::Delta::kContiguous / ThreadMap::kElementsPerAccess] = frag_ptr[idx];
+            }
+            if (s + 1 < ThreadMap::Iterations::kStrided) {
+                byte_pointer += increment_strided_;
+            }
+        }
+    }
+
+    /// Stores a fragment
+    void store(Fragment const &frag) {
+        store_with_pointer_offset(frag, 0);
+    }
+};
+```
+
+在cutlass/transform/threadblock/regular_tile_iterator_pitch_linear.h头文件中，当数据在共享内存中的布局是layout::ColumnMajor时，transform::threadblock::RegularTileIterator访问器的实现代码如下所示（有省略）。
+
+```c++
+/// Regular tile iterator specialized for column major
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int Alignment>
+class RegularTileIterator<Shape_, Element_, layout::ColumnMajor, AdvanceRank, ThreadMap_, Alignment> {
+public:
+    /* ... */
+    using Layout = layout::ColumnMajor;
+    using Underlying = RegularTileIterator<
+        layout::PitchLinearShape<Shape::kRow, Shape::kColumn>, Element,
+        layout::PitchLinear, (kAdvanceRank == 0 ? 0 : 1), ThreadMap, kAlignment>;
+    using AccessType = typename Underlying::AccessType;  /// Element type per access
+    using Fragment = Array<Element, ThreadMap::Iterations::kCount * ThreadMap::kElementsPerAccess>;
+
+private:
+    Underlying iterator_;
+
+public:
+    RegularTileIterator(TensorRef const &ref, int thread_idx) : iterator_({ ref.data(), ref.stride() }, thread_idx) {}
+
+    /// Adds a tile offset
+    void add_tile_offset(TensorCoord const &coord) {
+        iterator_.add_tile_offset({ coord.row(), coord.column() });
+    }
+
+    /// Advances the pointer
+    RegularTileIterator &operator++() {
+        ++iterator_;
+        return *this;
+    }
+
+    /// Loads a fragment
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) {
+        iterator_.load_with_pointer_offset(frag, pointer_offset);
+    }
+
+    /// Stores a fragment
+    void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) {
+        iterator_.store_with_pointer_offset(frag, pointer_offset);
+    }
+};
+```
+
+在cutlass/transform/threadblock/regular_tile_iterator_pitch_linear.h头文件中，当数据在共享内存中的布局是layout::RowMajor时，transform::threadblock::RegularTileIterator访问器的实现代码如下所示（有省略）。
+
+```c++
+/// Regular tile iterator specialized for row major
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int Alignment>
+class RegularTileIterator<Shape_, Element_, layout::RowMajor, AdvanceRank, ThreadMap_, Alignment> {
+public:
+    /* ... */
+    using Layout = layout::RowMajor;
+    using Underlying = RegularTileIterator<
+        layout::PitchLinearShape<Shape::kColumn, Shape::kRow>, Element,
+        layout::PitchLinear, (kAdvanceRank == 0 ? 1 : 0), ThreadMap, kAlignment>;
+    using AccessType = typename Underlying::AccessType;  /// Element type per access
+    using Fragment = Array<Element, ThreadMap::Iterations::kCount * ThreadMap::kElementsPerAccess>;
+
+private:
+    Underlying iterator_;
+
+public:
+    RegularTileIterator(TensorRef const &ref, int thread_idx) : iterator_({ ref.data(), ref.stride() }, thread_idx) {}
+
+    /// Adds a tile offset
+    void add_tile_offset(TensorCoord const &coord) {
+        iterator_.add_tile_offset({ coord.column(), coord.row() });
+    }
+
+    /// Advances the pointer
+    RegularTileIterator &operator++() {
+        ++iterator_;
+        return *this;
+    }
+
+    /// Loads a fragment
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) {
+        iterator_.load_with_pointer_offset(frag, pointer_offset);
+    }
+
+    /// Stores a fragment
+    void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) {
+        iterator_.store_with_pointer_offset(frag, pointer_offset);
+    }
+};
+```
+
+### RegularTileAccessIterator - TensorOp
+
+在cutlass/transform/threadblock/regular_tile_access_iterator.h头文件中，提供transform::threadblock::RegularTileAccessIterator的定义，如下所示。
+
+```c++
+template <
+    typename Shape,      /// Shape of threadblock-scoped matrix multiply operator (concept: MatrixShape | PitchLinearShape)
+    typename Element,    /// Data type of matrix operand
+    typename Layout,     /// Layout of matrix operand
+    int AdvanceRank,     /// Advancing dimension within Shape. { Row, Column } = { 0, 1 }. { Contiguous, Strided } = { 0, 1 }.
+    typename ThreadMap,  /// Mapping a thread to element location
+    int Alignment = ThreadMap::kElementsPerAccess * sizeof_bits<Element>::value / 8
+>
+class RegularTileAccessIterator;
+```
+
+在cutlass/transform/threadblock/regular_tile_access_iterator_pitch_linear.h头文件中，当数据在共享内存中的布局是layout::PitchLinear时，transform::threadblock::RegularTileAccessIterator访问器的实现代码如下所示。
+
+```c++
+/// Tile iterator specialized for congruous arrangements for TensorOps
+/// Satisfies: ForwardTileIteratorConcept | ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int Alignment>
+class RegularTileAccessIterator<Shape_, Element_, layout::PitchLinear, AdvanceRank, ThreadMap_, Alignment> {
+public:
+    using Shape = Shape_;
+    using Element = Element_;
+    using Layout = layout::PitchLinear;
+    static int const kAdvanceRank = AdvanceRank;
+    using ThreadMap = ThreadMap_;
+    static int const kAlignment = Alignment;
+
+    using Index = typename Layout::Index;
+    using LongIndex = typename Layout::LongIndex;
+    using StrideIndex = typename Layout::Stride::Index;
+    using TensorRef = TensorRef<Element, Layout>;
+    using TensorCoord = typename Layout::TensorCoord;
+    
+    using AccessType = Array<Element, ThreadMap::kElementsPerAccess>;  /// Element type per access
+
+private:
+    StrideIndex stride_;        /// Stride value
+    Index byte_offset_;         /// Internal byte offset
+    AccessType *pointer_;       /// Internal pointer to first access of tile
+    int iteration_contiguous_;  /// Iteration in the contiguous dimension
+    int iteration_strided_;     /// Iteration in the strided dimension
+
+public:
+    /// Construct a TileIterator with zero threadblock offset
+    RegularTileAccessIterator(
+        TensorRef ref,  ///< Pointer to start of tensor
+        int thread_id   ///< ID of each participating thread
+    ) : stride_(ref.stride(0) / ThreadMap::kElementsPerAccess), byte_offset_(0) {
+        // initialize pointer
+        pointer_ = reinterpret_cast<AccessType *>(ref.data() + ref.offset(ThreadMap::initial_offset(thread_id)));
+        set_iteration_index(0);
+    }
+
+    /// Overrides the internal iteration index
+    void set_iteration_index(int index) {
+        iteration_contiguous_ = index % ThreadMap::Iterations::kContiguous;
+        iteration_strided_ = index / ThreadMap::Iterations::kContiguous;
+    }
+
+    /// Adds a pointer offset in units of Element
+    void add_pointer_offset(LongIndex pointer_offset) {
+        byte_offset_ += pointer_offset * sizeof(Element);
+    }
+
+    /// Adds a tile offset in the unit of tile.
+    /// In GEMM/Conv implementation, this is used to move in the k dimension in the shared memory.
+    /// Below layouts are the shared memory layouts.
+    ///   For row major A operand, k dimension is contiguous dimension;
+    ///   For col major A operand, k dimension is strided dimension;
+    ///   For row major B operand, k dimension is strided dimension;
+    ///   For col major B operand, k dimension is contiguous dimension.
+    /// Below two classes map col/row major to the pitch linear coordinates used in this base class.
+    void add_tile_offset(TensorCoord const &coord) {
+        LongIndex offset = coord.contiguous() * Shape::kContiguous
+            + coord.strided() * Shape::kStrided * stride_ * ThreadMap::kElementsPerAccess;
+        add_pointer_offset(offset);
+    }
+
+    /// Advances to the next tile in memory.
+    RegularTileAccessIterator &operator++() {
+        ++iteration_contiguous_;
+        if (iteration_contiguous_ < ThreadMap::Iterations::kContiguous) {
+            return *this;
+        }
+        // Enter here only if (iteration_contiguous_ == ThreadMap::Iteration::kContiguous)
+        iteration_contiguous_ = 0;
+        ++iteration_strided_;
+        if (iteration_strided_ < ThreadMap::Iterations::kStrided) {
+            return *this;
+        }
+        // Enter here only if (iteration_stride_ == ThreadMap::Iteration::kStrided). which means we enter the next tile.
+        iteration_strided_ = 0;
+        return *this;
+    }
+
+    /// Returns a pointer
+    AccessType *get() const {
+        AccessType *access_ptr = pointer_;
+        int access_offset = iteration_strided_ * ThreadMap::Delta::kStrided * stride_
+            + iteration_contiguous_ * ThreadMap::Delta::kContiguous / ThreadMap::kElementsPerAccess;
+        char *access_byte_ptr = reinterpret_cast<char *>(access_ptr + access_offset);
+        return reinterpret_cast<AccessType *>(access_byte_ptr + byte_offset_);
+    }
+};
+```
+
+在cutlass/transform/threadblock/regular_tile_access_iterator_tensor_op.h头文件中，当数据在共享内存中的布局是layout::TensorOpMultiplicandCongruous时，transform::threadblock::RegularTileAccessIterator访问器的实现代码如下所示。
+
+```c++
+/// Tile iterator specialized for congruous arrangements for TensorOps
+/// Satisfies: ForwardTileIteratorConcept | ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int Alignment, int Crosswise>
+class RegularTileAccessIterator<Shape_, Element_,
+    layout::TensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>,
+    AdvanceRank, ThreadMap_, Alignment> {
+public:
+    using Shape = Shape_;
+    using Element = Element_;
+    using Layout = layout::TensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>;
+    static int const kAdvanceRank = AdvanceRank;
+    using ThreadMap = ThreadMap_;
+    static int const kAlignment = Alignment;
+    static int const kCrosswise = Crosswise;
+
+    using Index = typename Layout::Index;
+    using LongIndex = typename Layout::LongIndex;
+    using StrideIndex = typename Layout::Stride::Index;
+    using TensorRef = TensorRef<Element, Layout>;
+    using TensorCoord = typename Layout::TensorCoord;
+
+    using AccessType = Array<Element, Layout::kElementsPerAccess>;  /// Element type per access
+
+    /// Internal details made public to facilitate introspection
+    struct Detail {
+        /// This iterator is specialized for an access size that is 128 bits in length.
+        static int const kAccessSizeInBits = 128;
+
+        /// Number of pointers
+        static int const kPointerCount = (ThreadMap::Iterations::kStrided > 1 ? 2 : 1);
+    };
+
+private:
+    StrideIndex stride_;                          /// Stride value
+    Index byte_offset_;                           /// Internal byte offset
+    AccessType *pointer_[Detail::kPointerCount];  /// Internal pointer to first access of tile
+    int iteration_contiguous_;                    /// Iteration in the contiguous dimension
+    int iteration_strided_;                       /// Iteration in the strided dimension
+
+public:
+    /// Construct a TileIterator with zero threadblock offset
+    RegularTileAccessIterator(
+        TensorRef ref,  ///< Pointer to start of tensor
+        int thread_id   ///< ID of each participating thread
+    ) : stride_(ref.stride(0) * Layout::kFactor / Layout::kElementsPerAccess), byte_offset_(0) {
+        layout::PitchLinearCoord thread_offset_base = ThreadMap::initial_offset(thread_id);
+        for (int i = 0; i < Detail::kPointerCount; ++i) {
+            // This is the offset of a thread within a threadblock tile for a specific pointer (units of elements)
+            layout::PitchLinearCoord thread_offset_in_threadblock_tile = thread_offset_base
+                + layout::PitchLinearCoord{ 0, ThreadMap::Detail::WarpThreadArrangement::kStrided * i };
+            // initialize pointer
+            pointer_[i] = reinterpret_cast<AccessType *>(ref.data() + ref.offset(thread_offset_in_threadblock_tile));
+        }
+        set_iteration_index(0);
+    }
+
+    /// Overrides the internal iteration index
+    void set_iteration_index(int index) {
+        iteration_contiguous_ = index % ThreadMap::Iterations::kContiguous;
+        iteration_strided_ = index / ThreadMap::Iterations::kContiguous;
+    }
+
+    /// Adds a pointer offset in units of Element
+    void add_pointer_offset(LongIndex pointer_offset) {
+        byte_offset_ += pointer_offset * sizeof(Element);
+    }
+
+    /// Adds a tile offset
+    void add_tile_offset(TensorCoord const &coord) {
+        add_pointer_offset(coord.contiguous() * Shape::kContiguous * Layout::kFactor
+            + coord.strided() * Shape::kStrided * stride_ * Layout::kElementsPerAccess / Layout::kFactor);
+    }
+
+    /// Advances to the next tile in memory.
+    RegularTileAccessIterator &operator++() {
+        ++iteration_contiguous_;
+        if (iteration_contiguous_ < ThreadMap::Iterations::kContiguous) {
+            return *this;
+        }
+        // Enter here only if (iteration_contiguous_ == ThreadMap::Iteration::kContiguous)
+        iteration_contiguous_ = 0;
+        ++iteration_strided_;
+        if (iteration_strided_ < ThreadMap::Iterations::kStrided) {
+            return *this;
+        }
+        // Enter here only if (iteration_strided_ == ThreadMap::Iteration::kStrided). which means we enter the next tile.
+        iteration_strided_ = 0;
+        return *this;
+    }
+
+    /// Returns a pointer
+    AccessType *get() const {
+        AccessType *access_ptr = pointer_[iteration_strided_ & 1];
+        int stride_idx = (iteration_strided_ & ~1);
+        int access_offset = stride_idx * ThreadMap::Delta::kStrided * stride_ / Layout::kFactor
+            + iteration_contiguous_ * ThreadMap::Delta::kContiguous / ThreadMap::kElementsPerAccess;
+        char *access_byte_ptr = reinterpret_cast<char *>(access_ptr + access_offset);
+        return reinterpret_cast<AccessType *>(access_byte_ptr + byte_offset_);
+    }
+};
+```
+
+在cutlass/transform/threadblock/regular_tile_access_iterator_tensor_op.h头文件中，当数据在共享内存中的布局是layout::ColumnMajorTensorOpMultiplicandCongruous时，transform::threadblock::RegularTileAccessIterator访问器的实现代码如下所示（有省略）。
+
+```c++
+/// Tile Iterator specialized for column-major congruous TensorOp formats.
+/// Satisfies: ForwardTileIteratorConcept | ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int Alignment, int Crosswise>
+class RegularTileAccessIterator<Shape_, Element_,
+    layout::ColumnMajorTensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>,
+    AdvanceRank, ThreadMap_, Alignment> {
+public:
+    /* ... */
+    using Layout = layout::ColumnMajorTensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>;
+    using UnderlyingIterator = RegularTileAccessIterator<
+        layout::PitchLinearShape<Shape::kRow, Shape::kColumn>, Element,
+        layout::TensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>,
+        (kAdvanceRank == 0 ? 0 : 1), ThreadMap_, kAlignment>;
+    using AccessType = typename UnderlyingIterator::AccessType;
+
+private:
+    UnderlyingIterator iterator_;  /// Underlying iterator
+
+public:
+    /// Construct a TileIterator with zero threadblock offset
+    RegularTileAccessIterator(
+        TensorRef ref,  ///< Pointer to start of tensor
+        int thread_id   ///< ID of each participating thread
+    ) : iterator_({ ref.data(), ref.stride() }, thread_id) {}
+
+    /// Adds a tile offset
+    void add_tile_offset(TensorCoord const &coord) {
+        iterator_.add_tile_offset({ coord.row(), coord.column() });
+    }
+
+    /// Advances to the next tile in memory.
+    RegularTileAccessIterator &operator++() {
+        ++iterator_;
+        return *this;
+    }
+
+    /// Returns a pointer
+    AccessType *get() const {
+        return reinterpret_cast<AccessType *>(iterator_.get());
+    }
+};
+```
+
+在cutlass/transform/threadblock/regular_tile_access_iterator_tensor_op.h头文件中，当数据在共享内存中的布局是layout::RowMajorTensorOpMultiplicandCongruous时，transform::threadblock::RegularTileAccessIterator访问器的实现代码如下所示（有省略）。
+
+```c++
+/// Tile Iterator specialized for row-major congruous TensorOp formats.
+/// Satisfies: ForwardTileIteratorConcept | ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int Alignment, int Crosswise>
+class RegularTileAccessIterator<Shape_, Element_,
+    layout::RowMajorTensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>,
+    AdvanceRank, ThreadMap_, Alignment> {
+public:
+    /* ... */
+    using Layout = layout::RowMajorTensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>;
+    using UnderlyingIterator = RegularTileAccessIterator<
+        layout::PitchLinearShape<Shape::kColumn, Shape::kRow>, Element,
+        layout::TensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>,
+        (kAdvanceRank == 0 ? 1 : 0), ThreadMap_, kAlignment>;
+    using AccessType = typename UnderlyingIterator::AccessType;
+
+private:
+    UnderlyingIterator iterator_;  /// Underlying iterator
+
+public:
+    /// Construct a TileIterator with zero threadblock offset
+    RegularTileAccessIterator(
+        TensorRef ref,  ///< Pointer to start of tensor
+        int thread_id   ///< ID of each participating thread
+    ) : iterator_({ ref.data(), ref.stride() }, thread_id) {}
+
+    /// Adds a tile offset
+    void add_tile_offset(TensorCoord const &coord) {
+        iterator_.add_tile_offset({ coord.column(), coord.row() });
+    }
+
+    /// Advances to the next tile in memory.
+    RegularTileAccessIterator &operator++() {
+        ++iterator_;
+        return *this;
+    }
+
+    /// Returns a pointer
+    AccessType *get() const {
+        return reinterpret_cast<AccessType *>(iterator_.get());
+    }
+};
+```
+
+### RegularTileIterator - TensorOp
+
+在cutlass/transform/threadblock/regular_tile_iterator_tensor_op.h头文件中，当数据在共享内存中的布局是layout::TensorOpMultiplicandCongruous时，transform::threadblock::RegularTileIterator访问器的实现代码如下所示。
+
+```c++
+/// Tile iterator specialized for congruous arrangements for TensorOps
+/// Satisfies: ForwardTileIteratorConcept | ReadableContiguousTileIteratorConcept |  WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int Alignment, int Crosswise>
+class RegularTileIterator<Shape_, Element_,
+    layout::TensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>,
+    AdvanceRank, ThreadMap_, Alignment> {
+public:
+    using Shape = Shape_;
+    using Element = Element_;
+    using Layout = layout::TensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>;
+    static int const kAdvanceRank = AdvanceRank;
+    using ThreadMap = ThreadMap_;
+    static int const kAlignment = Alignment;
+
+    using Index = typename Layout::Index;
+    using LongIndex = typename Layout::LongIndex;
+    using TensorRef = TensorRef<Element, Layout>;
+    using TensorCoord = typename Layout::TensorCoord;
+
+    /// Internal details made public to facilitate introspection
+    struct Detail {
+        /// This iterator is specialized for an access size that is 128 bits in length.
+        static int const kAccessSizeInBits = 128;
+    };
+
+    /// Fragment object to be loaded or stored
+    using Fragment = Array<Element, ThreadMap::Iterations::kCount * Layout::kElementsPerAccess>;
+    /// Underlying iterator to compute the addresses
+    using TileAccessIterator = RegularTileAccessIterator<Shape, Element, Layout, kAdvanceRank, ThreadMap>;
+
+private:
+    using AccessType = Array<Element, Layout::kElementsPerAccess>;  /// Element type per access
+    TileAccessIterator address_iterator_;                           /// Data member to the tile access iterator
+
+public:
+    /// Construct a TileIterator with zero threadblock offset
+    RegularTileIterator(
+        TensorRef ref,  ///< Pointer to start of tensor
+        int thread_id   ///< ID of each participating thread
+    ) : address_iterator_(ref, thread_id) {}
+
+
+    /// Adds a pointer offset in units of Element
+    void add_pointer_offset(LongIndex pointer_offset) {
+        address_iterator_.add_pointer_offset(pointer_offset);
+    }
+
+    /// Adds a tile offset
+    void add_tile_offset(TensorCoord const &coord) {
+        address_iterator_.add_tile_offset(coord);
+    }
+
+    /// Advances to the next tile in memory.
+    RegularTileIterator &operator++() {
+        address_iterator_.add_tile_offset({ 0, 1 });
+        return *this;
+    }
+
+    /// Loads a fragment from memory
+    void load_with_byte_offset(Fragment &frag, Index byte_offset) {
+        address_iterator_.set_iteration_index(0);
+        AccessType *frag_ptr = reinterpret_cast<AccessType *>(&frag);
+        for (int s = 0; s < ThreadMap::Iterations::kStrided; ++s) {
+            for (int c = 0; c < ThreadMap::Iterations::kContiguous; ++c) {
+                int access_idx = c + s * ThreadMap::Iterations::kContiguous;
+                char const *byte_ptr = reinterpret_cast<char const *>(address_iterator_.get()) + byte_offset;
+                AccessType const *access_ptr = reinterpret_cast<AccessType const *>(byte_ptr);
+                frag_ptr[access_idx] = *access_ptr;
+                ++address_iterator_;
+            }
+        }
+    }
+
+    /// Loads a fragment from memory
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) {
+        load_with_byte_offset(frag, pointer_offset * sizeof_bits<Element>::value / 8);
+    }
+
+    /// Loads a fragment from memory
+    void load(Fragment &frag) {
+        load_with_pointer_offset(frag, 0);
+    }
+
+    void store_with_byte_offset(Fragment const &frag, Index byte_offset) {
+        address_iterator_.set_iteration_index(0);
+        AccessType const *frag_ptr = reinterpret_cast<AccessType const *>(&frag);
+        for (int s = 0; s < ThreadMap::Iterations::kStrided; ++s) {
+            for (int c = 0; c < ThreadMap::Iterations::kContiguous; ++c) {
+                int access_idx = c + s * ThreadMap::Iterations::kContiguous;
+                char *byte_ptr = reinterpret_cast<char *>(address_iterator_.get()) + byte_offset;
+                AccessType *access_ptr = reinterpret_cast<AccessType *>(byte_ptr);
+                *access_ptr = frag_ptr[access_idx];
+                ++address_iterator_;
+            }
+        }
+    }
+
+    /// Store a fragment to memory
+    void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) {
+        store_with_byte_offset(frag, pointer_offset * sizeof_bits<Element>::value / 8);
+    }
+
+    /// Store a fragment to memory
+    void store(Fragment const &frag) {
+        store_with_byte_offset(frag, 0);
+    }
+};
+```
+
+在cutlass/transform/threadblock/regular_tile_iterator_tensor_op.h头文件中，当数据在共享内存中的布局是layout::ColumnMajorTensorOpMultiplicandCongruous时，transform::threadblock::RegularTileIterator访问器的实现代码如下所示。
+
+```c++
+/// Tile Iterator specialized for column-major congruous TensorOp formats.
+/// Satisfies: ForwardTileIteratorConcept | ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int Alignment, int Crosswise>
+class RegularTileIterator<Shape_, Element_,
+    layout::ColumnMajorTensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>,
+    AdvanceRank, ThreadMap_, Alignment> {
+public:
+    /* ... */
+    using Layout = layout::ColumnMajorTensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>;
+    using UnderlyingIterator = RegularTileIterator<
+        layout::PitchLinearShape<Shape::kRow, Shape::kColumn>, Element,
+        layout::TensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>,
+        (kAdvanceRank == 0 ? 0 : 1), ThreadMap_>;
+
+private:
+    UnderlyingIterator iterator_;  /// Underlying iterator
+
+public:
+    /// Construct a TileIterator with zero threadblock offset
+    RegularTileIterator(
+        TensorRef ref,  ///< Pointer to start of tensor
+        int thread_id   ///< ID of each participating thread
+    ) : iterator_({ ref.data(), ref.stride() }, thread_id) {}
+
+    /// Adds a tile offset
+    void add_tile_offset(TensorCoord const &coord) {
+        iterator_.add_tile_offset({ coord.row(), coord.column() });
+    }
+
+    /// Advances to the next tile in memory.
+    RegularTileIterator &operator++() {
+        ++iterator_;
+        return *this;
+    }
+
+    /// Loads a fragment from memory
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) {
+        iterator_.load_with_pointer_offset(frag, pointer_offset);
+    }
+    
+    /// Store a fragment to memory
+    void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) {
+        iterator_.store_with_pointer_offset(frag, pointer_offset);
+    }
+};
+```
+
+在cutlass/transform/threadblock/regular_tile_iterator_tensor_op.h头文件中，当数据在共享内存中的布局是layout::RowMajorTensorOpMultiplicandCongruous时，transform::threadblock::RegularTileIterator访问器的实现代码如下所示。
+
+```c++
+/// Tile Iterator specialized for row-major congruous TensorOp formats.
+/// Satisfies: ForwardTileIteratorConcept | ReadableContiguousTileIteratorConcept | WriteableContiguousTileIteratorConcept
+template <typename Shape_, typename Element_, int AdvanceRank, typename ThreadMap_, int Alignment, int Crosswise>
+class RegularTileIterator<Shape_, Element_,
+    layout::RowMajorTensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>,
+    AdvanceRank, ThreadMap_, Alignment> {
+public:
+    /* ... */
+    using Layout = layout::RowMajorTensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>;
+    using UnderlyingIterator = RegularTileIterator<
+        layout::PitchLinearShape<Shape::kColumn, Shape::kRow>, Element,
+        layout::TensorOpMultiplicandCongruous<sizeof_bits<Element_>::value, Crosswise>,
+        (kAdvanceRank == 0 ? 1 : 0), ThreadMap_>;
+
+private:
+    UnderlyingIterator iterator_;  /// Underlying iterator
+
+public:
+    /// Construct a TileIterator with zero threadblock offset
+    RegularTileIterator(
+        TensorRef ref,  ///< Pointer to start of tensor
+        int thread_id   ///< ID of each participating thread
+    ) : iterator_({ ref.data(), ref.stride() }, thread_id) {}
+
+    /// Adds a tile offset
+    void add_tile_offset(TensorCoord const &coord) {
+        iterator_.add_tile_offset({ coord.column(), coord.row() });
+    }
+
+    /// Advances to the next tile in memory.
+    RegularTileIterator &operator++() {
+        ++iterator_;
+        return *this;
+    }
+
+    /// Loads a fragment from memory
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) {
+        iterator_.load_with_pointer_offset(frag, pointer_offset);
+    }
+
+    /// Store a fragment to memory
+    void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) {
+        iterator_.store_with_pointer_offset(frag, pointer_offset);
+    }
+};
+```

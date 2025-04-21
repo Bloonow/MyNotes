@@ -187,7 +187,7 @@ namespace ParentNamespace {
 }
 ```
 
-访问时，可以直接通过ParentNamespace::MyFunction()访问其中的成员，而无需使用InlineNamespace名称符号。
+访问时，可以直接通过ParentNamespace::MyFunction()访问父命名空间ParentNamespace中的成员，而无需使用InlineNamespace名称符号。
 
 内联命名空间可以帮助管理不同版本的代码，如下所示。
 
@@ -202,8 +202,8 @@ namespace API {
 }
 
 int main() {
-    API::doSomething();  // 调用 v1 的实现
-    API::doSomething();  // 调用新版的 v2 的实现
+    API::__v1::doSomething();  // 调用 v1 的实现
+    API::doSomething();        // 调用新版的 v2 的实现
     return 0;
 }
 ```
