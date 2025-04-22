@@ -489,7 +489,7 @@ MMA（Matrix Multiply Accumulate）是指矩阵乘法累加操作，是矩阵乘
 
 CUTLASS对矩阵乘法的划分如下图所示，从左至右，每个层级对应着CUDA编程模型中不同的并行资源。
 
-![](GEMM矩阵乘法.assets/gemm-hierarchy.png)
+![](GEMM矩阵乘法.assets/CUTLASS的GEMM示意图.png)
 
 ## Tiling and Epilogue
 

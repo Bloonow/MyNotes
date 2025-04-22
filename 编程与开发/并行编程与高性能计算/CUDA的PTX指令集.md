@@ -104,6 +104,38 @@ int main(int argc, char *argv[]) {
 nvcc -arch=sm_89 -lcuda demo.cu -o run
 ```
 
+若要在CUDA C++源代码中使用内嵌的PTX汇编代码，则需要`asm volatile`语法，其基本格式如下所示。这实际上是GCC内嵌汇编的CUDA C++语言形式。
+
+```c++
+__global__ void ptx_add_kernel(const float* A, const float* B, float* C, const int N) {
+    for (int i = threadIdx.x; i < N; i += blockDim.x) {
+        float result;
+        asm volatile(
+            "{\n"
+            "  .reg.f32 r1, r2;\n"           // 声明3个32位寄存器
+            "  ld.global.f32 r1, [%1];\n"    // 从全局内存加载A[i]到r1
+            "  ld.global.f32 r2, [%2];\n"    // 从全局内存加载B[i]到r2
+            "  add.f32 %0, r1, r2;\n"        // %0 = r1 + r2
+            "}\n"
+            : "=f"(result)                   // [OUT]      : result
+            : "l"(A + i), "l"(B + i)         // [IN][Ptr]  : A + i, B + i
+            : "memory"                       // [Optional] : memory
+        );
+        C[i] = result;
+    }
+}
+```
+
+一个asm语句主要由四部分构成，(1)PTX代码主体，(2)PTX代码的输出变量，(3)PTX代码的输入变量，(4)可选的说明符。不同部分之间使用冒号`:`分隔。
+
+在PTX代码主体中，使用诸如`%0`形式的寄存器，以绑定到CUDA C++代码中的变量，所使用的诸如%0、%1、%2之类的序号仅与CUDA C++变量在asm语句中出现的顺序有关。实际上，在PTX代码中诸如%0的寄存器，是由NVCC编译器自动分配的，寄存器的类型由输出变量和输出变量的type说明符指定。
+
+在PTX代码的输出变量和输入变量部分，使用诸如`"type"(variable)`的形式来描述一个CUDA C++变量。对于输出变量而言，必须在类型说明符之前，使用一个等号`=`来标识该变量是只写的，此外，还可以使用一个加号`+`来标识该变量是可读可写的；对于输入变量而言，不使用任何修饰符，即标识该变量是只读的。
+
+有一些常用的type类型，r表示一个32位的通用寄存器，h表示一个16位的通用寄存器，f表示一个单精度浮点数，d表示一个双精度浮点数，b表示一个布尔类型的谓词寄存器，l表示一个专用于地址操作数的64位通用寄存器，c表示一个用于16字节对齐的常量地址，n表示一个编译时确定的立即数。此外，还可以使用诸如`"0"(var)`的形式，来指定变量var与0号操作数共用同一个寄存器，但此时应小心处理寄存器冲突。
+
+最后一部分是副作用声明（Clobber List），用于告知编译器该内嵌汇编可能会对哪些寄存器或哪些内存位置进行修改，这一部分通常会被省略。使用`"memory"`告知编译器该内嵌汇编对设备的全局内存进行了修改。此外，还可以直接指定诸如"r0"之类的寄存器。
+
 # 特殊寄存器
 
 PTX提供许多预定义的只读变量，这些变量以特殊寄存器的形式可见，其名称统一以百分号%作为前缀，可以通过mov指令或cvt指令访问。
@@ -1404,7 +1436,7 @@ cp.async.ca.shared{::cta}.global{.L2::cache_hint}{.L2::prefetch_size} [dst], [sr
 cy_size            = { 4, 8, 16 };
 ```
 
-cp_async指令允许使用32位整数作为可选的src_size操作数，指定要从src地址复制的数据量的大小，以字节为单位，必须小于等于cp_size。这种情况下，只会从src地址处复制src_size字节的数据到dst地址处，而剩余的cp_size－src_size字节的数据将使用0值进行填充。当src_size大于cp_size时，行为未定义。cp_async指令还允许使用.pred谓词作为ignore_src操作数，指定是否完全忽略来自src源地址的数据，缺省默认为False值，如果忽略则使用0值填充dst地址处数据。可选的src_size操作数和ignore_src操作数允许程序在PTX指令层面，正确处理数据加载过程中的边界问题。
+cp.async指令允许使用32位整数作为可选的src_size操作数，指定要从src地址复制的数据量的大小，以字节为单位，必须小于等于cp_size。这种情况下，只会从src地址处复制src_size字节的数据到dst地址处，而剩余的cp_size－src_size字节的数据将使用0值进行填充。当src_size大于cp_size时，行为未定义。cp.async指令还允许使用.pred谓词作为ignore_src操作数，指定是否完全忽略来自src源地址的数据，缺省默认为False值，如果忽略则使用0值填充dst地址处数据。可选的src_size操作数和ignore_src操作数允许程序在PTX指令层面，正确处理数据加载过程中的边界问题。
 
 必须的.async限定符指示cp指令将启动异步内存复制操作，并且程序的控制权在复制作完成之前就会返回给执行线程。然后，执行线程可以使用异步组完成机制，即cp.async.wait_group指令或cp.async.wait_all指令，来等待异步复制操作的完成。或者，执行线程使用mbarrier内存栅障完成机制，即mbarrier指令，来等待异步复制操作的完成。
 
@@ -1425,7 +1457,7 @@ cp.async.wait_all和cp.async.wait_group不为除cp.async之外的任何其他内
 
 #### 整块bulk异步复制
 
-> 该小节描述的整块bulk异步复制指令需要计算能力9.0（Ampere架构）及以上的设备才能支持。
+> 该小节描述的整块bulk异步复制指令需要计算能力9.0（Hopper架构）及以上的设备才能支持。
 
 cp.async.bulk指令启动一个非阻塞的异步复制操作，将数据从一个存储状态空间的源地址srcMem中，搬运到另一个存储状态空间的目标地址dstMem当中，地址srcMem和dstMem必须是按照16字节对齐的。操作数size是一个32位整数，表示要搬运的数据量大小，以字节为单位，必须是16的整数倍。源内存范围[srcMem, srcMem＋size－1]和目标内存范围[dstMem, dstMem＋size－1]不能使内存空间的地址溢出，否则会导致未定义行为。
 
@@ -1586,7 +1618,7 @@ bar.warp.sync指令使得执行线程在一个Warp线程束的范围之内进行
 bar.warp.sync membermask;
 ```
 
-barrier.cluster指令使得执行线程在一个簇组的范围之内参与barrier栅障对象，可用于簇组内的线程同步和通信。barrier.cluster.arrive用于标记当前Warp已到达栅障，barrier.cluster.wait指令用于等待所有Warp中的参与栅障的未退出线程达到栅障。该指令要求计算能力9.0（Ampere架构）及以上的设备。
+barrier.cluster指令使得执行线程在一个簇组的范围之内参与barrier栅障对象，可用于簇组内的线程同步和通信。barrier.cluster.arrive用于标记当前Warp已到达栅障，barrier.cluster.wait指令用于等待所有Warp中的参与栅障的未退出线程达到栅障。该指令要求计算能力9.0（Hopper架构）及以上的设备。
 
 ```
 barrier.cluster.arrive{.sem}{.aligned};
@@ -2497,7 +2529,7 @@ ldmatrix.sync.aligned.m16n16.num.trans{.ss}.dst_fmt.src_fmt reg, [ptr];
 .src_fmt = { .b6x16_p32, .b4x16_p64 };
 ```
 
-其中，.shape指示要加载矩阵的维数形状，.type指定一个元素的类型（也即占用的二进制位数），.dst_fmt和.src_fmt指定元素的类型。需要注意的是，矩阵的维数形状.m8n16、.m16n16，以及元素类型.b8、.dst_fmt、.src_fmt都要求在sm_100计算能力（Hopper架构）及更新的设备上才受支持。
+其中，.shape指示要加载矩阵的维数形状，.type指定一个元素的类型（也即占用的二进制位数），.dst_fmt和.src_fmt指定元素的类型。需要注意的是，矩阵的维数形状.m8n16、.m16n16，以及元素类型.b8、.dst_fmt、.src_fmt都要求在sm_100计算能力（Blackwell架构）及更新的设备上才受支持。
 
 | .shape  | Matrix Shape | 元素类型               | 一个元素占用的二进制位 | 计算能力 |
 | ------- | ------------ | ---------------------- | ---------------------- | -------- |

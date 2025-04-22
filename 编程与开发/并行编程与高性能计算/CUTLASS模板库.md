@@ -10,15 +10,15 @@ CUTLASS库包括若干组件。在顶层include目录中提供CUTLASS模板库�
 
 ```shell
 .
-├── include       # Top-level include directory. Client applications should target this path.
+├── include        # Top-level include directory. Client applications should target this path.
 │   ├── cutlass   # CUTLASS Template Library, CUDA Templates for Linear Algebra Subroutines and Solvers
 │   └── cute      # CuTe Template Library, CuTe Layout, layout algebra, MMA/Copy atoms, tiled MMA/Copy
 ├── tools
 │   ├── library   # CUTLASS Instance Library, static/dynamic library containing all kernel instantiations of interest
 │   ├── profiler  # CUTLASS Profiler
 │   └── util      # CUTLASS Utilities
-├── examples      # CUTLASS Examples
-├── media         # Documentation
+├── examples       # CUTLASS Examples
+├── media          # Documentation
 └── test
 ```
 
@@ -91,9 +91,10 @@ public:
     }
     
     // Resizes internal memory allocations without affecting layout or extent
-    // @param count          : size of tensor in elements
-    // @param device_backed_ : if true, device memory is also allocated
-    void reserve(size_t count, bool device_backed_ = true) {
+    void reserve(
+        size_t count,               // size of tensor in elements
+        bool device_backed_ = true  // if true, device memory is also allocated
+    ) {
         device_.reset();
         host_.clear();
         count = (count + kElementsPerStoredVec - 1) / kElementsPerStoredVec * kNumStoragePerStoredVec;
@@ -1995,14 +1996,14 @@ enum class SharedMemoryClearOption {
 /// Computes laneId within a warp
 int LaneId() {
     int ret;
-    asm("mov.u32 %0, %%laneid;" : "=r"(ret) : );
+    asm volatile("mov.u32 %0, %%laneid;" : "=r"(ret) : );
     return ret;
 }
 
 /// Computes SM number the thread is running on
 int SmId() {
     int ret;
-    asm("mov.u32 %0, %%smid;" : "=r"(ret) : );
+    asm volatile("mov.u32 %0, %%smid;" : "=r"(ret) : );
     return ret;
 }
 
@@ -2035,7 +2036,7 @@ struct CacheOperation {
 };
 ```
 
-### global_load, global_store
+### ld.global, st.global
 
 在cutlass/arch/memory.h头文件中，提供从全局内存中加载数据的操作，并支持不同的加载粒度，即支持一次性加载1、2、4、8、16、32个字节的数据。
 
@@ -2099,7 +2100,7 @@ struct global_store<AccessType, 16> {
 };
 ```
 
-### shread_load, shared_store
+### ld.shared, st.shared
 
 在cutlass/arch/memory.h头文件中，提供从共享内存中加载数据的操作，并支持不同的加载粒度，即支持一次性加载2、4、8、16个字节的数据。
 
@@ -2159,7 +2160,7 @@ uint32_t cast_smem_ptr_to_uint(void const* const ptr) {
 }
 ```
 
-### ldsm
+### ldmatrix
 
 在cutlass/arch/memory_sm75.h头文件中，提供从共享内存中加载数据的操作，这是对ldmatrix指令的包装，可以一次性加载1、2、3、4个矩阵。
 
@@ -2192,6 +2193,87 @@ void ldsm<layout::ColumnMajor, 4>(Array<unsigned, 4> & D, void const* ptr) {
         : "r"(addr)
     );
     reinterpret_cast<int4 &>(D) = make_int4(x, y, z, w);
+}
+```
+
+### cp.async
+
+在cutlass/arch/memory_sm80.h头文件中，提供将数据直接从设备全局内存中加载到共享内存中的异步复制操作，这是对cp.async系列指令的包装。
+
+```c++
+/// Initiates an asynchronous copy from global memory to shared memory. `cp.async`
+template <
+    int SizeInBytes,                                        /// Size of the access in bytes
+    CacheOperation::Kind cache_op = CacheOperation::Always  /// Cache operation
+>
+struct cp_async;
+
+/// Initiates an asynchronous copy from global memory to shared memory. `cp.async`
+/// Rather than predicate the entire transfer, zeros are written to SMEM if the guard predicate is false.
+template <
+    int SizeInBytes,                                        /// Size of the access in bytes
+    CacheOperation::Kind cache_op = CacheOperation::Always  /// Cache operation
+>
+struct cp_async_zfill;
+```
+
+```c++
+template <int SizeInBytes>
+struct cp_async<SizeInBytes, CacheOperation::Always> {
+    cp_async(void *smem_ptr, void const *global_ptr, bool pred_guard = true) {
+        static_assert((SizeInBytes == 4 || SizeInBytes == 8 || SizeInBytes == 16), "Size is not supported");
+        unsigned int smem_uint_ptr = cutlass_get_smem_pointer(smem_ptr);
+        asm volatile(
+            "{\n"
+            "  .reg .pred p;\n"
+            "  setp.ne.b32 p, %0, 0;\n"
+        #if CUTLASS_ENABLE_L2_PREFETCH
+            "  @p cp.async.ca.shared.global.L2::128B [%1], [%2], %3;\n"
+        #else
+            "  @p cp.async.ca.shared.global [%1], [%2], %3;\n"
+        #endif
+            "}\n"
+            :
+            : "r"((int)pred_guard), "r"(smem_uint_ptr), "l"(global_ptr), "n"(SizeInBytes)
+        );
+    }
+};
+
+template <int SizeInBytes>
+struct cp_async_zfill<SizeInBytes, CacheOperation::Always> {
+    cp_async_zfill(void *smem_ptr, void const *global_ptr, bool pred_guard) {
+        static_assert((SizeInBytes == 4 || SizeInBytes == 8 || SizeInBytes == 16), "Size is not supported");
+        unsigned int smem_uint_ptr = cutlass_get_smem_pointer(smem_ptr);
+        int src_in_bytes = (pred_guard ? SizeInBytes : 0);
+        asm volatile(
+        #if CUTLASS_ENABLE_L2_PREFETCH
+            "cp.async.ca.shared.global.L2::128B [%0], [%1], %2, %3;\n"
+        #else
+            "cp.async.ca.shared.global [%0], [%1], %2, %3;\n"
+        #endif
+            :
+            : "r"(smem_uint_ptr), "l"(global_ptr), "n"(SizeInBytes), "r"(src_in_bytes)
+        );
+    }
+};
+```
+
+```c++
+/// Establishes an ordering w.r.t previously issued cp.async instructions. Does not block.
+void cp_async_fence() {
+    asm volatile("cp.async.commit_group;\n" : : );
+}
+
+/// Blocks until all but <N> previous cp.async.commit_group operations have committed.
+template <int N>
+void cp_async_wait() {
+    asm volatile("cp.async.wait_group %0;\n" : : "n"(N));
+}
+
+/// Blocks until all previous cp.async.commit_group operations have committed.
+template <>
+void cp_async_wait<0>() {
+    asm volatile("cp.async.wait_all;\n" : : );
 }
 ```
 
@@ -2823,7 +2905,7 @@ public:
 public:
     /// Constructor
     MmaSimt() {}
-
+  
     /// Performs a warp-level matrix multiply-accumulate operation
     void operator()(FragmentC &d, FragmentA a, FragmentB b, FragmentC const &c, int group_idx = 0) const {
         ThreadMma mma;
@@ -3444,7 +3526,32 @@ public:
             }
         }
     }
+    
+    /// Transform the mma operands to the required types
+    void transform(TransformedFragmentA &dst_A, TransformedFragmentB &dst_B, FragmentA const &A, FragmentB const &B) const {
+        // Define conversions from source type to instruction type
+        FloatRoundStyle const kRoundA = FloatRoundStyle::round_to_nearest;
+        FloatRoundStyle const kRoundB = FloatRoundStyle::round_to_nearest;
+        // Usually, float --> f16, float --> bf16, float --> tf32, etc.
+        detail::ConvertAndPack<typename ArchMmaOperator::ElementA, ElementA, FragmentA::kElements, kRoundA> convert_A;
+        detail::ConvertAndPack<typename ArchMmaOperator::ElementB, ElementB, FragmentB::kElements, kRoundB> convert_B;
+        dst_A = convert_A(A);
+        dst_B = convert_B(B);
+    }
 };
+```
+
+```c++
+namespace detail {
+template <typename T, typename S, int N, FloatRoundStyle Round>
+struct ConvertAndPack {
+    using Converter = NumericArrayConverter<T, S, N, Round>;
+    Array<T, N> operator()(Array<S, N> const &source) {
+        Converter converter;
+        return converter(source);
+    }
+};
+}
 ```
 
 ## Threadblock Level
@@ -4029,9 +4136,12 @@ protected:
 
 public:
     /// Construct from tensor references
-    /// @param shared_storage : Shared storage needed for internal use by threadblock-scoped GEMM
-    MmaBase(SharedStorage &shared_storage, int thread_idx, int warp_idx, int lane_idx) :
-        warp_tile_iterator_A_(shared_storage.operand_A_ref(), lane_idx),
+    MmaBase(
+        SharedStorage &shared_storage,  ///< Shared storage needed for internal use by threadblock-scoped GEMM
+        int thread_idx,                 ///< ID within the threadblock
+        int warp_idx,                   ///< ID of warp
+        int lane_idx                    ///< ID of each thread within a warp
+    ) : warp_tile_iterator_A_(shared_storage.operand_A_ref(), lane_idx),
         warp_tile_iterator_B_(shared_storage.operand_B_ref(), lane_idx) {}
 };
 ```
@@ -4100,15 +4210,14 @@ protected:
 
 public:
     /// Construct from tensor references
-    /// @param shared_storage : Shared storage needed for internal use by threadblock-scoped GEMM
-    /// @param thread_idx     : ID of each thread within the threadblock
-    /// @param warp_idx       : ID of each warp within the threadblock
-    /// @param lane_idx       : ID of each thread within a warp
-    /// @param transform_A    : transformation applied to A fragment
-    /// @param transform_B    : transformation applied to B fragment
-    MmaPipelined(typename Base::SharedStorage &shared_storage, int thread_idx, int warp_idx, int lane_idx,
-        TransformA transform_A = TransformA(), TransformB transform_B = TransformB()) :
-        Base(shared_storage, thread_idx, warp_idx, lane_idx),
+    MmaPipelined(
+        typename Base::SharedStorage &shared_storage,  ///< Shared storage needed for internal use by threadblock-scoped GEMM
+        int thread_idx,                                ///< ID of each thread within the threadblock
+        int warp_idx,                                  ///< ID of each warp within the threadblock
+        int lane_idx,                                  ///< ID of each thread within a warp
+        TransformA transform_A = TransformA(),         ///< transformation applied to A fragment
+        TransformB transform_B = TransformB()          ///< transformation applied to B fragment
+    ) : Base(shared_storage, thread_idx, warp_idx, lane_idx),
         smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx),
         smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx),
         transform_A_(transform_A), transform_B_(transform_B), smem_write_stage_idx(0) {
@@ -4154,14 +4263,15 @@ public:
         smem_write_stage_idx ^= 1;
     }
 
-    /// GEMM prologue. `gmem --> smem`.
-    /// The last kblock is loaded in the prologue.
-    /// Bootstrap the global->shared memory pipeline by fetching the global fragments
+    /// GEMM prologue.
+    /// The "last residual partial" kblock is loaded in the prologue.
+    /// Bootstrap the `global->shared` memory pipeline by fetching the global fragments
     /// needed by the first `kStages - 1` threadblock mainloop iterations.
-    /// @param iterator_A        : [in|out] iterator over A operand in global memory
-    /// @param iterator_B        : [in|out] iterator over B operand in global memory
-    /// @param gemm_k_iterations : [in|out] number of threadblock mainloop iterations remaining
-    void prologue(IteratorA &iterator_A, IteratorB &iterator_B, int &gemm_k_iterations) {
+    void prologue(
+        IteratorA &iterator_A,  ///< [in|out] iterator over A operand in global memory
+        IteratorB &iterator_B,  ///< [in|out] iterator over B operand in global memory
+        int &gemm_k_iterations  ///< [in|out] number of threadblock mainloop iterations remaining
+    ) {
         // Load A fragment from global A
         FragmentA tb_frag_A;
         tb_frag_A.clear();
@@ -4186,11 +4296,12 @@ public:
 
     /// Perform the specified number of threadblock mainloop iterations of matrix multiply-accumulate.
     /// Assumes prologue has been initiated.
-    /// @param gemm_k_iterations :     [in] number of threadblock mainloop iterations
-    /// @param accum             : [in|out] accumulator tile
-    /// @param iterator_A        : [in|out] iterator over A operand in global memory
-    /// @param iterator_B        : [in|out] iterator over B operand in global memory
-    void gemm_iters(int gemm_k_iterations, FragmentC &accum, IteratorA &iterator_A, IteratorB &iterator_B) {
+    void gemm_iters(
+        int gemm_k_iterations,  ///<     [in] number of threadblock mainloop iterations
+        FragmentC &accum,       ///< [in|out] accumulator tile
+        IteratorA &iterator_A,  ///< [in|out] iterator over A operand in global memory
+        IteratorB &iterator_B   ///< [in|out] iterator over B operand in global memory
+    ) {
         // Avoid reading out of bounds
         iterator_A.clear_mask(gemm_k_iterations <= 1);
         iterator_B.clear_mask(gemm_k_iterations <= 1);
@@ -4269,17 +4380,18 @@ public:
     }
 
     /// Perform a threadblock-scoped matrix multiply-accumulate
-    /// @param gemm_k_iterations : number of iterations of the mainloop
-    /// @param accum             : destination accumulator tile
-    /// @param iterator_A        : iterator over A operand in global memory
-    /// @param iterator_B        : iterator over B operand in global memory
-    /// @param src_accum         : source accumulator tile
-    void operator()(int gemm_k_iterations, FragmentC &accum, IteratorA iterator_A, IteratorB iterator_B, FragmentC const &src_accum) {
-        // Prologue
+    void operator()(
+        int gemm_k_iterations,      ///< number of iterations of the mainloop. `(problem_size_k + Shape::kK - 1) / Shape::kK`
+        FragmentC &accum,           ///< destination accumulator tile
+        IteratorA iterator_A,       ///< iterator over A operand in global memory
+        IteratorB iterator_B,       ///< iterator over B operand in global memory
+        FragmentC const &src_accum  ///< source accumulator tile
+    ) {
+        // Prologue (start fetching iterations of global fragments into shared memory)
         prologue(iterator_A, iterator_B, gemm_k_iterations);
         // Wait until we have at least one completed global fetch stage
         gmem_wait();
-        // Perform accumulation in the 'd' output operand
+        // Initialize destination accumulators with source accumulators
         accum = src_accum;
         // Perform the MAC-iterations
         gemm_iters(gemm_k_iterations, accum, iterator_A, iterator_B);
@@ -4641,9 +4753,10 @@ public:
     PredicatedTileAccessIteratorPredicates(TensorCoord extent) : extent_(extent) {}
 
     /// Computes predicates based on internally tracked per-thread offset.
-    /// @param extent          : Extent of the matrix window
-    /// @param is_steady_state : optionally, simplify predicate calculation during 'steady state' phase
-    void compute_predicates_(TensorCoord extent, bool is_steady_state = false) {
+    void compute_predicates_(
+        TensorCoord extent,           ///< Extent of the matrix window
+        bool is_steady_state = false  ///< optionally, simplify predicate calculation during 'steady state' phase
+    ) {
         for (int i = 0; i < kPredicateWordCount; ++i) {
             predicates_[i] = 0u;
         }
@@ -4672,7 +4785,7 @@ public:
             int residual = pred_idx % kPredicatesPerWord;
             int byte_idx = residual / kPredicatesPerByte;
             int bit_idx = residual % kPredicatesPerByte;
-            // One Word[31:0] is `0b 0000???? 0000???? 0000???? 0000????`, where `0` is meaningless placeholder and `?` is the guard.
+            // One Word[31:0] is `0b ----???? ----???? ----???? ----????`, where `-` is meaningless placeholder and `?` is the guard.
             predicates_[word_idx] |= (static_cast<unsigned int>(guard) << (byte_idx * 8 + bit_idx));
         }
     }
@@ -4830,9 +4943,10 @@ private:
     Params params_;                       /// Parameters object with precomputed internal state
 
     /// Computes predicates based on internally tracked per-thread offset.
-    /// @param extent          : Extent of the matrix window
-    /// @param is_steady_state : optionally, simplify predicate calculation during 'steady state' phase
-    void compute_predicates_(TensorCoord extent, bool is_steady_state = false) {
+    void compute_predicates_(
+        TensorCoord extent,           ///< Extent of the matrix window
+        bool is_steady_state = false  ///< optionally, simplify predicate calculation during 'steady state' phase
+    ) {
         the_predicates.compute_predicates_(extent, is_steady_state);
     }
 
