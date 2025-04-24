@@ -697,7 +697,7 @@ public:
     using LongIndex = typename Base::LongIndex;  /// LongIndex type
 
 private:
-    /// Syntax = (row, column)
+    /// coord = (row, column)
     static int const kRow = 0;     /// Rows dimension
     static int const kColumn = 1;  /// Columns dimension
 
@@ -726,7 +726,7 @@ struct GemmCoord : public Coord<3, int> {
     typedef int Index;             /// Integer-valued index
     typedef Coord<3, Index> Base;  /// Base type is a Coord of rank=3
 
-    /// Syntax = (m, n, k)
+    /// coord = (m, n, k)
     static int const kM = 0;  /// GEMM M dimension - rows of the output C matrix
     static int const kN = 1;  /// GEMM N dimension - columns of the output C matrix
     static int const kK = 2;  /// GEMM K dimension - inner dimension of the GEMM problem
@@ -752,7 +752,7 @@ struct BatchedGemmCoord : public Coord<4, int> {
     typedef int Index;             /// Integer-valued index
     typedef Coord<4, Index> Base;  /// Base type is a Coord of rank=4
 
-    /// Syntax = (m, n, k, batch)
+    /// coord = (m, n, k, batch)
     static int const kM = 0;      /// GEMM M dimension - rows of the output C matrix
     static int const kN = 1;      /// GEMM N dimension - columns of the output C matrix
     static int const kK = 2;      /// GEMM K dimension - inner dimension of the GEMM problem
@@ -789,7 +789,7 @@ struct Tensor4DCoord : public Coord<4> {
     using Index = typename Base::Index;          /// Index type
     using LongIndex = typename Base::LongIndex;  /// LongIndex type
 
-    /// Syntax = (n, h, w, c)
+    /// coord = (n, h, w, c)
     static int const kN = 0;  /// Batch dimension
     static int const kH = 1;  /// Height dimension
     static int const kW = 2;  /// Width dimension
@@ -820,7 +820,7 @@ struct Tensor5DCoord : public Coord<5> {
     using Index = typename Base::Index;          /// Index type
     using LongIndex = typename Base::LongIndex;  /// LongIndex type
 
-    /// Syntax = (n, d, h, w, c)
+    /// coord = (n, d, h, w, c)
     static int const kN = 0;  /// Batch dimension
     static int const kD = 1;  /// Depth dimension
     static int const kH = 2;  /// Height dimension
@@ -1235,6 +1235,62 @@ public:
     /// Returns the stride of the layout
     LongIndex & stride(int rank) {
         return stride_[rank];
+    }
+};
+```
+
+## AffineRankN
+
+仿射（Affine）是一种元素在内存中的组织方式，在这种布局之下，所有维度上都有一个跨步，这是最一般化的数据布局。在CUTLASS中由AffineRankN提供。
+
+<img src="CUTLASS模板库.assets/AffineRankN.png" style="zoom:15%;" />
+
+在cutlass/layout/matrix.h头文件中，提供AffineRankN的定义，如下所示。
+
+```c++
+/// Mapping function for scenario in which both rows and columns are separated by a stride.
+template <int Rank>
+struct AffineRankN {
+    static int const kRank = Rank;         /// Logical rank of tensor
+    static int const kStrideRank = kRank;  /// Rank of stride vector
+
+    using Index = int32_t;                         /// Index type used for coordinates
+    using LongIndex = int64_t;                     /// Long index type used for offsets
+    using TensorCoord = Coord<kRank, Index>;       /// Logical coordinate
+    using Stride = Coord<kStrideRank, LongIndex>;  /// Stride vector
+
+private:
+    Stride stride_;  /// Stride data member
+
+public:
+    /// Constructor
+    AffineRankN(Stride const &stride = Stride()) : stride_(stride) {}
+
+    /// Constructor for N = 2
+    AffineRankN(LongIndex const &stride_m, LongIndex const &stride_n) {
+        stride_[0] = stride_m;
+        stride_[1] = stride_n;
+    }
+
+    /// Returns the offset of a coordinate in linear memory. 
+    /// Assumes coordinate has convention (row, column)
+    LongIndex operator()(TensorCoord const &coord) const {
+        LongIndex acc = LongIndex();
+        for (int i = 0; i < kRank; ++i) {
+            acc += LongIndex(coord[i]) * stride_[i];
+        }
+        return acc;
+    }
+
+    /// Returns the stride of the layout
+    typename Stride::Index & stride(int idx) {
+        return stride_[idx];
+    }
+
+    /// Compute the number of contiguous elements needed to store a tensor with the given size
+    LongIndex capacity(TensorCoord const &extent) const {
+        int idx = stride_.max_dim_index();
+        return extent[idx] * stride_[idx];
     }
 };
 ```
@@ -1873,63 +1929,6 @@ public:
         return true;
     }
 };
-```
-
-# Usage Examples
-
-在cutlass/gemm/device目录中，提供设备层级的GEMM接口，用于在GPU设备上启动矩阵乘法的kernel核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。由模板类提供实现，即cutlass::gemm::device::Gemm模板类、cutlass::gemm::device::GemmArray模板类、cutlass::gemm::device::GemmBatched模板类、cutlass::gemm::device::GemmSplitKParallel模板类。一些GEMM计算的示例如下。
-
-```c++
-void demo_gemm() {
-    using Gemm = cutlass::gemm::device::Gemm<
-        float, cutlass::layout::ColumnMajor,
-        float, cutlass::layout::ColumnMajor,
-        float, cutlass::layout::ColumnMajor, float
-    >;
-    Gemm gemm_op;
-    cutlass::Status stat = gemm_op(
-        {{M, N, K}, {d_A, M}, {d_B, K}, {d_C, M}, {d_C, M}, {alpha, beta}}
-    );
-}
-
-void demo_gemm_batched() {
-    using GemmBatched = cutlass::gemm::device::GemmBatched<
-        float, cutlass::layout::ColumnMajor,
-        float, cutlass::layout::ColumnMajor,
-        float, cutlass::layout::ColumnMajor, float
-    >;
-    GemmBatched gemm_batched_op;
-    cutlass::Status status = gemm_batched_op(
-        {{M, N, K}, {d_A, M}, M * K, {d_B, K}, K * N, {d_C, M}, M * N, {d_C, M}, M * N, {alpha, beta}, Batch}
-    );
-}
-
-void demo_gemm_array() {
-    using GemmArray = cutlass::gemm::device::GemmArray<
-        float, cutlass::layout::ColumnMajor,
-        float, cutlass::layout::ColumnMajor,
-        float, cutlass::layout::ColumnMajor, float
-    >;
-    GemmArray gemm_array_op;
-    gemm_array_op(
-        {{M, N, K}, d_A_array, M, d_B_array, K, d_C_array, M, d_C_array, M, {alpha, beta}, Batch}
-    );
-}
-
-void demo_gemm_splitK() {
-    using GemmSplitK = cutlass::gemm::device::GemmSplitKParallel<
-        float, cutlass::layout::ColumnMajor,
-        float, cutlass::layout::ColumnMajor,
-        float, cutlass::layout::ColumnMajor, float
-    >;
-    GemmSplitK gemm_splitK_op;
-    int split_num = 16;  // Split K dimension into 16 partitions
-    GemmSplitK::Arguments args({M, N, K}, {d_A, M}, {d_B, K}, {d_C, M}, {d_C, M}, {alpha, beta}, split_num);
-    size_t workspace_size = GemmSplitK::get_workspace_size(args);
-    cutlass::device_memory::allocation<uint8_t> workspace_buffer(workspace_size);
-    cutlass::Status status = gemm_splitK_op.initialize(args, workspace_buffer.get());
-    status = gemm_splitK_op();
-}
 ```
 
 # GEMM API ^$
@@ -4763,6 +4762,177 @@ public:
 };
 ```
 
+### ThreadblockSwizzle
+
+在GPU上启动一个kernel内核函数时，需要指定内核函数的执行配置，即grid_size、block_size、shared_memory_size、stream等配置。其中，stream由Device层级的接口在启动时指定，shared_memory_size由Threadblock层级的Mma::SharedStorage结构或Epilogue::SharedStorage结构的字节大小指定，block_size由Kernel层级的Gemm::kThreadCount指定。
+
+而grid_size执行配置，即线程块在网格层面的排列布局，则由Threadblock层级的线程块重排方式（Threadblock Swizzle）指定，这在CUTLASS中被抽象为gemm::threadblock::GemmIdentityThreadblockSwizzle模板类、gemm::threadblock::GemmBatchedIdentityThreadblockSwizzle模板类、以及gemm::threadblock::GemmSplitKIdentityThreadblockSwizzle模板类。
+
+<img src="CUTLASS模板库.assets/gemm-threadblock-GemmIdentityThreadblockSwizzle.png" style="zoom:13%;" />
+
+在cutlass/gemm/threadblock/threadblock_swizzle.h头文件中，提供gemm::threadblock::GemmIdentityThreadblockSwizzle的定义，如下所示。
+
+```c++
+/// Implements several possible threadblock-swizzling functions mapping blockIdx to GEMM problems.
+template <int N = 1>
+struct GemmIdentityThreadblockSwizzle {
+    GemmIdentityThreadblockSwizzle() {}
+
+    /// Returns the shape of the problem in units of logical tiles
+    /// *Gemm* problem size: gemm(M, N, K)
+    static GemmCoord get_tiled_shape(GemmCoord problem_size, GemmCoord tile_size, int split_k_slices) {
+        return GemmCoord(
+            (problem_size.m() + tile_size.m() - 1) / tile_size.m(),
+            (problem_size.n() + tile_size.n() - 1) / tile_size.n(),
+            split_k_slices
+        );
+    }
+
+    /// Calculates optimal swizzle width
+    static int get_log_tile(GemmCoord tiled_shape) {
+        auto n = tiled_shape.n();
+        // Thresholds picked so that it doesn't cause too many no-op CTAs
+        if (N >= 8 && n >= 6)      return 3;
+        else if (N >= 4 && n >= 3) return 2;
+        else if (N >= 2 && n >= 2) return 1;
+        else /* N == 1 */          return 0;
+    }
+
+    /// Computes CUDA grid dimensions given a size in units of logical tiles
+    static dim3 get_grid_shape(GemmCoord tiled_shape) {
+        int tile = 1 << get_log_tile(tiled_shape);
+        return dim3(tiled_shape.m() * tile, (tiled_shape.n() + tile - 1) / tile, tiled_shape.k());
+    }
+
+    /// Obtains the threadblock offset (in units of threadblock-scoped tiles)
+    static GemmCoord get_tile_offset(int log_tile) {
+        int block_idx_x = RematerializeBlockIdxX();  // blockIdx.x;
+        int block_idx_y = RematerializeBlockIdxY();  // blockIdx.y;
+        int block_idx_z = RematerializeBlockIdxZ();  // blockIdx.z;
+        return GemmCoord{
+            (block_idx_x >> log_tile),
+            (block_idx_y << log_tile) + ((block_idx_x) & ((1 << log_tile) - 1)),
+            block_idx_z
+        };
+    }
+
+    /// Obtains the threadblock offset (in units of threadblock-scoped tiles)
+    static GemmCoord get_tile_offset(GemmCoord tiled_shape) {
+        int const kTile = N;
+        int block_idx_x = RematerializeBlockIdxX();
+        int block_idx_y = RematerializeBlockIdxY();
+        if (tiled_shape.m() < kTile || tiled_shape.n() < kTile) {
+            return GemmCoord{ block_idx_x, block_idx_y, RematerializeBlockIdxZ() };
+        }
+        return GemmCoord{
+            (block_idx_x / kTile),
+            (block_idx_y * kTile) + (block_idx_x % kTile),
+            RematerializeBlockIdxZ()
+        };
+    }
+};
+```
+
+在cutlass/gemm/threadblock/threadblock_swizzle.h头文件中，提供gemm::threadblock::GemmBatchedIdentityThreadblockSwizzle的定义，如下所示。
+
+```c++
+/// Threadblock swizzling function for batched GEMMs
+struct GemmBatchedIdentityThreadblockSwizzle {
+    /// Returns the shape of the problem in units of logical tiles
+    static GemmCoord get_tiled_shape(GemmCoord problem_size, GemmCoord tile_size, int batch_count) {
+        return GemmCoord(
+            (problem_size.m() + tile_size.m() - 1) / tile_size.m(),
+            (problem_size.n() + tile_size.n() - 1) / tile_size.n(),
+            batch_count % (1 << 16)
+        );
+    }
+
+    /// Calculates optimal swizzle width
+    static int get_log_tile(GemmCoord tiled_shape) {
+        return 0;
+    }
+
+    /// Computes CUDA grid dimensions given a size in units of logical tiles
+    static dim3 get_grid_shape(GemmCoord tiled_shape) {
+        return dim3(tiled_shape.m(), tiled_shape.n(), tiled_shape.k());
+    }
+
+    /// Obtains the threadblock offset (in units of threadblock-scoped tiles)
+    static GemmCoord get_tile_offset(GemmCoord tiled_shape) {
+        return GemmCoord{
+            RematerializeBlockIdxX(),
+            RematerializeBlockIdxY(),
+            RematerializeBlockIdxZ()
+        };
+    }
+
+    /// Gets the batch index
+    static int get_batch_idx() {
+        return RematerializeBlockIdxZ();
+    }
+};
+```
+
+在cutlass/gemm/threadblock/threadblock_swizzle.h头文件中，提供gemm::threadblock::GemmSplitKIdentityThreadblockSwizzle的定义，如下所示。
+
+```c++
+/// Threadblock swizzling function for split-K GEMMs
+template <int N = 1>
+struct GemmSplitKIdentityThreadblockSwizzle {
+    /// Returns the shape of the problem in units of logical tiles
+    static GemmCoord get_tiled_shape(GemmCoord problem_size, GemmCoord tile_size, int partitions) {
+        return GemmCoord(
+            (problem_size.m() + tile_size.m() - 1) / tile_size.m(),
+            (problem_size.n() + tile_size.n() - 1) / tile_size.n(),
+            partitions
+        );
+    }
+
+    /// Calculates optimal swizzle width
+    static int get_log_tile(GemmCoord tiled_shape) {
+        auto n = tiled_shape.n();
+        // Thresholds picked so that it doesn't cause too many no-op CTAs
+        if (N >= 8 && n >= 6)      return 3;
+        else if (N >= 4 && n >= 3) return 2;
+        else if (N >= 2 && n >= 2) return 1;
+        else /* N == 1 */          return 0;
+    }
+
+    /// Computes CUDA grid dimensions given a size in units of logical tiles
+    static dim3 get_grid_shape(GemmCoord tiled_shape) {
+        int tile = 1 << get_log_tile(tiled_shape);
+        return dim3(tiled_shape.m() * tile, (tiled_shape.n() + tile - 1) / tile, tiled_shape.k());
+    }
+
+    /// Obtains the threadblock offset (in units of threadblock-scoped tiles)
+    static GemmCoord get_tile_offset(int log_tile) {
+        int block_idx_x = RematerializeBlockIdxX();
+        int block_idx_y = RematerializeBlockIdxY();
+        int block_idx_z = RematerializeBlockIdxZ();
+        return GemmCoord{
+            (block_idx_x >> log_tile),
+            (block_idx_y << log_tile) + ((block_idx_x) & ((1 << (log_tile)) - 1)),
+            block_idx_z
+        };
+    }
+
+    /// Obtains the threadblock offset (in units of threadblock-scoped tiles)
+    static GemmCoord get_tile_offset(GemmCoord tiled_shape) {
+        int const kTile = N;
+        int block_idx_x = RematerializeBlockIdxX();
+        int block_idx_y = RematerializeBlockIdxY();
+        if ((tiled_shape.m() < kTile) || (tiled_shape.n() < kTile)) {
+            return GemmCoord{ block_idx_x, block_idx_y, RematerializeBlockIdxZ() };
+        }
+        return GemmCoord{
+            (block_idx_x / kTile),
+            (block_idx_y * kTile) + (block_idx_x % kTile),
+            RematerializeBlockIdxZ()
+        };
+    }
+};
+```
+
 ## Kernel Level ^$
 
 在cutlass/gemm/kernel目录中，
@@ -4771,13 +4941,15 @@ public:
 
 在cutlass/transform目录中，提供在不同域之间进行数据转移的代码实现，主要用于解决数据布局变换带来的问题。该功能主要用在Threadblock线程块层级，用于将数据从设备全局内存加载到寄存器，以及将寄存器中的数据写入到共享内存。加载全局内存的操作被抽象为transform::threadblock::PredicatedTileIterator模板类，写入共享内存的操作被抽象为transform::threadblock::RegularTileIterator模板类。
 
+![](CUTLASS模板库.assets/transform-threadblock.png)
+
 ## ThreadMap
 
 当一个线程块从设备的全局内存中加载数据时，或向设备的全局内存中写入数据时；当一个线程块向共享内存中写入数据时，或从共享内存中读取数据时。这需要指定一个线程所负责的数据位置，即指定线程到数据的映射关系，这是一个名为线程映射（ThreadMap）的概念。
 
 在CUTLASS中，常用映射是PitchLinearStripminedThreadMap映射、TransposePitchLinearThreadMapSimt映射、PitchLinearWarpRakedThreadMap映射。
 
-![](CUTLASS模板库.assets/ThreadMap.png)
+![](CUTLASS模板库.assets/transform-ThreadMap.png)
 
 在cutlass/transform/pitch_linear_thread_map.h头文件中，提供transform::PitchLinearStripminedThreadMap的定义，如下所示。
 
