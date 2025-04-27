@@ -303,13 +303,33 @@ template <typename T>
 struct sizeof_bits { static constexpr int value = int(sizeof(T) * 8); };
 
 template <int Bits, bool Signed>
-struct sizeof_bits<integer_subbyte<Bits,Signed>> { static constexpr int value = Bits; };
+struct sizeof_bits<integer_subbyte<Bits, Signed>> { static constexpr int value = Bits; };
 
 template <>
-struct sizeof_bits<bin1_t> { static constexpr int value = 1; };
+struct sizeof_ bits<bin1_t> { static constexpr int value = 1; };
 
 template <>
 struct sizeof_bits<void> { static constexpr int value = 0; };
+```
+
+在cutlass/functional.h头文件中，提供一些基本运算的函数定义，如下所示。
+
+```c++
+template <typename T>
+struct multiplies {
+    T operator()(T lhs, T const &rhs) const {
+        lhs *= rhs;
+        return lhs;
+    }
+};
+
+/// Fused multiply-add
+template <typename A, typename B = A, typename C = A>
+struct multiply_add {
+    C operator()(A const &a, B const &b, C const &c) const {
+        return C(a) * C(b) + c;
+    }
+};
 ```
 
 ## Macro and Platform
@@ -2472,7 +2492,7 @@ struct Wmma<
 
 ## Thread Level
 
-在cutlass/gemm/thread目录中，提供矩阵乘加操作在Thread线程层级的实现，主要是线程使用SIMD浮点指令在CUDA Core上的实现，这些操作被抽象为gemm::thread::Mma模板类。
+在cutlass/gemm/thread目录中，提供矩阵乘加操作在Thread线程层级的实现，主要是线程使用SIMD指令在CUDA Core硬件单元上的实现，这些操作被抽象为gemm::thread::Mma模板类。
 
 ![](CUTLASS模板库.assets/gemm-thread.png)
 
