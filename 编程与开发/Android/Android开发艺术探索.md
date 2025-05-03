@@ -6454,18 +6454,18 @@ if (mContentParent == null) {
 ```java
 // 源码：PhoneWindow#generateLayout
 protected ViewGroup generateLayout(DecorView decor) {
-	/* xxx */
-     // Inflate the window decor.
-	int layoutResource;
+    /* xxx */
+    // Inflate the window decor.
+    int layoutResource;
     int features = getLocalFeatures();
-	/* xxx */
+    /* xxx */
     mDecor.startChanging();
     mDecor.onResourcesLoaded(mLayoutInflater, layoutResource);
     ViewGroup contentParent = (ViewGroup)findViewById(ID_ANDROID_CONTENT);
     if (contentParent == null) {
         throw new RuntimeException("Window couldn't find content container view");
     }
-	/* xxx */
+    /* xxx */
     mDecor.finishChanging();
     return contentParent;
 }
@@ -6699,10 +6699,10 @@ public class Toast {
     }
     private static class TN extends ITransientNotification.Stub { /* xxx */ }
     final TN mTN;
-	public Toast(Context context, Looper looper) {
+    public Toast(Context context, Looper looper) {
         mContext = context;
         mTN = new TN(context.getPackageName(), looper);
-		/* xxx */
+        /* xxx */
     }
 }
 ```
@@ -6773,8 +6773,7 @@ final IBinder mService = new INotificationManager.Stub() {
     // ==================================================
 
     @Override
-    public void enqueueToast(String pkg, ITransientNotification callback, int duration,
-            int displayId) {
+    public void enqueueToast(String pkg, ITransientNotification callback, int duration, int displayId) {
         /* xxx */
         synchronized (mToastQueue) {
             int callingPid = Binder.getCallingPid();
@@ -6794,22 +6793,20 @@ final IBinder mService = new INotificationManager.Stub() {
                         int count = 0;
                         final int N = mToastQueue.size();
                         for (int i=0; i<N; i++) {
-                             final ToastRecord r = mToastQueue.get(i);
-                             if (r.pkg.equals(pkg)) {
-                                 count++;
-                                 if (count >= MAX_PACKAGE_NOTIFICATIONS) {
-                                     Slog.e(TAG, "Package has already posted " + count
-                                            + " toasts. Not showing more. Package=" + pkg);
-                                     return;
-                                 }
-                             }
+                            final ToastRecord r = mToastQueue.get(i);
+                            if (r.pkg.equals(pkg)) {
+                                count++;
+                                if (count >= MAX_PACKAGE_NOTIFICATIONS) {
+                                    Slog.e(TAG, "Package has already posted " + count + " toasts. Not showing more. Package=" + pkg);
+                                    return;
+                                }
+                            }
                         }
                     }
 
                     Binder token = new Binder();
                     mWindowManagerInternal.addWindowToken(token, TYPE_TOAST, displayId);
-                    record = new ToastRecord(callingPid, pkg, callback, duration, token,
-                            displayId);
+                    record = new ToastRecord(callingPid, pkg, callback, duration, token, displayId);
                     mToastQueue.add(record);
                     index = mToastQueue.size() - 1;
                     keepProcessAliveIfNeededLocked(callingPid);
@@ -6842,8 +6839,7 @@ void showNextToastLocked() {
             scheduleDurationReachedLocked(record);
             return;
         } catch (RemoteException e) {
-            Slog.w(TAG, "Object died trying to show notification " + record.callback
-                    + " in package " + record.pkg);
+            Slog.w(TAG, "Object died trying to show notification " + record.callback + " in package " + record.pkg);
             // remove it from the list and let the process die
             int index = mToastQueue.indexOf(record);
             if (index >= 0) {
@@ -6870,8 +6866,7 @@ private void scheduleDurationReachedLocked(ToastRecord r) {
     mHandler.removeCallbacksAndMessages(r);
     Message m = Message.obtain(mHandler, MESSAGE_DURATION_REACHED, r);
     int delay = r.duration == Toast.LENGTH_LONG ? LONG_DELAY : SHORT_DELAY;
-    delay = mAccessibilityManager.getRecommendedTimeoutMillis(delay,
-            AccessibilityManager.FLAG_CONTENT_TEXT);
+    delay = mAccessibilityManager.getRecommendedTimeoutMillis(delay, AccessibilityManager.FLAG_CONTENT_TEXT);
     mHandler.sendMessageDelayed(m, delay);
 }
 ```

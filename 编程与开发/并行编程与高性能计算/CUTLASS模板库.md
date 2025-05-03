@@ -2618,6 +2618,8 @@ struct Mma<Shape_, ElementA_, LayoutA_, ElementB_, LayoutB_, ElementC_, LayoutC_
 
 在cutlass/gemm/warp目录中，提供矩阵乘加操作在Warp线程束层级的实现，主要包括使用CUDA Core硬件的实现与使用Tensor Core硬件的实现，这些操作被抽象为gemm::warp::MmaSimt模板类和gemm::warp::MmaTensorOp模板类。此外，还提供一些相关的辅助类型，包括线程排列策略，数据访问策略等。
 
+一个Threadblock线程块层级的矩阵乘加由若干个Warp线程束层级的矩阵乘加实现。通常，一个线程块的ThreadblockShape::kM和ThreadblockShape::kN维数是大于一个线程束的WarpShape::kM和WarpShape::kN维数的，因此一个线程块才能在kM和kN两个维度上划分出多个线程束。通常，ThreadblockShape::kK维数是等于WarpShape::kK维数的，因此，不会将线程束在Threadblock::kK维度上进行平铺。实际上，可以令ThreadblockShape::kK维数大于WarpShape::kK维数，此时一个线程块的Threadblock::kK维度上同样需要多个线程束来计算，此时需要指定kPartitionsK的值，即是ThreadblockShape::kK/WarpShape::kK的值，这实际上是SliceK算法。
+
 ![](CUTLASS模板库.assets/gemm-warp.png)
 
 ### MmaSimtPolicy
@@ -5243,6 +5245,8 @@ struct PredicatedTileAccessIteratorParams {
             // Advance along contiguous dimension.
             inc_advance_ = desc.threadblock_shape.contiguous() * desc.element_size_bits / 8;
         }
+        // 在提前预取的流水线中，当使用inc_next_的时候，已经在strided维度上迭代了若干次，距离下一个块只差一次迭代，
+        // 因此要先退回到当前块的最开始位置（即减去当前迭代的偏移），然后再直接定位到下一个块的位置（即加上一整个块的偏移）
         inc_next_ = inc_advance_ - LongIndex(desc.threadmap_iterations.strided() - 1) * desc.threadmap_delta.strided()
             * LongIndex(stride_) * desc.element_size_bits / 8;
         return Status::kSuccess;
@@ -5470,7 +5474,7 @@ public:
     static int const kAccessesPerVector = ThreadMap::kElementsPerAccess / AccessType::kElements;
     
     /// Permute usually is false.
-    static bool constexpr Permute = !(platform::is_same<PermuteLayout, layout::NoPermute>::value)
+    static bool constexpr Permute = (!platform::is_same<PermuteLayout, layout::NoPermute>::value)
         && (!platform::is_same<PermuteLayout, layout::InversePermute<layout::NoPermute>>::value);
 
     /// Uses a non-template class
