@@ -3677,21 +3677,32 @@ template <typename ...Arguments> int my_function(const Arguments& ...args) { ret
 对于可变参数模板而言，通常以模板元编程中的递归形式，来使用可变参数模板，一个使用示例如下所示。
 
 ```c++
-template <typename Ty>
-void print(const Ty& value) {
-    std::cout << value << std::endl;
+// 终止函数，需要在递归函数之前声明或定义，否则会编译出错，此处终止条件为：参数包中只有一个参数
+template<typename Ty>
+void print(Ty value) {
+    std::cout << typeid(value).name() << " : " << value << std::endl;
+    std::cout << "---- End ----" << std::endl;
 }
 
-template <typename First, typename ...Rest>
-void print(const First& first, const Rest&... rest) {
-    std::cout << first << " ";
-    print(rest...);
+// 模板参数的递归函数
+template<typename Ty, typename... Types>
+void print(Ty value, Types... args) {
+	std::cout << typeid(value).name() << " : " << value << std::endl;
+	print(args...);
 }
 
-int main(int argc, char *argv[]) {
-    print(15, 3.14, "Hello!");  // 15 3.14 Hello!
+int main(int argc, char* argv[]) {
+    print("Hello World", 20u, 'C', 3.14f);
     return 0;
 }
+```
+
+```shell
+char const * __ptr64 : Hello World
+unsigned int : 20
+char : C
+float : 3.14
+---- End ----
 ```
 
 此外，也可以使用大括号`{}`初始化列表，直接将可变参数展开，但此时要求所有形参都是同一个数据类型，如下所示。
@@ -3700,7 +3711,7 @@ int main(int argc, char *argv[]) {
 template <typename ...Arguments>
 int print(Arguments ...args) {
     int num = sizeof...(args);
-    auto values = { args... };
+    auto values = { args... };  // values is an array
     for (auto val : values) {
         std::cout << val << " ";
     }
@@ -3722,8 +3733,10 @@ Ty pick(const Ty& arg) { return arg; }
 
 template <typename ...Arguments>
 void foo(Arguments ...args) {
-    // { pick(args[0]), pick(args[1]), pick(args[2]), ... }
-    auto values = { pick(args)... };
+    // 此处array数组仅仅是为了触发初始化列表，其解包展开之后为 array = { pick(args[0]), pick(args[1]), pick(args[2]), ... }
+    auto array = { pick(args)... };
+    // 如果不使用auto自动类型推导，可使用逗号表达式，此处dummy数组仅仅是为了触发初始化列表，其解包展开之后为 dummy[] = { 0, 0, ... }
+    int dummy[] = { (pick(args), 0)... };
 }
 ```
 

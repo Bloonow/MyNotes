@@ -316,6 +316,14 @@ struct sizeof_bits<void> { static constexpr int value = 0; };
 
 ```c++
 template <typename T>
+struct plus {
+    T operator()(T lhs, T const &rhs) const {
+        lhs += rhs;
+        return lhs;
+    }
+};
+
+template <typename T>
 struct multiplies {
     T operator()(T lhs, T const &rhs) const {
         lhs *= rhs;
