@@ -312,6 +312,26 @@ template <>
 struct sizeof_bits<void> { static constexpr int value = 0; };
 ```
 
+在cutlass/numeric_size.h头文件中，提供模板元index_sequence的定义，这是一个索引序列的类型，如下所示。
+
+```c++
+template <size_t... Seq>
+struct index_sequence;
+
+template <size_t... Next>
+struct index_sequence_helper<0, 0, Next...> {
+    using type = index_sequence<0, Next...>;
+};
+
+template <size_t N, size_t... Next>
+struct index_sequence_helper : index_sequence_helper<N - 1, N - 1, Next...> {
+    // 模板元递归：从空的Next参数包和N开始，逐步生成`N-1`值加入到Next参数包当中，直到N等于0时终止
+};
+
+template <size_t N>
+using make_index_sequence = typename index_sequence_helper<N>::type;  // index_sequence<0, 1, 2, ..., N-1>
+```
+
 在cutlass/functional.h头文件中，提供一些基本运算的函数定义，如下所示。
 
 ```c++
@@ -336,6 +356,57 @@ template <typename A, typename B = A, typename C = A>
 struct multiply_add {
     C operator()(A const &a, B const &b, C const &c) const {
         return C(a) * C(b) + c;
+    }
+};
+```
+
+在cutlass/semaphore.h头文件中，提供一个Semaphore信号量类型，用于在同一个Grid网格之内的所有Threadblock线程块之间进行同步，如下所示。
+
+```c++
+/// CTA-wide semaphore for inter-CTA synchronization.
+class Semaphore {
+public:
+    int *lock;         /// a global memory address for each Threadblock
+    bool wait_thread;  /// participating thread id
+    int state;
+
+    /// Implements a semaphore to wait for a flag to reach a given value 
+    Semaphore(int *lock_, int thread_id) : lock(lock_), wait_thread(thread_id < 0 || thread_id == 0), state(-1) {}
+
+    /// Permit fetching the synchronization mechanism early. Fetch the synchronization lock initially but do not block.
+    void fetch() {
+        if (wait_thread) {
+        #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
+            asm volatile ("ld.global.acquire.gpu.b32 %0, [%1];\n" : "=r"(state) : "l"(lock));
+        #else
+            asm volatile ("ld.global.cg.b32 %0, [%1];\n" : "=r"(state) : "l"(lock));
+        #endif
+        }
+    }
+
+    /// Gets the internal state
+    int get_state() const {
+        return state;
+    }
+
+    /// Waits until the semaphore is equal to the given value
+    void wait(int status = 0) {
+        while (__syncthreads_and(state != status)) {
+            fetch();
+        }
+        __syncthreads();
+    }
+
+    /// Updates the lock with the given result
+    void release(int status = 0) {
+        __syncthreads();
+        if (wait_thread) {
+        #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
+            asm volatile ("st.global.release.gpu.b32 [%0], %1;\n" : : "l"(lock), "r"(status));
+        #else
+            asm volatile ("st.global.cg.b32 [%0], %1;\n" : : "l"(lock), "r"(status));
+        #endif
+        }
     }
 };
 ```
@@ -4828,7 +4899,7 @@ struct GemmIdentityThreadblockSwizzle {
         else /* N == 1 */          return 0;
     }
 
-    /// Computes CUDA grid dimensions given a size in units of logical tiles
+    /// Computes CUDA grid dimensions given a size in units of logical tiles. Used for launch configuration <<<grid_shape>>>.
     static dim3 get_grid_shape(GemmCoord tiled_shape) {
         int tile = 1 << get_log_tile(tiled_shape);
         return dim3(tiled_shape.m() * tile, (tiled_shape.n() + tile - 1) / tile, tiled_shape.k());
@@ -6864,6 +6935,2393 @@ public:
     /// Store a fragment to memory
     void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) {
         iterator_.store_with_pointer_offset(frag, pointer_offset);
+    }
+};
+```
+
+
+
+
+
+# Epilogue API
+
+在cutlass/epilogue目录中，提供尾处理操作（Epilogue）的代码实现，用于在执行完矩阵乘法GEMM计算之后，执行尾处理计算。在整个尾处理过程中，可能涉及多种层级的存储器访问。
+
+在Thread线程层级。最常见的尾处理计算是线性的D=α×Accumulator＋β×Sourc运算。各种尾处理计算被抽象为诸如epilogue::thread::LinearCombination模板类、epilogue::thread::LinearCombinationRelu模板类等。
+
+在Warp线程束层级。从线程存储累加器矩阵的Fragment寄存器中收集数据并整理成所需的共享内存布局，这被抽象为epilogue::warp::FragmentIteratorSimt模板类和epilogue::warp::FragmentIteratorTensorOp模板类；将累加器数据写入到共享内存，这被抽象为epilogue::warp::TileIteratorSimt模板类和epilogue::warp::TileIteratorTensorOp模板类。此外，在Warp线程束层级的数据迭代器，还需要一个名为策略的概念，这被抽象为epilogue::warp::SimtPolicy模板类和epilogue::warp::TensorOpPolicy模板类。
+
+在Threadblock线程块层级。从共享内存中加载累加器数据，这被抽象为epilogue::threadblock::SharedLoadIterator模板类；从设备全局内存中读取源数据，以及向设备全局内存中写入最终结果数据，这被抽象为epilogue::threadblock::PredicatedTileIterator模板类。需要注意的是，在一个线程块访问共享内存和设备全局内存时，需要一个将线程映射到内存位置的概念，这被抽象为epilogue::threadblock::OutputTileOptimalThreadMap模板类。
+
+将计算操作、共享内存读写、设备全局内存读写整合在一起，即是一个完整的尾处理操作，这被抽象为epilogue::threadblock::Epilogue模板类，该模板类继承自epilogue::threadblock::EpilogueBase模板类和epilogue::threadblock::EpilogueBaseStreamK模板类。
+
+![](CUTLASS模板库.assets/epilogue-threadblock.png)
+
+## Thread Level
+
+在cutlass/epilogue/thread目录中，提供尾处理计算在Thread线程层级的实现，主要是线程使用SIMD指令在CUDA Core硬件单元上的实现。
+
+在cutlass/epilogue/thread/scale_type.h头文件中，提供epilogue::thread::ScaleType的定义，用于标识线性运算的类型，如下所示。
+
+```c++
+/// Specifies internal data type for computation. Note:
+/// 1. Scalar means alpha/beta is a single value from host(constant param) or device memory.
+/// 2. Vector means alpha/beta is a vector always from device memory.
+struct ScaleType {
+    enum Kind {
+        Default,                     // D = scalar_alpha x Acc + scalar_beta x C
+        NoBetaScaling,               // D = scalar_alpha x Acc + C
+        OnlyAlphaScaling,            // D = scalar_alpha x Acc
+        PerChannelScaling,           // D = vector_alpha x Acc + vector_beta x C
+        OnlyAlphaPerChannelScaling,  // D = vector_alpha x Acc
+        Nothing                      // D = Acc
+    };
+};
+```
+
+在cutlass/epilogue/thread/activation.h头文件中，提供常用激活函数的的定义，如下所示。
+
+```c++
+/// ReLu operator - propagates NaNs
+/// Always put threshold in the right hand side of max to propagate NaN.
+template <typename T>
+struct ReLu {
+    T operator()(T threshold, T value) const {
+        maximum<T> max_op;
+        return max_op(value, threshold);
+    }
+    T operator()(T value) const {
+        maximum<T> max_op;
+        return max_op(value, T(0));
+    }
+};
+```
+
+### LinearCombination
+
+在cutlass/epilogue/thread/linear_combination.h头文件中，提供epilogue::thread::LinearCombination的定义，如下所示。
+
+```c++
+/// Applies a linear combination operator to an array of elements.
+/// D = alpha * accumulator + beta * source
+template <
+    typename ElementOutput_,  /// Data type used to load and store tensors
+    int Count,  /// Number of elements computed per operation. 1 for SIMT, and `128 / sizeof_bits<Element>::value` for TensorOp.
+    typename ElementAccumulator_ = ElementOutput_,  /// Accumulator data type
+    typename ElementCompute_ = ElementOutput_,      /// Data type used to compute linear combination
+    ScaleType::Kind Scale = ScaleType::Default,     /// Control Alpha and Beta scaling
+    FloatRoundStyle Round = FloatRoundStyle::round_to_nearest,
+    typename ElementSource_ = ElementOutput_
+>
+class LinearCombination {
+public:
+    using ElementOutput = ElementOutput_;
+    using ElementSource = ElementSource_;
+    using ElementAccumulator = ElementAccumulator_;
+    using ElementCompute = ElementCompute_;
+    using ElementScalar = ElementCompute;
+    using ElementC = ElementSource_;
+    using ElementD = ElementOutput_;
+    static int const kCount = Count;
+    static ScaleType::Kind const kScale = Scale;
+    static FloatRoundStyle const kRound = Round;
+
+    using FragmentOutput = Array<ElementOutput, kCount>;
+    using FragmentSource = Array<ElementSource, kCount>;
+    using FragmentAccumulator = Array<ElementAccumulator, kCount>;
+    using FragmentCompute = Array<ElementCompute, kCount>;
+
+    /// Host-constructable parameters structure
+    struct Params {
+        ElementCompute alpha;                          /// scales accumulators
+        ElementCompute beta;                           /// scales source tensor
+        ElementCompute const *alpha_ptr;               /// pointer to accumulator scalar - if not null, loads it from memory
+        ElementCompute const *beta_ptr;                /// pointer to source scalar - if not null, loads it from memory
+        ElementCompute const* const* alpha_ptr_array;  /// array of pointers to accumulator scalar per group/batch
+        ElementCompute const* const* beta_ptr_array;   /// array of pointers to source scalar per group/batch
+
+        Params() : alpha(ElementCompute(1)), beta(ElementCompute(0)),
+            alpha_ptr(nullptr), beta_ptr(nullptr), alpha_ptr_array(nullptr), beta_ptr_array(nullptr) {}
+
+        Params(ElementCompute alpha, ElementCompute beta) : alpha(alpha), beta(beta),
+            alpha_ptr(nullptr), beta_ptr(nullptr), alpha_ptr_array(nullptr), beta_ptr_array(nullptr) {}
+
+        Params(ElementCompute const *alpha_ptr, ElementCompute const *beta_ptr) : alpha(0), beta(0),
+            alpha_ptr(alpha_ptr), beta_ptr(beta_ptr), alpha_ptr_array(nullptr), beta_ptr_array(nullptr) {}
+
+        Params(ElementCompute const* const* alpha_ptr_array, ElementCompute const* const* beta_ptr_array) : alpha(0), beta(0),
+            alpha_ptr(nullptr), beta_ptr(nullptr), alpha_ptr_array(alpha_ptr_array), beta_ptr_array(beta_ptr_array) {}
+    };
+
+private:
+    ElementCompute alpha_;
+    ElementCompute beta_;
+
+public:
+    /// Constructs the function object, possibly loading from pointers in host memory
+    explicit LinearCombination(Params const &params, int group_idx) {
+        if (params.alpha_ptr_array != nullptr && params.alpha_ptr_array[group_idx] != nullptr) {
+            alpha_ = *(params.alpha_ptr_array[group_idx]);
+        } else if (params.alpha_ptr != nullptr) {
+            alpha_ = *params.alpha_ptr;
+        } else {
+            alpha_ = params.alpha;
+        }
+        if (params.beta_ptr_array != nullptr && params.beta_ptr_array[group_idx] != nullptr) {
+            beta_ = *(params.beta_ptr_array[group_idx]);
+        } else if (params.beta_ptr != nullptr) {
+            beta_ = *params.beta_ptr;
+        } else {
+            beta_ = params.beta;
+        }
+    }
+
+    /// Returns true if source is needed
+    bool is_source_needed() const {
+        if (kScale == ScaleType::NoBetaScaling)              return true;
+        if (kScale == ScaleType::OnlyAlphaScaling)           return false;
+        if (kScale == ScaleType::OnlyAlphaPerChannelScaling) return false;
+        if (kScale == ScaleType::Nothing)                    return false;
+        return beta_ != ElementCompute(0);
+    }
+
+    /// Computes linear scaling with source: D = alpha * accumulator + beta * source
+    FragmentOutput operator()(FragmentAccumulator const &accumulator, FragmentSource const &source) const {
+        // Convert source to internal compute numeric type, and to destination numeric type
+        NumericArrayConverter<ElementCompute, ElementSource, kCount, kRound> source_converter;
+        NumericArrayConverter<ElementCompute, ElementAccumulator, kCount, kRound> accumulator_converter;
+        NumericArrayConverter<ElementOutput, ElementCompute, kCount, kRound> destination_converter;
+        FragmentCompute converted_source = source_converter(source);
+        FragmentCompute converted_accumulator = accumulator_converter(accumulator);
+
+        // Perform binary operations
+        FragmentCompute intermediate;
+        cutlass::multiplies<FragmentCompute> mul_op;
+        cutlass::multiply_add<FragmentCompute> mul_add_op;
+
+        if (Scale == ScaleType::Nothing) {
+            return destination_converter(converted_accumulator);
+        }
+        if (Scale == ScaleType::NoBetaScaling) {
+            intermediate = converted_source;
+        } else {
+            intermediate = mul_op(beta_, converted_source);  // X =  beta * C  
+        }
+        intermediate = mul_add_op(alpha_, converted_accumulator, intermediate);  // D = alpha * Accum + X
+
+        return destination_converter(intermediate);
+    }
+};
+```
+
+### LinearCombinationRelu
+
+在cutlass/epilogue/thread/linear_combination_relu.h头文件中，提供epilogue::thread::LinearCombinationRelu的定义，如下所示。
+
+```c++
+/// Applies a linear combination operator to an array of elements.
+/// D = ReLu(alpha * accumulator + beta * source)
+template <
+    typename ElementOutput_,  /// Data type used to load and store tensors
+    int Count,  /// Number of elements computed per operation. 1 for SIMT, and `128 / sizeof_bits<Element>::value` for TensorOp.
+    typename ElementAccumulator_ = ElementOutput_,  /// Accumulator data type
+    typename ElementCompute_ = ElementOutput_,      /// Data type used to compute linear combination
+    ScaleType::Kind Scale = ScaleType::Default,     /// Control Alpha and Beta scaling
+    FloatRoundStyle Round = FloatRoundStyle::round_to_nearest
+>
+class LinearCombinationRelu {
+public:
+    using ElementOutput = ElementOutput_;
+    using ElementAccumulator = ElementAccumulator_;
+    using ElementCompute = ElementCompute_;
+    static int const kCount = Count;
+    static ScaleType::Kind const kScale = Scale;
+    static FloatRoundStyle const kRound = Round;
+
+    using FragmentOutput = Array<ElementOutput, kCount>;
+    using FragmentSource = Array<ElementOutput, kCount>;
+    using FragmentAccumulator = Array<ElementAccumulator, kCount>;
+    using FragmentCompute = Array<ElementCompute, kCount>;
+
+    /// Host-constructable parameters structure
+    struct Params {
+        ElementCompute alpha;             /// scales accumulators
+        ElementCompute beta;              /// scales source tensor
+        ElementCompute threshold;         /// minimum value that is output 
+        ElementCompute const *alpha_ptr;  /// pointer to accumulator scalar - if not null, loads it from memory
+        ElementCompute const *beta_ptr;   /// pointer to source scalar - if not null, loads it from memory
+
+        Params() : alpha(ElementCompute(1)), beta(ElementCompute(0)), threshold(ElementCompute(0)),
+            alpha_ptr(nullptr), beta_ptr(nullptr) {}
+
+        Params(ElementCompute alpha, ElementCompute beta, ElementCompute threshold) :
+            alpha(alpha), beta(beta), threshold(threshold), alpha_ptr(nullptr), beta_ptr(nullptr) {}
+
+        Params(ElementCompute const *alpha_ptr, ElementCompute const *beta_ptr, ElementCompute threshold) :
+            alpha(0), beta(0), threshold(threshold), alpha_ptr(alpha_ptr), beta_ptr(beta_ptr) {}
+    };
+
+private:
+    ElementCompute alpha_;
+    ElementCompute beta_;
+    ElementCompute threshold_;
+
+public:
+    /// Constructs the function object, possibly loading from pointers in host memory
+    LinearCombinationRelu(Params const &params) {
+        alpha_ = (params.alpha_ptr ? *params.alpha_ptr : params.alpha);
+        beta_ = (params.beta_ptr ? *params.beta_ptr : params.beta);
+        threshold_ = params.threshold;
+    }
+
+    /// Returns true if source is needed
+    bool is_source_needed() const {
+        if (kScale == ScaleType::NoBetaScaling)              return true;
+        if (kScale == ScaleType::OnlyAlphaScaling)           return false;
+        if (kScale == ScaleType::OnlyAlphaPerChannelScaling) return false;
+        if (kScale == ScaleType::Nothing)                    return false;
+        return beta_ != ElementCompute(0);
+    }
+
+    /// Computes linear scaling: D = ReLu(alpha * accumulator + beta * source)
+    FragmentOutput operator()(FragmentAccumulator const &accumulator, FragmentOutput const &source) const {
+        // Convert source to interal compute numeric type, and to destination numeric type
+        NumericArrayConverter<ElementCompute, ElementOutput, kCount, kRound> source_converter;
+        NumericArrayConverter<ElementCompute, ElementAccumulator, kCount, kRound> accumulator_converter;
+        NumericArrayConverter<ElementOutput, ElementCompute, kCount, kRound> destination_converter;
+        FragmentCompute converted_source = source_converter(source);
+        FragmentCompute converted_accumulator = accumulator_converter(accumulator);
+
+        // Perform binary operations
+        FragmentCompute intermediate;
+        multiplies<FragmentCompute> mul_op;
+        multiply_add<FragmentCompute> mul_add_op;
+        ReLu<FragmentCompute> relu_op;
+
+        if (kScale == ScaleType::Nothing) {
+            intermediate = converted_accumulator;
+        } else if (kScale == ScaleType::NoBetaScaling) {
+            intermediate = converted_source;
+            intermediate = mul_add_op(alpha_, converted_accumulator, intermediate);  // D = alpha * Accum + X
+        } else {
+            intermediate = mul_op(beta_, converted_source);                          // X =  beta * C + uniform
+            intermediate = mul_add_op(alpha_, converted_accumulator, intermediate);  // D = alpha * Accum + X
+        }
+        intermediate = relu_op(threshold_, intermediate);  // Compute threshold optionally
+
+        return destination_converter(intermediate);
+    }
+};
+```
+
+## Warp Level
+
+在cutlass/epilogue/warp目录中，提供尾处理操作在Warp线程束层级的实现。需要从线程存储累加器矩阵的Fragment寄存器中收集数据并整理成所需的共享内存布局，这被抽象为epilogue::warp::FragmentIteratorSimt模板类和epilogue::warp::FragmentIteratorTensorOp模板类；以及需要将累加器数据写入到共享内存，这被抽象为epilogue::warp::TileIteratorSimt模板类和epilogue::warp::TileIteratorTensorOp模板类。
+
+### SimtPolicy
+
+在Warp线程束层级的数据迭代器，还需要一个名为策略的概念，这被抽象为epilogue::warp::SimtPolicy模板类和epilogue::warp::TensorOpPolicy模板类。
+
+在cutlass/epilogue/warp/simt_policy.h头文件中，提供epilogue::warp::SimtPolicy的定义，如下所示。
+
+```c++
+template <
+    typename WarpShape,     /// shape of warp-level GEMM (concept: GemmShape)
+    typename Operator,      /// matrix multiply operation (concept: arch::Mma)
+    typename Layout,        /// destination layout in shared memory
+    typename MmaSimtPolicy  /// policy defining lane arrangement (concept: gemm::warp::MmaSimtPolicy)
+>
+struct SimtPolicy;
+
+/// Partial specialization for row-major
+template <
+    typename WarpShape_,     /// shape of warp-level GEMM (concept: MatrixShape)
+    typename Operator_,      /// matrix multiply operation (concept: arch::Mma)
+    typename MmaSimtPolicy_  /// policy defining lane arrangement (concept: gemm::warp::MmaSimtPolicy)
+>
+struct SimtPolicy<WarpShape_, Operator_, layout::RowMajor, MmaSimtPolicy_> {
+    using WarpShape = WarpShape_;
+    using Operator = Operator_;
+    using MmaSimtPolicy = MmaSimtPolicy_;
+
+    /// Number of iterations. 一个线程处理几行元素，即需要几次迭代，一次迭代一行元素
+    static int const kIterations = WarpShape::kM / MmaSimtPolicy::WarpShape::kRow;
+    /// Number of accumulators written per iteration. 一个线程一次迭代处理一行数据中的几个元素，由多个线程负责处理一行数据
+    static int const kElementsPerIteration = (WarpShape::kN / MmaSimtPolicy::WarpShape::kColumn);
+    /// Total number of accumulators. 一个线程负责的所有元素的数目
+    static int const kAccumulatorElementCount = kElementsPerIteration * kIterations;
+    /// Number of consecutive elements. 一次向量访问的元素数目，等于一个MMA计算的形状的一行
+    static int const kElementsPerAccess = MmaSimtPolicy::LaneMmaShape::kN;
+    /// Number of rows per epilogue iteration. 一个Warp线程束一次能够迭代几行，等于一个Warp中的线程排列的行数
+    static int const kRowsPerIteration = MmaSimtPolicy::WarpShape::kRow;
+    /// Number of accesses made in one iteration. 一个线程的一次迭代需要几个向量访问来完成
+    static int const kAccessesPerIteration = kElementsPerIteration / kElementsPerAccess;
+
+    /// Number of elements in between accumulator chunks of (LaneMmaShape::kM x LaneMmaShape::kN)
+    using Delta = MatrixShape<
+        MmaSimtPolicy::WarpShape::kRow * MmaSimtPolicy::LaneMmaShape::kM,
+        MmaSimtPolicy::WarpShape::kColumn * MmaSimtPolicy::LaneMmaShape::kN
+    >;
+};
+```
+
+### FragmentIteratorSimt
+
+一个线程束从线程存储累加器矩阵的Fragment寄存器中收集数据并整理成所需的共享内存布局，这被抽象为epilogue::warp::FragmentIteratorSimt模板类。
+
+在cutlass/epilogue/warp/fragment_iterator_simt.h头文件中，提供epilogue::warp::FragmentIteratorSimt的定义，如下所示。
+
+```c++
+/// Fragment iterator for SIMT accumulator arrangements
+template <
+    typename WarpShape,     /// shape of warp-level GEMM (concept: MatrixShape)
+    typename Operator,      /// matrix multiply operation (concept: arch::Mma)
+    typename Layout,        /// target shared memory layout
+    typename MmaSimtPolicy  /// policy defining lane arrangement (concept: MmaSimtPolicy)
+>
+class FragmentIteratorSimt;
+
+/// Partial specialization for row-major shared memory
+template <
+    typename WarpShape_,     /// shape of the warp-level GEMM tile
+    typename Operator_,      /// matrix multiply operator (concept: arch::Mma)
+    typename MmaSimtPolicy_  /// policy defining lane arrangement (concept: MmaSimtPolicy)
+>
+class FragmentIteratorSimt<WarpShape_, Operator_, layout::RowMajor, MmaSimtPolicy_> {
+public:
+    using WarpShape = WarpShape_;
+    using Operator = Operator_;
+    using Layout = layout::RowMajor;
+    using Policy = SimtPolicy<WarpShape, Operator, Layout, MmaSimtPolicy_>;  /// Policy for warp-level epilogue components
+
+    /// This is the fragment size produced by one access of the iterator.
+    using Fragment = Array<typename Operator::ElementC, Policy::kElementsPerIteration>;
+    /// This is the complete warp-level accumulator tile.
+    using AccumulatorTile = Array<typename Operator::ElementC, Policy::kAccumulatorElementCount>;
+    using OutputAccumulatorTile = AccumulatorTile;
+    /// Number of times this iterator can be incremented
+    static int const kIterations = Policy::kIterations;
+
+private:
+    using AccessType = Array<typename Operator::ElementC, Policy::kElementsPerAccess>;  /// Internal access type
+    AccessType const *accumulators_;  /// Accumulator tile
+    int index_;                       /// Internal index. [0, Policy::kIterations - 1]
+
+public:
+    /// Constructs an iterator
+    FragmentIteratorSimt(AccumulatorTile const &accum) : accumulators_(reinterpret_cast<AccessType const *>(&accum)), index_(0) {}
+
+    /// Increments
+    FragmentIteratorSimt &operator++() {
+        ++index_;
+        return *this;
+    }
+
+    /// Loads a fragment from the referenced part of the accumulator tile
+    void load(Fragment &frag, int index_offset = 0) const {
+        AccessType *frag_ptr = reinterpret_cast<AccessType *>(&frag);
+        for (int n = 0; n < Policy::kAccessesPerIteration; ++n) {
+            int accumulator_access_offset = index_ * Policy::kAccessesPerIteration + n;
+            frag_ptr[n] = accumulators_[accumulator_access_offset];
+        }
+    }
+};
+```
+
+### TileIteratorSimt
+
+一个线程束将累加器数据写入到共享内存，这被抽象为epilogue::warp::TileIteratorSimt模板类。
+
+在cutlass/epilogue/warp/tile_iterator_simt.h头文件中，提供epilogue::warp::TileIteratorSimt的定义，如下所示。
+
+```c++
+/// Template for reading and writing tiles of accumulators to shared memory
+template <
+    typename WarpShape,     /// shape of warp-level GEMM (concept: MatrixShape)
+    typename Operator,      /// matrix multiply operation (concept: arch::Mma)
+    typename Element,       /// data type of element to be written
+    typename Layout,        /// target shared memory layout
+    typename MmaSimtPolicy  /// policy defining lane arrangement (concept: MmaSimtPolicy)
+>
+class TileIteratorSimt;
+
+/// Template for reading and writing tiles of accumulators to shared memory
+template <
+    typename WarpShape_,     /// shape of warp-level GEMM (concept: GemmShape)
+    typename Operator_,      /// matrix multiply operation (concept: arch::Mma)
+    typename Element_,       /// data type of element to be written
+    typename MmaSimtPolicy_  /// policy defining lane arrangement (concept: MmaSimtPolicy)
+>
+class TileIteratorSimt<WarpShape_, Operator_, Element_, layout::RowMajor, MmaSimtPolicy_> {
+public:
+    using WarpShape = WarpShape_;
+    using Operator = Operator_;
+    using Element = Element_;
+    using Layout = layout::RowMajor;
+    using TensorRef = TensorRef<Element, Layout>;  /// Tensor Reference object
+    using TensorCoord = MatrixCoord;               /// Logical coordinate in referenced tensor
+    using Index = typename TensorRef::Index;
+    using LongIndex = typename TensorRef::LongIndex;
+
+    using Policy = SimtPolicy<WarpShape, Operator, Layout, MmaSimtPolicy_>;
+    /// Shape of the tile in memory
+    using Shape = MatrixShape<Policy::kRowsPerIteration, WarpShape::kN>;
+    /// This is the fragment size produced by one access of the iterator.
+    using Fragment = Array<typename Operator::ElementC, Policy::kElementsPerIteration>;
+    /// This is the complete warp-level accumulator tile.
+    using AccumulatorTile = Array<typename Operator::ElementC, Policy::kAccumulatorElementCount>;
+    /// Number of times this iterator can be incremented
+    static int const kIterations = Policy::kIterations;
+
+#if CUTLASS_SIMT_EPILOGUE_USE_SCALAR_STORES
+    using Padding = MatrixCoord<0, 4 * Policy::kElementsPerAccess + 1>;  /// Padding quantity
+    using AccessType = AlignedArray<Element, 1>;                         /// Storage type for accessing memory
+#else
+    using Padding = MatrixCoord<0, 4 * Policy::kElementsPerAccess>;
+    using AccessType = AlignedArray<Element, Policy::kElementsPerAccess>;
+#endif
+
+private:
+    AccessType *pointer_;  /// Internal pointer to memory
+    Layout layout_;        /// Internal layout object. 一个AccessType作为元素单位
+
+public:
+    /// Constructor from TensorRef
+    TileIteratorSimt(TensorRef const &ref, unsigned lane_id)
+        : pointer_(reinterpret_cast<AccessType *>(ref.data())), layout_(ref.stride()[0] / AccessType::kElements) {
+        // Initalize thread offset
+        auto lane_layout = Policy::MmaSimtPolicy::get_lane_layout();
+        MatrixCoord lane_offset = lane_layout.inverse(lane_id);
+        pointer_ += layout_({ lane_offset.row(), lane_offset.column() * Policy::kElementsPerAccess / AccessType::kElements });
+    }
+
+    /// advances in units of whole tiles along the logical coordinate space of the tensor
+    TileIteratorSimt & add_tile_offset(TensorCoord const &tile_offset) {
+        pointer_ += layout_({ tile_offset.row() * Shape::kRow, (tile_offset.column() * Shape::kColumn / AccessType::kElements) });
+        return *this;
+    }
+
+    TileIteratorTensorOp & operator++() {
+        return add_tile_offset({ 1, 0 });
+    }
+
+    /// Set smem base address
+    void set_smem_base_address(Index address) {}
+
+    /// Store
+    void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) {
+    #if CUTLASS_SIMT_EPILOGUE_USE_SCALAR_STORES
+        // de-vectorized stores
+        using ScalarAccessType = AlignedArray<Element, 1>;
+        ScalarAccessType const *scalarFragPtr = reinterpret_cast<ScalarAccessType const *>(&frag);
+        ScalarAccessType *scalarPointer = reinterpret_cast<ScalarAccessType *>(pointer_) + pointer_offset;
+        for (int n = 0; n < Policy::kAccessesPerIteration; ++n) {
+            for (int s = 0; s < Policy::kElementsPerAccess; ++s) {
+                scalarPointer[n * Policy::MmaSimtPolicy::WarpShape::kColumn * Policy::kElementsPerAccess + s]
+                    = scalarFragPtr[n * Policy::kElementsPerAccess + s];
+            }
+        }
+    #else
+        // original vector stores
+        using VectorAccessType = AlignedArray<Element, Policy::kElementsPerAccess>;
+        VectorAccessType const *frag_ptr = reinterpret_cast<VectorAccessType const *>(&frag);
+        for (int n = 0; n < Policy::kAccessesPerIteration; ++n) {
+            pointer_[n * Policy::MmaSimtPolicy::WarpShape::kColumn + pointer_offset / VectorAccessType::kElements] = frag_ptr[n];
+        }
+    #endif
+    }
+
+    /// Store
+    void store(Fragment const &frag) {
+        store_with_pointer_offset(frag, 0);
+    }
+
+    /// Load
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) const {
+        // original vector loads
+        using VectorAccessType = AlignedArray<Element, Policy::kElementsPerAccess>;
+        VectorAccessType *frag_ptr = reinterpret_cast<VectorAccessType *>(&frag);
+        for (int n = 0; n < Policy::kAccessesPerIteration; ++n) {
+            frag_ptr[n] = pointer_[n * Policy::MmaSimtPolicy::WarpShape::kColumn + pointer_offset / VectorAccessType::kElements];
+        }
+    }
+
+    /// Load
+    void load(Fragment &frag) const {
+        load_with_pointer_offset(frag, 0);
+    }
+};
+```
+
+### TensorOpPolicy
+
+在Warp线程束层级的数据迭代器，还需要一个名为策略的概念，这被抽象为epilogue::warp::SimtPolicy模板类和epilogue::warp::TensorOpPolicy模板类。
+
+在cutlass/epilogue/warp/tensor_op_policy.h头文件中，提供epilogue::warp::TensorOpPolicy的定义，如下所示。
+
+```c++
+/// Policy details related to the epilogue
+template <
+    typename WarpShape,      /// shape of warp-level GEMM (concept: MatrixShape)
+    typename OperatorShape,  /// matrix multiply operation shape (concept: gemm:GemmShape)
+    typename Layout          /// target shared memory layout
+>
+struct TensorOpPolicy;
+
+/// Partial specialization for row-major
+template <
+    typename WarpShape,     /// shape of warp-level GEMM (concept: MatrixShape)
+    typename OperatorShape  /// matrix multiply operation shape (concept: gemm::GemmShape)
+>
+struct TensorOpPolicy<WarpShape, OperatorShape, layout::RowMajor> {
+    using Layout = layout::RowMajor;
+    
+    /// Number of operations. 一个Warp负责的元素中，一共有几个MMA形状
+    using OperatorCount = MatrixShape<
+        (WarpShape::kM + OperatorShape::kM - 1) / OperatorShape::kM,
+        (WarpShape::kN + OperatorShape::kN - 1) / OperatorShape::kN
+    >;
+
+    // Hard-coded constants regarding Tensor Operations.
+    static int const kElementsPerAccess = 2;  // 一次向量访问的元素数目，对于一个168#的mma指令，有两个8×8块，一个线程负责两个块中的2元素
+    static int const kRowsPerIteration = 8;   // 一个Warp一次迭代访问的行数，一个Warp一次迭代访问8整行的所有数据，即8×WarpShape::kN的数据
+
+    // Number of 'externally visible' iterations per actual instruction. 一个MMA计算的形状需要几次迭代，即需要几次8整行的访问
+    static int const kIterationsPerInstruction = OperatorShape::kM / kRowsPerIteration;
+    // Number of 'externally visible' iterations. 一个Warp负责的数据，一共需要几次迭代，即需要几次8整行的访问，一次迭代8整行元素
+    static int const kIterations = OperatorCount::kRow * kIterationsPerInstruction;
+    using TileIterations = MatrixShape<kIterations, 1>;
+
+    // 对于一个64×64的累加器矩阵而言，其数据在每个线程的寄存器中，是按照ColumnMajorInterleaved<2>存储的
+    static int const kAccumulatorColumnStride = kElementsPerAccess * OperatorCount::kRow * kIterationsPerInstruction;
+    static int const kAccumulatorRowStride = kElementsPerAccess;
+};
+
+```
+
+### FragmentIteratorTensorOp
+
+一个线程束从线程存储累加器矩阵的Fragment寄存器中收集数据并整理成所需的共享内存布局，这抽象为epilogue::warp::FragmentIteratorTensorOp模板类。
+
+在cutlass/epilogue/warp/fragment_iterator_tensor_op.h头文件中，提供epilogue::warp::FragmentIteratorTensorOp的定义，如下所示。
+
+```c++
+template <
+    typename WarpShape,          /// shape of warp-level GEMM tile (concept: MatrixShape)
+    typename OperatorShape,      /// matrix multiply operation shape (concept: gemm::GemmShape)
+    typename OperatorElementC,   /// matrix multiply operation data type (concept: data type)
+    typename OperatorFragmentC,  /// matrix multiply operation fragment (concept: Array<fp, 4> for floating-point 168# mma instruction)
+    typename Layout              /// target shared memory layout
+>
+class FragmentIteratorTensorOp;
+
+/// Partial specialization for row-major shared memory
+template <
+    typename WarpShape_,         /// shape of the warp-level GEMM tile (concept: MatrixShape)
+    typename OperatorShape_,     /// matrix multiply operation shape (concept: gemm::GemmShape)
+    typename OperatorElementC_,  /// matrix multiply operation data type (concept: data type)
+    typename OperatorFragmentC_  /// matrix multiply operation fragment (concept: Array<fp, 4> for floating-point 168# mma instruction)
+>
+class FragmentIteratorTensorOp<WarpShape_, OperatorShape_, OperatorElementC_, OperatorFragmentC_, layout::RowMajor> {
+public:
+    using WarpShape = WarpShape_;
+    using OperatorShape = OperatorShape_;
+    using OperatorElementC = OperatorElementC_;
+    using OperatorFragmentC = OperatorFragmentC_;
+    using Layout = layout::RowMajor;
+    using Policy = TensorOpPolicy<WarpShape, OperatorShape, Layout>;
+
+    /// This is the fragment size produced by one access of the iterator. 一个线程一次迭代所负责的数据，整行
+    using Fragment = Array<OperatorElementC, Policy::OperatorCount::kColumn * Policy::kElementsPerAccess>;
+    /// This is the complete warp-level accumulator tile. 一个线程所负责的全部数据
+    using AccumulatorTile = Array<OperatorElementC,
+        OperatorFragmentC::kElements * Policy::OperatorCount::kRow * Policy::OperatorCount::kColumn>;
+    using OutputAccumulatorTile = AccumulatorTile;
+
+    /// Number of times this iterator can be incremented
+    static int const kIterations = Policy::kIterations;
+    using TileIterations = typename Policy::TileIterations;                      // MatrixShape<kIterations, 1>
+    static int const kIterationsPerTile = kIterations / TileIterations::kCount;  // always 1
+
+private:
+    using AccessType = Array<OperatorElementC, Policy::kElementsPerAccess>;  /// Internal access type
+    AccessType const *accumulators_;  /// Accumulator tile
+    int index_;                       /// Internal index
+
+public:
+    /// Constructs an iterator
+    FragmentIteratorTensorOp(AccumulatorTile const &accum) : accumulators_(reinterpret_cast<AccessType const *>(&accum)), index_(0) {}
+
+    /// Increments
+    FragmentIteratorTensorOp &operator++() {
+        ++index_;
+        return *this;
+    }
+
+    /// Loads a fragment from the referenced part of the accumulator tile
+    void load(Fragment &frag, int index_offset = 0) const {
+        int index = index_ + index_offset;
+        AccessType *frag_ptr = reinterpret_cast<AccessType *>(&frag);
+        for (int n = 0; n < Policy::OperatorCount::kColumn; ++n) {
+            int accumulator_access_offset = index + n * Policy::kAccumulatorColumnStride / Policy::kElementsPerAccess;
+            frag_ptr[n] = accumulators_[accumulator_access_offset];
+        }
+    }
+};
+```
+
+### TileIteratorTensorOp
+
+一个线程束将累加器数据写入到共享内存，这被抽象为epilogue::warp::TileIteratorTensorOp模板类。
+
+在cutlass/epilogue/warp/tile_iterator_tensor_op.h头文件中，提供epilogue::warp::TileIteratorTensorOp的定义，如下所示。
+
+```c++
+/// Template for reading and writing tiles of accumulators to shared memory
+template <
+    typename WarpShape,      /// shape of warp-level GEMM (concept: MatrixShape)
+    typename OperatorShape,  /// matrix multiply operation shape (concept: gemm::GemmShape)
+    typename Element,        /// data type of element to be written
+    typename Layout          /// target shared memory layout
+>
+class TileIteratorTensorOp;
+
+/// Template for reading and writing tiles of accumulators to shared memory
+template <
+    typename WarpShape_,      /// shape of warp-level GEMM (concept: GemmShape)
+    typename OperatorShape_,  /// matrix multiply operation shape (concept: gemm::GemmShape)
+    typename Element_         /// data type of element to be written
+>
+class TileIteratorTensorOp<WarpShape_, OperatorShape_, Element_, layout::RowMajor> {
+public:
+    using WarpShape = WarpShape_;
+    using OperatorShape = OperatorShape_;
+    using Element = Element_;
+    using Layout = layout::RowMajor;
+    using TensorLayout = Layout;
+    using TensorRef = TensorRef<Element, Layout>;  /// Tensor Reference object
+    using TensorCoord = MatrixCoord;               /// Logical coordinate in referenced tensor
+    using Index = typename TensorRef::Index;
+    using LongIndex = typename TensorRef::LongIndex;
+
+    using Policy = TensorOpPolicy<WarpShape, OperatorShape, Layout>;
+    /// Shape of the tile in memory
+    using Shape = MatrixShape<Policy::kRowsPerIteration, WarpShape::kN>;
+    /// This is the fragment size produced by one access of the iterator.
+    using Fragment = Array<Element, Policy::OperatorCount::kColumn * Policy::kElementsPerAccess>;
+    /// Number of times this iterator can be incremented
+    static int const kIterations = Policy::kIterations;
+
+    // Internal constants
+    struct Detail {
+        static int const kLanesInQuad = 4;  // 与mma指令匹配
+    };
+    /// Padding quantity
+    using Padding = MatrixShape<0, Detail::kLanesInQuad * Policy::kElementsPerAccess>;
+
+private:
+    using AccessType = AlignedArray<Element, Policy::kElementsPerAccess>;  /// Storage type for accessing memory
+    AccessType *pointer_;        /// Internal pointer to memory
+    Layout layout_;              /// Internal layout object. 一个AccessType作为元素单位
+    MatrixCoord thread_offset_;  /// Thread offset
+
+public:
+    /// Constructor from TensorRef
+    TileIteratorTensorOp(TensorRef const &ref, unsigned lane_id)
+        : pointer_(reinterpret_cast<AccessType *>(ref.data())), layout_(ref.stride()[0] / Policy::kElementsPerAccess) {
+        // Initalize thread offset
+        // | T0  | T1  | T2  | T3  |
+        // | T4  | T5  | T6  | T7  |
+        // | T8  | T9  | T10 | T11 |
+        // | T12 | T13 | T14 | T15 |
+        // | T16 | T17 | T18 | T19 |
+        // | T20 | T21 | T22 | T23 |
+        // | T24 | T25 | T26 | T27 |
+        // | T28 | T29 | T30 | T31 |
+        int quad_id = (lane_id / Detail::kLanesInQuad);
+        int lane_in_quad = (lane_id % Detail::kLanesInQuad);
+        thread_offset_ = { quad_id, lane_in_quad * Policy::kElementsPerAccess };
+        pointer_ += layout_({ thread_offset_.row(), thread_offset_.column() / Policy::kElementsPerAccess });
+    }
+
+    /// advances in units of whole tiles along the logical coordinate space of the tensor
+    TileIteratorTensorOp & add_tile_offset(TensorCoord const &tile_offset) {
+        MatrixCoord coord_offset(tile_offset.row() * Shape::kRow, tile_offset.column() * Shape::kColumn);
+        thread_offset_ += coord_offset;
+        pointer_ += layout_({ coord_offset.row(), coord_offset.column() / Policy::kElementsPerAccess });
+        return *this;
+    }
+
+    TileIteratorTensorOp & operator++() {
+        return add_tile_offset({ 1, 0 });
+    }
+
+    /// Set smem base address
+    void set_smem_base_address(Index address) {}
+
+    /// Store
+    void store_with_pointer_offset(Fragment const &frag, Index pointer_offset) {
+        AccessType const *frag_ptr = reinterpret_cast<AccessType const *>(&frag);
+        for (int n = 0; n < Policy::OperatorCount::kColumn; ++n) {
+            pointer_[n * Detail::kLanesInQuad + pointer_offset / Policy::kElementsPerAccess] = frag_ptr[n];
+        }
+    }
+
+    /// Store
+    void store(Fragment const &frag) {
+        store_with_pointer_offset(frag, 0);
+    }
+
+    /// Load
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) const {
+        AccessType *frag_ptr = reinterpret_cast<AccessType *>(&frag);
+        for (int n = 0; n < Policy::OperatorCount::kColumn; ++n) {
+            frag_ptr[n] = pointer_[n * Detail::kLanesInQuad + pointer_offset / Policy::kElementsPerAccess];
+        }
+    }
+
+    /// Load
+    void load(Fragment &frag) const {
+        load_with_pointer_offset(frag, 0);
+    }
+};
+```
+
+## Threadblock Level
+
+在cutlass/epilogue/thredblock目录中，提供对共享内存的读取操作，这被抽象为epilogue::threadblock::SharedLoadIterator模板类，以及对设备全局内存的读写操作，这被抽象为epilogue::threadblock::PredicatedTileIterator模板类。需要注意的是，在一个线程块访问共享内存和设备全局内存时，需要一个将线程映射到内存位置的概念，这被抽象为epilogue::threadblock::OutputTileOptimalThreadMap模板类。
+
+### ThreadMap
+
+在cutlass/epilogue/threadblock/output_tile_thread_map.h头文件中，提供epilogue::threadblock::OutputTileShape的定义，用于标识输出块的形状。该结构定义了在划分数据时用到的一些概念，包括列（Column）、行（Row）、组（Group）、簇（Cluster）、块（Tile），通常，Column和Row由Thread线程负责处理，而Group和Cluster由Warp线程束负责处理。
+
+```c++
+/// 5D-Tuple defining point in output tile.
+/// 通常而言，在Column和Row维度轴上，使用一个Warp线程束中的32个Thread线程进行平铺
+/// 而在Group和Cluster维度上，使用一个Threadblock线程块中若干个Warp线程束进行平铺
+template <int Column, int Row, int Group, int Cluster, int Tile>
+struct OutputTileShape {
+    static int const kColumn = Column;
+    static int const kRow = Row;
+    static int const kGroup = Group;
+    static int const kCluster = Cluster;
+    static int const kTile = Tile;  // 通常用于指定一个线程需要的迭代次数
+    static int const kCount = kColumn * kRow * kGroup * kCluster * kTile;
+};
+```
+
+#### OutputTileThreadMapHelpers
+
+在cutlass/epilogue/threadblock/output_tile_thread_map.h头文件中，提供epilogue::threadblock::OutputTileThreadMapHelpers的定义，这是一个辅助类，用于根据一个总的索引编号，计算出各个层级的索引编号。通常，一个Row持有若干个Column、一个Group持有若干个Row、一个Cluster持有若干个Group等。
+
+```c++
+template <
+    typename Iterations,  /// Iterations of thread to cover ThreadblockShape in unit of element. - epilogue::threadblock::OutputTileShape
+    typename Delta        /// Delta between two iter-accesses in unit of Iterations::Shape.      - epilogue::threadblock::OutputTileShape
+>
+struct OutputTileThreadMapHelpers {
+    /// Determines the iteration index of a vector access according to the thread map
+    static void iteration_index(int &column_idx, int &row_idx, int &group_idx, int &cluster_idx, int &tile_idx, int iter_idx) {
+        int residual = iter_idx;
+        column_idx  = residual % Iterations::kColumn;
+        residual    = residual / Iterations::kColumn;
+        row_idx     = residual % Iterations::kRow;
+        residual    = residual / Iterations::kRow;
+        group_idx   = residual % Iterations::kGroup;
+        residual    = residual / Iterations::kGroup;
+        cluster_idx = residual % Iterations::kCluster;
+        tile_idx    = residual / Iterations::kCluster;
+    }
+
+    /// Computes the offset of a given vector access
+    static MatrixCoord iteration_offset(int iter_idx) {
+        int column_idx;
+        int row_idx;
+        int group_idx;
+        int cluster_idx;
+        int tile_idx;
+        iteration_index(column_idx, row_idx, group_idx, cluster_idx, tile_idx, iter_idx);
+        return MatrixCoord(
+            row_idx * Delta::kRow + group_idx * Delta::kGroup + cluster_idx * Delta::kCluster + tile_idx * Delta::kTile,
+            column_idx * Delta::kColumn
+        );
+    }
+};
+```
+
+#### OutputTileOptimalThreadMap
+
+在CUTLASS中实际使用线程映射时，会使用性能优化版本的epilogue::threadblock::OutputTileOptimalThreadMap模板类，该模板类跨Warp线程束进行了四维（4D）的划分，用于划分数据的单位是Warp线程束。这种划分可以取得最优的性能，包括合并128字节内存访问、最少的地址计算次数、最少的谓词计算次数。
+
+![](CUTLASS模板库.assets/epilogue-threadblock-OutputTileOptimalThreadMap.png)
+
+在将Warp线程束在Cluster维度和Group维度上划分完成之后，一个Row会被若干个Warp线程束负责处理，这些需要对“行”和“列”的概念进行重排，这被抽象为epilogue::threadblock::detail::RowArrangement模板类。值得注意的是，一个Row可以包含一行single-row元素，或者多行single-row元素。
+
+在cutlass/epilogue/threadblock/output_tile_thread_map.h头文件中，提供epilogue::threadblock::detail::RowArrangement的定义。
+
+```c++
+namespace detail {
+/// RowArrangement determines how one or more warps cover a region of consecutive rows.
+template <
+    typename Shape,         /// Shape of the output tile - epilogue::threadblock::OutputTileShape
+    int WarpsRemaining,     /// Remaining Warps to cover on Rows
+    int ElementsPerAccess,  /// 1 for SIMT, and `128 / sizeof_bits<Element>::value` for TensorOp.
+    int ElementSize,        /// Element bits
+    bool Is2dTile
+>
+struct RowArrangement;
+
+/// RowArrangement in which each warp's access is a 1D tiled arrangement.
+/// 一个Warp负责一行数据（one single-row element）
+template <typename Shape, int WarpsRemaining, int ElementsPerAccess, int ElementSize>
+struct RowArrangement<Shape, WarpsRemaining, ElementsPerAccess, ElementSize, false> {
+    static int const kWarpSize = 32;
+    static int const kElementsPerAccess = ElementsPerAccess;  // 一个线程一次访问向量中的元素数目
+    static int const kElementSize = ElementSize;
+
+    static int const kIterationsRow = 1;
+    static int const kDeltaRow = 1;
+    static int const kIterationsColumn = Shape::kColumn / kWarpSize / kElementsPerAccess;
+    static int const kDeltaColumn = kWarpSize * kElementsPerAccess;
+
+    static int const kAccessWidth = kWarpSize;  // 一个Warp在一行数据上，一次访问能够覆盖的向量个数
+    static int const kAccessRows = 1;           // 一个Warp在一次访问时，能够覆盖的行数
+    static int const kWarpPartitionsRow = 1;
+    static int const kWarpPartitionsColumn = WarpsRemaining;
+};
+
+/// RowArrangement in which each warp's access is a 2D tiled arrangement.
+/// 一个Warp负责多行数据（more than one single-row element）
+template <typename Shape, int WarpsRemaining, int ElementsPerAccess, int ElementSize>
+struct RowArrangement<Shape, WarpsRemaining, ElementsPerAccess, ElementSize, true> {
+    // Preferred access size (Bytes). 在访问一行时，最好能够一次性访问256字节的数据，即粒度是256字节
+    static int const kMemoryAccessSize = 256;
+    static int const kWarpSize = 32;
+    static int const kElementsPerAccess = ElementsPerAccess;  // 一个线程一次访问向量中的元素数目
+    static int const kElementSize = ElementSize;
+
+    struct Detail {
+        static int const kShapeRow = Shape::kRow / WarpsRemaining;           // 一个Warp负责处理几行数据
+        static int const kShapeWidth = Shape::kColumn / kElementsPerAccess;  // 一行数据需要几次向量访问
+
+        // (kElementsPerAccess*kElementSize/8)，一个线程一次向量访问的字节数，对于Simt常为4（一个float元素），对TensorOp常为16（一个128位访问）
+        // kTargetMemoryAccessWidth是指，一个256字节访问，需要由几个线程的向量访问构成，对于Simt常为64，对于TensorOp常为16
+        static int const kTargetMemoryAccessWidth = kMemoryAccessSize / (kElementsPerAccess * kElementSize / 8);
+        // 一个Warp所有线程的向量访问可以构成多个256字节访问，这最好划分到多行数据上，对于Simt常是0，对于TensorOp常是2
+        static int const kTargetAccessRows = kWarpSize / kTargetMemoryAccessWidth;
+    };
+
+    // 将一个Warp一次提供的多个256字节访问，在该Warp负责的多行数据上划分，得到，一个Warp在一行数据上，一次访问能够覆盖的向量个数
+    static int const kAccessWidth = Detail::kTargetAccessRows > Detail::kShapeRow
+        ? kWarpSize / Detail::kShapeRow
+        : const_min(Detail::kShapeWidth, const_min(kWarpSize, Detail::kTargetMemoryAccessWidth));
+    // 一个Warp在一次访问时，能够覆盖的行数
+    static int const kAccessRows = Detail::kTargetAccessRows > Detail::kShapeRow
+        ? Detail::kShapeRow
+        : const_min(Shape::kRow, kWarpSize / kAccessWidth);
+
+    static int const kIterationsRow = Detail::kShapeRow / kAccessRows;
+    static int const kDeltaRow = kAccessRows;
+    static int const kIterationsColumn = Detail::kShapeWidth / kAccessWidth;
+    static int const kDeltaColumn = kAccessWidth * kElementsPerAccess;
+
+    static int const kWarpPartitionsRow = 1;
+    static int const kWarpPartitionsColumn = 1;
+};
+}
+```
+
+在cutlass/epilogue/threadblock/output_tile_thread_map.h头文件中，提供epilogue::threadblock::OutputTileOptimalThreadMap的定义。
+
+```c++
+/// Template metaprogram for partitioning a 4D space across warps to achieve several performance objectives:
+/// - coalesced memory accesses in units of 128 Byte lines
+/// - minimal address arithmetic
+/// - minimal predicate calculations
+template <
+    typename Shape_,        /// Shape of the output tile - epilogue::threadblock::OutputTileShape
+    typename Count_,        /// Number of iterator iterations - epilogue::threadblock::OutputTileShape
+    int Threads,            /// Number of threads participating in the operation
+    int ElementsPerAccess,  /// 1 for SIMT, and `128 / sizeof_bits<Element>::value` for TensorOp.
+    int ElementSize         /// Element bits
+>
+struct OutputTileOptimalThreadMap {
+    using Shape = Shape_;
+    using Count = Count_;
+    static int const kWarpSize = 32;
+    static int const kThreads = Threads;                      /// Number of threads
+    static int const kWarpCount = kThreads / kWarpSize;
+    static int const kElementsPerAccess = ElementsPerAccess;  /// Number of elements within each vector access
+    static int const kElementSize = ElementSize;
+
+    // Metaprogram computation
+    struct Detail {
+        // Clusters
+        // 将可用数目的Warp在Cluster上平铺，若Cluster数目多于Warp数目，则需要进行多次迭代
+        static int const kIterationsCluster = (Shape::kCluster > kWarpCount)
+            ? Shape::kCluster / kWarpCount
+            : 1;
+        // 在Cluster维度上，在普通布局下，一个Warp两次迭代之间的间距
+        static int const kDeltaCluster = (Shape::kCluster > kWarpCount)
+            ? Shape::kRow * Count::kRow * Shape::kGroup * Count::kGroup * Shape::kCluster / kIterationsCluster
+            : 1;
+        // 在Culster维度上，在紧凑布局下，一个Warp两次迭代之间的间距
+        static int const kCompactedDeltaCluster = (Shape::kCluster > kWarpCount)
+            ? Shape::kRow * Shape::kGroup * Shape::kCluster / kIterationsCluster
+            : 1;
+        // 一个Cluster能够划分到多少个Warp进行处理
+        static int const kWarpPartitionsCluster = (Shape::kCluster > kWarpCount)
+            ? kWarpCount
+            : kWarpCount / Shape::kCluster;
+        // 一个Cluster能够划分到多少个Warp进行处理，以进一步在Group维度上平铺
+        static int const kWarpsRemainingForGroups = (Shape::kCluster > kWarpCount)
+            ? 1
+            : kWarpCount / Shape::kCluster;
+
+        // Groups
+        // 将可用数目的Warp在Group上平铺，若Group数目多于Warp数目，则需要进行多次迭代
+        static int const kIterationsGroup = (Shape::kGroup > kWarpsRemainingForGroups)
+            ? Shape::kGroup / kWarpsRemainingForGroups
+            : 1;
+        // 在Group维度上，在普通布局下，一个Warp两次迭代之间的间距
+        static int const kDeltaGroup = (Shape::kGroup > kWarpsRemainingForGroups)
+            ? Shape::kRow * Count::kRow * Shape::kGroup / kIterationsGroup
+            : 1;
+        // 在Group维度上，在紧凑布局下，一个Warp两次迭代之间的间距
+        static int const kCompactedDeltaGroup = (Shape::kGroup > kWarpsRemainingForGroups)
+            ? Shape::kRow * Shape::kGroup / kIterationsGroup
+            : 1;
+        // 一个Group能够划分到多少个Warp进行处理，
+        static int const kWarpPartitionsGroup = (Shape::kGroup > kWarpsRemainingForGroups)
+            ? 1
+            : kWarpsRemainingForGroups / Shape::kGroup;
+        // 一个Group能够划分到多少个Warp进行处理，以进一步在Row维度上平铺
+        static int const kWarpsRemainingForRows = (Shape::kGroup > kWarpsRemainingForGroups)
+            ? 1
+            : kWarpsRemainingForGroups / Shape::kGroup;
+
+        // Rows. 将可用数目的Warp在Row上平铺
+        using RowArrangement = detail::RowArrangement<
+            Shape,
+            kWarpsRemainingForRows,  // 通常是1，一个Warp线程束负责一个Row
+            kElementsPerAccess,
+            kElementSize,
+            (Shape::kRow > kWarpsRemainingForRows)
+        >;
+
+        // Warp partitions. 在各个维度上，能够划分到多少个Warp进行处理
+        using WarpPartitions = OutputTileShape<
+            RowArrangement::kWarpPartitionsColumn,
+            RowArrangement::kWarpPartitionsRow,
+            kWarpPartitionsGroup,
+            kWarpPartitionsCluster,
+            1
+        >;
+
+        static int const kAccessWidth = RowArrangement::kAccessWidth;  // [1D] WarpSize | [2D] 16 for TensorOp
+        static int const kAccessRows = RowArrangement::kAccessRows;    // [1D] 1        | [2D] 2  for TensorOp
+    };
+
+    // 在各个维度上，所需要的迭代次数
+    using Iterations = OutputTileShape<
+        Detail::RowArrangement::kIterationsColumn,
+        Detail::RowArrangement::kIterationsRow,
+        Detail::kIterationsGroup,
+        Detail::kIterationsCluster,
+        1
+    >;
+
+    // 在各个维度上，两次迭代之间的间距
+    using Delta = OutputTileShape<
+        Detail::RowArrangement::kDeltaColumn,
+        Detail::RowArrangement::kDeltaRow,
+        Detail::kDeltaGroup,
+        Detail::kDeltaCluster,
+        1
+    >;
+
+    /// Initial offset function
+    static MatrixCoord initial_offset(int thread_idx) {
+        int warp_idx = thread_idx / kWarpSize;
+        int lane_idx = thread_idx % kWarpSize;
+
+        // Compute warp location
+        int cluster_idx      = warp_idx / Detail::WarpPartitions::kCluster;
+        int residual_cluster = warp_idx % Detail::WarpPartitions::kCluster;
+        int group_idx      = residual_cluster / Detail::WarpPartitions::kGroup;
+        int residual_group = residual_cluster % Detail::WarpPartitions::kGroup;
+        int row_idx = residual_group / Detail::WarpPartitions::kRow;
+        int col_idx = residual_group % Detail::WarpPartitions::kRow;
+
+        // Compute per-lane offset
+        int lane_row_offset = lane_idx / Detail::kAccessWidth;
+        int lane_col_offset = lane_idx % Detail::kAccessWidth;
+
+        // Compute coordinate in output space
+        int cluster_offset = cluster_idx * Shape::kRow * Count::kRow * Shape::kGroup * Count::kGroup;
+        int group_offset   = group_idx * Shape::kRow * Count::kRow;
+        int row_offset     = row_idx * Iterations::kRow * Detail::kAccessRows;
+        int column_offset  = col_idx * Iterations::kColumn * Detail::kAccessWidth * kElementsPerAccess;
+
+        return MatrixCoord(
+            cluster_offset + group_offset + row_offset + lane_row_offset,
+            column_offset + lane_col_offset * kElementsPerAccess
+        );
+    }
+
+    /// Computes the offset of a given vector access
+    static MatrixCoord iteration_offset(int iter_idx) {
+        return OutputTileThreadMapHelpers<Iterations, Delta>::iteration_offset(iter_idx);
+    }
+
+    /// Compacted thread map in which the 4D region is contiguous. Count::XXX is 1.
+    struct CompactedThreadMap {
+        using Shape = Shape_;
+        using TileShape = MatrixShape<
+            Shape::kTile * Shape::kCluster * Shape::kGroup * Shape::kRow,
+            Shape::kColumn
+        >;
+
+        // 在各个维度上，所需要的迭代次数
+        using Iterations = OutputTileShape<
+            Detail::RowArrangement::kIterationsColumn,
+            Detail::RowArrangement::kIterationsRow,
+            Detail::kIterationsGroup,
+            Detail::kIterationsCluster,
+            1
+        >;
+
+        // 在各个维度上，两次迭代之间的间距
+        using Delta = OutputTileShape<
+            Detail::RowArrangement::kDeltaColumn,
+            Detail::RowArrangement::kDeltaRow,
+            Detail::kCompactedDeltaGroup,
+            Detail::kCompactedDeltaCluster,
+            1
+        >;
+
+        /// Function to compute each thread's initial offset
+        static MatrixCoord initial_offset(int thread_idx) {
+            int warp_idx = thread_idx / kWarpSize;
+            int lane_idx = thread_idx % kWarpSize;
+
+            // Compute warp location
+            int cluster_idx      = warp_idx / Detail::WarpPartitions::kCluster;
+            int residual_cluster = warp_idx % Detail::WarpPartitions::kCluster;
+            int group_idx      = residual_cluster / Detail::WarpPartitions::kGroup;
+            int residual_group = residual_cluster % Detail::WarpPartitions::kGroup;
+            int row_idx = residual_group / Detail::WarpPartitions::kRow;
+            int col_idx = residual_group % Detail::WarpPartitions::kRow;
+
+            // Compute per-lane offset
+            int lane_row_offset = lane_idx / Detail::kAccessWidth;
+            int lane_col_offset = lane_idx % Detail::kAccessWidth;
+
+            // Compute coordinate in output space
+            int cluster_offset = cluster_idx * Shape::kRow * Shape::kGroup;
+            int group_offset   = group_idx * Shape::kRow;
+            int row_offset     = row_idx * Iterations::kRow * Detail::kAccessRows;
+            int column_offset  = col_idx * Iterations::kColumn * Detail::kAccessWidth * kElementsPerAccess;
+
+            return MatrixCoord(
+                cluster_offset + group_offset + row_offset + lane_row_offset,
+                column_offset + lane_col_offset * kElementsPerAccess
+            );
+        }
+    };
+};
+```
+
+#### DefaultThreadMapSimt
+
+如果矩阵乘法GEMM是在CUDA Core上实现的，则尾处理操作的线程映射由epilogue::threadblock::DefaultThreadMapSimt模板类提供默认配置。
+
+在cutlass/epilogue/threadblock/default_thread_map_simt.h头文件中，提供epilogue::threadblock::DefaultThreadMapSimt的定义。
+
+```c++
+/// Defines the optimal thread map for SIMT accumulator layouts
+template <
+    typename ThreadblockShape_,  /// Threadblock-level tile size - gemm::GemmShape
+    typename WarpShape_,         /// Warp-level tile size - gemm::GemmShape
+    typename MmaSimtPolicy_,     /// gemm::warp::MmaSimtPolicy
+    int PartitionsK,             /// Number of partitions along K dimension
+    typename Element_,           /// Data type of element
+    int ElementsPerAccess        /// 1 for SIMT, and `128 / sizeof_bits<Element>::value` for TensorOp.
+>
+struct DefaultThreadMapSimt {
+    using ThreadblockShape = ThreadblockShape_;
+    using WarpShape = WarpShape_;
+    using MmaSimtPolicy = MmaSimtPolicy_;
+    static int const kPartitionsK = PartitionsK;
+    using Element = Element_;
+    static int const kElementsPerAccess = ElementsPerAccess;
+
+    struct Detail {
+        static int const kWarpSize = 32;
+        /// Number of warps
+        using WarpCount = gemm::GemmShape<ThreadblockShape::kM / WarpShape::kM, ThreadblockShape::kN / WarpShape::kN, kPartitionsK>;
+        /// Number of participating threads
+        static int const kThreads = WarpCount::kCount * kWarpSize;
+
+        /// Computes number of thread-level matrix multiplies are needed to span a warp. 一个Thread在一列上有几个MMA计算
+        static int const kGroupCount = WarpShape::kM / (MmaSimtPolicy::WarpShape::kRow * MmaSimtPolicy::LaneMmaShape::kM);
+
+        /// Number of iterations
+        static int const kIterations = MmaSimtPolicy::LaneMmaShape::kM * kGroupCount;
+    };
+
+    /// ThreadMap to be used by epilogue::PredicatedTileIterator satisfying concept OutputTileThreadMap
+    using Type = OutputTileOptimalThreadMap<
+        ///< Shape，在各个维度上的元素形状
+        OutputTileShape<
+            ThreadblockShape::kN,             // Column  : 一个CTA的元素的列数
+            1,                                // Row     : 一行
+            MmaSimtPolicy::WarpShape::kRow,   // Group   : 一个Warp在一列上有几个Thread
+            Detail::WarpCount::kM,            // Cluster : 一个CTA在一列上有几个Warp
+            1                                 // Tile    : 一个Tile
+        >,
+        ///< Count，在各个维度上有多少个Shape形状
+        OutputTileShape<
+            1,                                // Column  * Shape::Column  : 一个CTA的元素的列数
+            MmaSimtPolicy::LaneMmaShape::kM,  // Row     * Shape::Row     : 一个MMA计算的元素的行数
+            Detail::kGroupCount,              // Group   * Shape::Group   : 一个Warp在一列上的线程一共有几个MMA计算
+            1,                                // Cluster * Shape::Cluster : 一个CTA在一列上有几个Warp
+            Detail::kIterations               // Tile    * Shape::Tile    : 一个Thread执行完一列MMA需要迭代几行元素
+        >,
+        Detail::kThreads,
+        kElementsPerAccess,
+        sizeof_bits<Element>::value
+    >;
+};
+```
+
+#### DefaultThreadMapTensorOp
+
+如果矩阵乘法GEMM是在Tensor Core上实现的，则尾处理操作的线程映射由epilogue::threadblock::DefaultThreadMapTensorOp模板类提供默认配置。
+
+在cutlass/epilogue/threadblock/default_thread_map_tensor_op.h头文件中，提供epilogue::threadblock::DefaultIteratorsTensorOp的定义。
+
+```c++
+/// Defines the optimal thread map for TensorOp accumulator layouts
+template <
+    typename ThreadblockShape_,  /// Threadblock-level tile size - gemm::GemmShape
+    typename WarpShape_,         /// Warp-level tile size - gemm::GemmShape
+    int PartitionsK,             /// Number of partitions along K dimension
+    typename Element_,           /// Data type of element
+    int ElementsPerAccess        /// 1 for SIMT, and `128 / sizeof_bits<Element>::value` for TensorOp.
+>
+struct DefaultThreadMapTensorOp {
+    using ThreadblockShape = ThreadblockShape_;
+    using WarpShape = WarpShape_;
+    static int const kPartitionsK = PartitionsK;
+    using Element = Element_;
+    static int const kElementsPerAccess = ElementsPerAccess;
+
+    struct Detail {
+        /// Number of warps
+        using WarpCount = gemm::GemmShape<ThreadblockShape::kM / WarpShape::kM, ThreadblockShape::kN / WarpShape::kN, kPartitionsK>;
+        /// Number of participating threads
+        static int const kThreads = WarpCount::kCount * kWarpSize;
+
+        /// Tensor Operations fundamentally perform operations on 8 rows
+        static int const kTensorOpRows = 8;
+        static int const kWarpSize = 32;
+    };
+
+    /// ThreadMap to be used by epilogue::PredicatedTileIterator satisfying concept OutputTileThreadMap
+    using Type = OutputTileOptimalThreadMap<
+        OutputTileShape<ThreadblockShape::kN, Detail::kTensorOpRows, Detail::WarpCount::kM, 1, 1>,
+        OutputTileShape<1, WarpShape::kM / Detail::kTensorOpRows, 1, 1, WarpShape::kM / Detail::kTensorOpRows>,
+        Detail::kThreads,
+        kElementsPerAccess,
+        sizeof_bits<Element>::value
+    >;
+};
+```
+
+### PredicatedTileIteratorParams
+
+在CUTLASS中实现epilogue::threadblock::PredicatedTileIterator时，需要使用一个结构体表示谓词访问迭代器在初始化时所用到的配置参数，这被抽象为epilogue::threadblock::PredicatedTileIteratorParams模板类。
+
+在cutlass/epilogue/threadblock/predicated_tile_iterator_params.h头文件中，提供epilogue::threadblock::OutputTileShapeDesc的定义，以及epilogue::threadblock::OutputTileThreadMapDesc的定义，如下所示。
+
+```c++
+struct OutputTileShapeDesc {
+    int column;
+    int row;
+    int group;
+    int cluster;
+    int tile;
+
+    /// Constructor
+    OutputTileShapeDesc(int column_, int row_, int group_, int cluster_, int tile_)
+        : column(column_), row(row_), group(group_), cluster(cluster_), tile(tile_) {}
+
+    /// Total number of points in the 5D space
+    int count() const { return column * row * group * cluster * tile; }
+};
+
+/// Helper template to construct an OutputTileShapeDesc from a OutputTileShape template.
+template <typename Shape>
+OutputTileShapeDesc make_OutputTileShapeDesc() {
+    return OutputTileShapeDesc(Shape::kColumn, Shape::kRow, Shape::kGroup, Shape::kCluster, Shape::kTile);
+}
+
+/// Thread map description
+struct OutputTileThreadMapDesc {
+    int threads;
+    int elements_per_access;
+    OutputTileShapeDesc shape;
+    OutputTileShapeDesc iterations;
+    OutputTileShapeDesc delta;
+    OutputTileShapeDesc count;
+    
+    OutputTileThreadMapDesc(
+        int threads_, int elements_per_access_,
+        OutputTileShapeDesc shape_, OutputTileShapeDesc iterations_, OutputTileShapeDesc delta_, OutputTileShapeDesc count_
+    ) : threads(threads_), elements_per_access(elements_per_access_),
+        shape(shape_), iterations(iterations_), delta(delta_), count(count_) {}
+};
+
+/// Helper template to construct an OutputTileShapeDesc from a OutputTileThreadMap template.
+template <typename ThreadMap>
+OutputTileThreadMapDesc make_OutputTileThreadMapDesc() {
+    return OutputTileThreadMapDesc(
+        ThreadMap::kThreads, ThreadMap::kElementsPerAccess,
+        make_OutputTileShapeDesc<typename ThreadMap::Shape>(),
+        make_OutputTileShapeDesc<typename ThreadMap::Iterations>(),
+        make_OutputTileShapeDesc<typename ThreadMap::Delta>(),
+        make_OutputTileShapeDesc<typename ThreadMap::Count>()
+    );
+}
+```
+
+在cutlass/epilogue/threadblock/predicated_tile_iterator_params.h头文件中，提供epilogue::threadblock::PredicatedTileIteratorParams的定义。
+
+```c++
+// Parameters struct for PredicatedTileIterator
+struct PredicatedTileIteratorParams {
+    using Index = int32_t;
+    using LongIndex = int64_t;
+
+    LongIndex stride;               /// stride in bytes between rows. 以字节为单位
+    LongIndex increment_row;        /// increment quantity (in bytes) to advance when moving between rows
+    LongIndex increment_group;      /// increment quantity (in bytes) to advance when moving to the next group
+    LongIndex increment_cluster;    /// increment quantity (in bytes) to advance when moving to the next cluster
+    LongIndex advance_row;          /// amount to add to move to the next 'row' position
+    LongIndex advance_group;        /// amount to add to move to the next 'group' position
+    LongIndex advance_cluster;      /// amount to add to move to the next 'cluster' position
+    LongIndex advance_tile;         /// amount to add to move to the next 'tile'
+
+    Status initialize(LongIndex stride_, OutputTileThreadMapDesc thread_map) {
+        stride = stride_;
+        // increment是在一轮迭代之中，每一次迭代之间的间距；先进行迭代，迭代完一轮之后，再移动到下一个分块
+        increment_row = stride * thread_map.delta.row;
+        increment_group = stride * thread_map.delta.group
+            - stride * thread_map.delta.row * (thread_map.iterations.row - 1);
+        increment_cluster = stride * thread_map.delta.cluster
+            - stride * thread_map.delta.group * (thread_map.iterations.group - 1)
+            - stride * thread_map.delta.row * (thread_map.iterations.row - 1);
+
+        // advance是指在多个分块之间，每一个分块之间的间距；先进行迭代，迭代完一轮之后，再移动到下一个分块
+        advance_row = stride * thread_map.shape.row;
+        advance_group = stride * (thread_map.shape.group - 1) * thread_map.shape.row * thread_map.count.row;
+        advance_cluster = stride * thread_map.count.group * thread_map.shape.group * thread_map.count.row * thread_map.shape.row;
+        advance_tile = stride * thread_map.shape.group * thread_map.shape.row * thread_map.shape.cluster * thread_map.shape.tile;
+        return Status::kSuccess;
+    }
+
+    PredicatedTileIteratorParams(LongIndex stride, OutputTileThreadMapDesc thread_map) {
+        initialize(stride, thread_map);
+    }
+};
+```
+
+### PredicatedTileIterator
+
+一个线程块从设备全局内存中读取源数据，以及向设备全局内存中写入最终结果数据，这被抽象为epilogue::threadblock::PredicatedTileIterator模板类。
+
+在cutlass/epilogue/threadblock/predicated_tile_iterator.h头文件中，提供epilogue::threadblock::PredicatedTileIterator的定义。
+
+```c++
+/// Tile iterator used to load and store output tile from global memory in epilogue.
+/// Satisfies: ReadableTileIterator | PredicatedTileIterator | ForwardTileIterator
+template <
+    typename ThreadMap_,                          /// Thread map (conept: OutputTileThreadMap)
+    typename Element_,                            /// Element data type
+    bool ScatterD = false,                        /// Scatter D operand or not
+    typename PermuteDLayout = layout::NoPermute,  /// Permute D operand or not
+    bool UseCUDAStore = false
+>
+class PredicatedTileIterator {
+public:
+    using ThreadMap = ThreadMap_;
+    using Element = Element_;
+    using Shape = typename ThreadMap::Shape;
+    using Layout = layout::RowMajor;
+    using TensorRef = TensorRef<Element, Layout>;
+    using ConstTensorRef = typename TensorRef::ConstTensorRef;
+    using Index = typename Layout::Index;
+    using LongIndex = typename Layout::LongIndex;
+    using TensorCoord = MatrixCoord;
+
+    static int const kElementsPerAccess = ThreadMap::kElementsPerAccess;
+    static int const kThreads = ThreadMap::kThreads;
+    static int const kIterations = ThreadMap::Count::kTile;  // 通常用于指定一个线程需要的迭代次数
+    static bool constexpr PermuteD = !platform::is_same<Permute, layout::NoPermute>::value;
+
+    /// Fragment object
+    using Fragment = Array<Element, ThreadMap::kElementsPerAccess
+        * ThreadMap::Iterations::kColumn * ThreadMap::Iterations::kRow * ThreadMap::Iterations::kGroup * ThreadMap::Iterations::kCluster>;
+
+    /// Memory access size
+    using AccessType = AlignedArray<Element, ThreadMap::kElementsPerAccess>;
+
+    /// Uses a non-template class
+    struct Params : PredicatedTileIteratorParams {
+        Params(Layout const &layout) : PredicatedTileIteratorParams(
+            layout.stride(0) * int(sizeof(AccessType)) / kElementsPerAccess,  // in unit of Bytes
+            make_OutputTileThreadMapDesc<ThreadMap>()
+        ) {}
+    };
+
+    /// Mask object
+    struct Mask {
+        static int const kCount = ThreadMap::Iterations::kColumn;  // 一次访问一行数据
+        bool predicates[kCount];  /// Predicate state
+        Mask() {
+            enable();
+        }
+
+        /// enables all accesses guarded by mask
+        void enable() {
+            for (int i = 0; i < kCount; ++i) {
+                predicates[i] = true;
+            }
+        }
+
+        /// Efficiently disables all accesses guarded by mask
+        void clear() {
+            for (int i = 0; i < kCount; ++i) {
+                predicates[i] = false;
+            }
+        }
+    };
+
+private:
+    /// Byte-level pointer for both load() and store(). When having PermuteD, byte_pointer_ is only for load().
+    uint8_t *byte_pointer_;
+    /// Byte-level pointer for store() when having PermuteD. It may be with different address computation compared to byte_pointer_.
+    uint8_t *store_byte_pointer_;
+
+    PredicatedTileIteratorParams params_;  /// Parameters structure containing reference and precomputed state.
+    Mask mask_;                  /// Array of boolean values to contain steady-state predicates
+    Index extent_row_;           /// Extent of the matrix tile in rows
+    Index extent_column_;        /// Extent of the matrix tile in columns
+    Index thread_start_row_;     /// A thread's starting row position (assuming steady-state predicates have been computed)
+    Index thread_start_column_;  /// A thread's starting column
+    int state_[3];  /// Internal state counter. [0] = Row. [1] = Group. [2] = Cluster.
+
+    int const* indices_;             /// Scatter indices
+    PermuteDLayout permute_layout_;  /// PermuteDLayout
+
+public:
+    /// Constructor
+    PredicatedTileIterator(
+        PredicatedTileIteratorParams const & params, Element *pointer, TensorCoord extent,
+        int thread_idx, TensorCoord threadblock_offset = TensorCoord(), int const *indices = nullptr
+    ) : params_(params), indices_(indices),
+        permute_layout_(PitchLinearCoord(extent.column(), extent.row()), params_.stride * kElementsPerAccess / sizeof(AccessType)) {
+        // Initialize thread offset
+        TensorCoord thread_offset = ThreadMap::initial_offset(thread_idx) + threadblock_offset;
+        thread_start_row_ = thread_offset.row();
+        thread_start_column_ = thread_offset.column();
+        extent_row_ = extent.row();
+        extent_column_ = extent.column();
+
+        // Initialize predicates
+        for (int c = 0; c < ThreadMap::Iterations::kColumn; ++c) {
+            mask_.predicates[c] = ((thread_offset.column() + ThreadMap::Delta::kColumn * c) < extent.column());
+        }
+
+        // Null pointer performs no accesses
+        if (pointer == nullptr) {
+            mask_.clear();
+        }
+
+        // Initialize byte_pointer_
+        byte_pointer_ = reinterpret_cast<uint8_t *>(pointer) +
+            LongIndex(thread_offset.row()) * LongIndex(params_.stride) +
+            LongIndex(thread_offset.column()) * sizeof(AccessType) / kElementsPerAccess;
+
+        // store_byte_pointer_ is set to be the same with byte_pointer_ unless PermuteD is used.
+        store_byte_pointer_ = PermuteD == true ? reinterpret_cast<uint8_t *>(pointer) : byte_pointer_;
+
+        // Initialize internal state counter
+        state_[0] = state_[1] = state_[2] = 0;
+    }
+
+    /// Adds a pointer offset in units of Element
+    void add_pointer_offset(LongIndex pointer_offset) {
+        byte_pointer_ += pointer_offset * sizeof_bits<Element>::value / 8;
+        store_byte_pointer_ += pointer_offset * sizeof_bits<Element>::value / 8;
+    }
+
+    /// Advances to the next position to load or store
+    PredicatedTileIterator &operator++() {
+        // 为简化代码中的分支判断，假设ScatterD和PermuteD全都是false
+        ++state_[0];
+        byte_pointer_ += params_.advance_row;
+        store_byte_pointer_ += params_.advance_row;
+        thread_start_row_ += ThreadMap::Shape::kRow;
+        if (state_[0] < ThreadMap::Count::kRow) {
+            return *this;
+        }
+        // Enter here only if (state_[0] == ThreadMap::Count::kRow)
+        state_[0] = 0;
+        ++state_[1];
+        byte_pointer_ += params_.advance_group;
+        store_byte_pointer_ += params_.advance_group;
+        thread_start_row_ += (ThreadMap::Shape::kGroup - 1) * ThreadMap::Shape::kRow * ThreadMap::Count::kRow;
+        if (state_[1] < ThreadMap::Count::kGroup) {
+            return *this;
+        }
+        // Enter here only if (state_[1] == ThreadMap::Count::kGroup)
+        state_[1] = 0;
+        ++state_[2];
+        byte_pointer_ += params_.advance_cluster;
+        store_byte_pointer_ += params_.advance_cluster;
+        thread_start_row_ += ThreadMap::Count::kGroup * ThreadMap::Shape::kGroup * ThreadMap::Count::kRow * ThreadMap::Shape::kRow;
+        if (state_[2] < ThreadMap::Count::kCluster) {
+            return *this;
+        }
+        // Enter here only if (state_[2] == ThreadMap::Count::kCluster)
+        state_[2] = 0;
+        byte_pointer_ += params_.advance_tile;
+        store_byte_pointer_ += params_.advance_tile;
+        thread_start_row_ += ThreadMap::Shape::kGroup * ThreadMap::Shape::kRow * ThreadMap::Shape::kCluster * ThreadMap::Shape::kTile;
+        return *this;
+    }
+
+    /// Advances a number of positions to load or store
+    PredicatedTileIterator &operator+=(int increment) {
+        // Row
+        state_[0] += increment;
+        state_[0] = state_[0] % ThreadMap::Count::kRow;
+        byte_pointer_ += (params_.advance_row * increment);
+        store_byte_pointer_ += (params_.advance_row * increment);
+        thread_start_row_ += increment * ThreadMap::Shape::kRow;
+        int increment_row = state_[0] / ThreadMap::Count::kRow;
+        // Group
+        state_[1] += increment_row;
+        state_[1] = state_[1] % ThreadMap::Count::kGroup;
+        byte_pointer_ += (params_.advance_group * increment_row);
+        store_byte_pointer_ += (params_.advance_group * increment_row);
+        thread_start_row_ += increment_row
+            * (ThreadMap::Shape::kGroup - 1) * ThreadMap::Shape::kRow * ThreadMap::Count::kRow;
+        int increment_group = state_[1] / ThreadMap::Count::kGroup;
+        // Cluster
+        state_[2] += increment_group;
+        state_[2] = state_[2] % ThreadMap::Count::kCluster;
+        byte_pointer_ += (params_.advance_cluster * increment_group);
+        store_byte_pointer_ += (params_.advance_cluster * increment_group);
+        thread_start_row_ += increment_group
+            * ThreadMap::Count::kGroup * ThreadMap::Shape::kGroup * ThreadMap::Count::kRow * ThreadMap::Shape::kRow;
+        int increment_cluster = state_[2] / ThreadMap::Count::kCluster;
+        // Tile
+        byte_pointer_ += (params_.advance_tile * increment_cluster);
+        store_byte_pointer_ += (params_.advance_tile * increment_cluster);
+        thread_start_row_ += increment_cluster
+            * ThreadMap::Shape::kGroup * ThreadMap::Shape::kRow * ThreadMap::Shape::kCluster * ThreadMap::Shape::kTile;
+        return *this;
+    }
+
+    /// Sets the mask
+    void set_mask(Mask const &mask) {
+        mask_ = mask;
+    }
+
+    /// Sets the mask
+    void get_mask(Mask &mask) const {
+        mask = mask_;
+    }
+
+    /// Efficiently enables all accesses guarded by mask
+    void enable_mask() {
+        mask_.enable();
+    }
+
+    /// Efficiently disables all accesses guarded by mask
+    void clear_mask() {
+        mask_.clear();
+    }
+
+    /// Loads a fragment from memory
+    void load_with_byte_offset(Fragment &frag, int64_t byte_offset) const {
+        uint8_t *byte_pointer = byte_pointer_;
+        AccessType *frag_ptr = reinterpret_cast<AccessType *>(&frag);
+        for (int cluster = 0; cluster < ThreadMap::Iterations::kCluster; ++cluster) {
+            for (int group = 0; group < ThreadMap::Iterations::kGroup; ++group) {
+                for (int row = 0; row < ThreadMap::Iterations::kRow; ++row) {
+                    int frag_row_idx = (cluster * ThreadMap::Iterations::kGroup + group) * ThreadMap::Iterations::kRow + row;
+                    int row_offset = row * ThreadMap::Delta::kRow + group * ThreadMap::Delta::kGroup + cluster * ThreadMap::Delta::kCluster;
+                    bool row_guard = (thread_start_row_ + row_offset) < extent_row_;
+                    AccessType *memory_pointer = reinterpret_cast<AccessType *>(byte_pointer + byte_offset);
+                    for (int column = 0; column < ThreadMap::Iterations::kColumn; ++column) {
+                        bool guard = row_guard && mask_.predicates[column];
+                        cutlass::arch::global_load<AccessType, sizeof(AccessType)>(
+                            frag_ptr[frag_row_idx * ThreadMap::Iterations::kColumn + column],
+                            (void *)&memory_pointer[column * ThreadMap::Delta::kColumn / kElementsPerAccess], guard
+                        );
+                    }
+                    if (row < ThreadMap::Iterations::kRow - 1) {
+                        byte_pointer += params_.increment_row;
+                    }
+                }
+                if (group < ThreadMap::Iterations::kGroup - 1) {
+                    byte_pointer += params_.increment_group;
+                }
+            }
+            if (cluster < ThreadMap::Iterations::kCluster - 1) {
+                byte_pointer += params_.increment_cluster;
+            }
+        }
+    }
+
+    /// Loads a fragment from memory
+    void load(Fragment &frag) const {
+        load_with_byte_offset(frag, 0);
+    }
+
+    /// Stores a fragment to memory
+    void store_with_byte_offset(Fragment const &frag, int64_t byte_offset) const {
+        uint8_t *byte_pointer = store_byte_pointer_;
+        AccessType const *frag_ptr = reinterpret_cast<AccessType const *>(&frag);
+        for (int cluster = 0; cluster < ThreadMap::Iterations::kCluster; ++cluster) {
+            for (int group = 0; group < ThreadMap::Iterations::kGroup; ++group) {
+                for (int row = 0; row < ThreadMap::Iterations::kRow; ++row) {
+                    int frag_row_idx = (cluster * ThreadMap::Iterations::kGroup + group) * ThreadMap::Iterations::kRow + row;
+                    int row_offset = row * ThreadMap::Delta::kRow + group * ThreadMap::Delta::kGroup + cluster * ThreadMap::Delta::kCluster;
+                    bool row_guard = ((row_offset + thread_start_row_) < extent_row_);
+                    AccessType *memory_pointer = reinterpret_cast<AccessType *>(byte_pointer + byte_offset);
+                    for (int column = 0; column < ThreadMap::Iterations::kColumn; ++column) {
+                        bool guard = row_guard && mask_.predicates[column];
+                        cutlass::arch::global_store<AccessType, sizeof(AccessType)>(
+                            frag_ptr[frag_row_idx * ThreadMap::Iterations::kColumn + column],
+                            (void *)&memory_pointer[column * ThreadMap::Delta::kColumn / kElementsPerAccess], guard
+                        );
+                    }
+                    if (row < ThreadMap::Iterations::kRow - 1) {
+                        byte_pointer += params_.increment_row;
+                    }
+                }
+                if (group < ThreadMap::Iterations::kGroup - 1) {
+                    byte_pointer += params_.increment_group;
+                }
+            }
+            if (cluster < ThreadMap::Iterations::kCluster - 1) {
+                byte_pointer += params_.increment_cluster;
+            }
+        }
+    }
+
+    /// Stores a fragment to memory
+    void store(Fragment const &frag) const {
+        store_with_byte_offset(frag, 0);
+    }
+};
+```
+
+### SharedLoadIterator
+
+一个线程块从共享内存中加载累加器数据，这被抽象为epilogue::threadblock::SharedLoadIterator模板类。
+
+在cutlass/epilogue/threadblock/shared_load_iterator.h头文件中，提供epilogue::threadblock::SharedLoadIterator的定义。
+
+```c++
+/// Tile iterator used to load output tile from shared memory in epilogue.
+/// Satisfies: ReadableTileIterator
+template <
+    typename ThreadMap_,  /// Thread map (conept: OutputTileOptimalThreadMap::CompactedThreadMap)
+    typename Element_,    /// Element data type
+    int MaxAlignment = ThreadMap_::kElementsPerAccess * sizeof_bits<Element_>::value / 8
+>
+class SharedLoadIterator {
+public:
+    using ThreadMap = ThreadMap_;
+    using Element = Element_;
+    using Layout = layout::RowMajor;
+    using TensorRef = TensorRef<Element, Layout>;
+    using ConstTensorRef = typename TensorRef::ConstTensorRef;
+    using Index = typename Layout::Index;
+    using LongIndex = typename Layout::LongIndex;
+    using TensorCoord = MatrixCoord;
+
+    // ThreadMap::TileShape = MatrixShape<Shape::kTile * Shape::kCluster * Shape::kGroup * Shape::kRow, Shape::kColumn>;
+    using Shape = typename ThreadMap::TileShape;
+    /// 1 for SIMT, and `128 / sizeof_bits<Element>::value` for TensorOp.
+    static int const kElementsPerAccess = ThreadMap::kElementsPerAccess;
+    static int const kMinAlignment = ThreadMap_::kElementsPerAccess * sizeof_bits<Element_>::value / 8;
+    static int const kAlignment = (MaxAlignment < kMinAlignment ? MaxAlignment : kMinAlignment);
+    static int const kThreads = ThreadMap::kThreads;
+
+    /// Fragment object
+    using Fragment = Array<Element, ThreadMap::kElementsPerAccess
+        * ThreadMap::Iterations::kColumn * ThreadMap::Iterations::kRow * ThreadMap::Iterations::kGroup * ThreadMap::Iterations::kCluster>;
+    /// Memory access size
+    using AccessType = AlignedArray<Element, ThreadMap::kElementsPerAccess, kAlignment>;
+    /// Vector type used for SMEM loads. 1 for SIMT, and `128 / sizeof_bits<Element>::value` for TensorOp.
+    using LoadType = AlignedArray<Element,
+        const_min(128 / sizeof_bits<Element>::value, ThreadMap::kElementsPerAccess), const_min(16, kAlignment)>;
+    static int const kLoadsPerAccess = AccessType::kElements / LoadType::kElements;  // always 1
+
+private:
+    uint8_t *byte_pointer_;  /// Byte-level pointer
+    int stride_;             /// Stride along adjacent rows. 以字节为单位
+
+public:
+    /// Constructor
+    SharedLoadIterator(TensorRef ref, int thread_idx) :
+        byte_pointer_(reinterpret_cast<uint8_t *>(ref.data())),
+        stride_(ref.stride(0) * sizeof_bits<Element>::value / 8) {
+        // Initialize pointer
+        TensorCoord thread_offset = ThreadMap::initial_offset(thread_idx);
+        byte_pointer_ += thread_offset.row() * stride_ + thread_offset.column() * sizeof(AccessType) / kElementsPerAccess;
+    }
+
+    void add_tile_offset(TensorCoord const &offset) {
+        byte_pointer_ += offset.row() * Shape::kRow * stride_ + offset.column() * Shape::kColumn * sizeof_bits<Element>::value / 8;
+    }
+
+    /// Loads a fragment from memory
+    void set_smem_base_address(Index address) {}
+
+    /// Loads a fragment from memory
+    void load_with_pointer_offset(Fragment &frag, Index pointer_offset) const {
+        LoadType *frag_ptr = reinterpret_cast<LoadType *>(&frag);
+        for (int cluster = 0; cluster < ThreadMap::Iterations::kCluster; ++cluster) {
+            for (int group = 0; group < ThreadMap::Iterations::kGroup; ++group) {
+                for (int row = 0; row < ThreadMap::Iterations::kRow; ++row) {
+                    uint8_t const *byte_pointer = byte_pointer_
+                        + row * ThreadMap::Delta::kRow * stride_
+                        + group * ThreadMap::Delta::kGroup * stride_
+                        + cluster * ThreadMap::Delta::kCluster * stride_
+                        + pointer_offset * sizeof_bits<Element>::value / 8;
+                    LoadType const *memory_pointer = reinterpret_cast<LoadType const *>(byte_pointer);
+                    int frag_row_idx = (cluster * ThreadMap::Iterations::kGroup + group) * ThreadMap::Iterations::kRow + row;
+                    for (int column = 0; column < ThreadMap::Iterations::kColumn; ++column) {
+                        int frag_idx = frag_row_idx * ThreadMap::Iterations::kColumn + column;
+                        for (int v = 0; v < kLoadsPerAccess; ++v) {
+                            frag_ptr[frag_idx * kLoadsPerAccess + v] =
+                                memory_pointer[(column * ThreadMap::Delta::kColumn / kElementsPerAccess) * kLoadsPerAccess + v];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Loads a fragment
+    void load(Fragment &frag) const {
+        load_with_pointer_offset(frag, 0);
+    }
+};
+```
+
+## Epilogue Level
+
+在实现代码中，会在矩阵乘法GEMM的Kernel内核层级实例化一个Threadblock线程块层级的Epilogue模板类，并在内核函数中使用。CUTLASS会提供各个层级访问器的默认配置，这被抽象为epilogue::threadblock::DefaultEpilogueSimt模板类、epilogue::threadblock::DefaultEpilogueTensorOp模板类。
+
+默认配置包括，实例化线程映射OutputTileOptimalThreadMap模板类、实例化设备全局内存访问器PredicatedTileIterator模板类、实例化共享内存读取器SharedLoadIterator模板类、实例化共享内存写入器TileIteratorSimt模板类、TileIteratorTensorOp模板类、实例化累加器矩阵读取器FragmentIteratorSimt模板类、FragmentIteratorTensorOp模板类。
+
+### DefaultEpilogueSimt
+
+在cutlass/epilogue/threadblock/default_epilogue_simt.h头文件中，提供epilogue::threadblock::DefaultEpilogueSimt的定义，如下所示。
+
+```c++
+/// Defines sensible defaults for epilogues for SimtOps.
+template <
+    typename Shape_,        /// Threadblock-level tile size - gemm::GemmShape
+    typename WarpMmaSimt_,  /// Warp-level operator - gemm::warp::MmaSimt
+    typename OutputOp_,     /// Epilogue output operator - epilogue::thread::LinearCombination
+    int ElementsPerAccess,  /// 1 for SIMT, and `128 / sizeof_bits<Element>::value` for TensorOp.
+    bool ScatterD = false,
+    typename PermuteDLayout = layout::NoPermute,
+    conv::StrideSupport StrideSupport = conv::StrideSupport::kUnity,
+    int Rank = 4
+>
+struct DefaultEpilogueSimt {
+    using Shape = Shape_;
+    using WarpMmaSimt = WarpMmaSimt_;
+    using OutputOp = OutputOp_;
+    static int const kElementsPerAccess = ElementsPerAccess;
+    static int const kRank = Rank;
+    static int const kPartitionsK = Shape::kK / WarpMmaSimt::Shape::kK;
+    using LayoutC = typename WarpMmaSimt::LayoutC;
+    using ElementOutput = typename OutputOp::ElementOutput;
+    using ElementAccumulator = typename WarpMmaSimt::ElementC;
+
+    // Thread map
+    using OutputTileThreadMap = typename cutlass::epilogue::threadblock::DefaultThreadMapSimt<
+        Shape, typename WarpMmaSimt::Shape, typename WarpMmaSimt::Policy,
+        kPartitionsK, ElementOutput, kElementsPerAccess>::Type;
+
+    static bool const UseCUDAStore = platform::is_same<ElementOutput, double>::value;
+
+    using OutputTileIterator = cutlass::epilogue::threadblock::PredicatedTileIterator<
+        OutputTileThreadMap, ElementOutput, ScatterD, PermuteDLayout, UseCUDAStore>;
+
+    using AccumulatorFragmentIterator = cutlass::epilogue::warp::FragmentIteratorSimt<
+        typename WarpMmaSimt::Shape, typename WarpMmaSimt::ThreadMma,
+        layout::RowMajor, typename WarpMmaSimt::Policy>;
+
+    using WarpTileIterator = cutlass::epilogue::warp::TileIteratorSimt<
+        typename WarpMmaSimt::Shape, typename WarpMmaSimt::ThreadMma,
+        ElementAccumulator, layout::RowMajor, typename WarpMmaSimt::Policy>;
+
+    using SharedLoadIterator = cutlass::epilogue::threadblock::SharedLoadIterator<
+        typename OutputTileThreadMap::CompactedThreadMap, ElementAccumulator>;
+
+    /// Hard-coded padding elements added 
+    using Padding = typename WarpTileIterator::Padding;
+
+    // Define the epilogue
+    using Epilogue = cutlass::epilogue::threadblock::Epilogue<
+        Shape, WarpMmaSimt, kPartitionsK,
+        OutputTileIterator, AccumulatorFragmentIterator, WarpTileIterator, SharedLoadIterator,
+        OutputOp, Padding>;
+};
+```
+
+### DefaultEpilogueTensorOp
+
+在cutlass/epilogue/threadblock/default_epilogue_tensor_op.h头文件中，提供epilogue::threadblock::DefaultEpilogueTensorOp的定义，如下所示。
+
+```c++
+namespace detail {
+template<
+    typename ElementOutput,
+    typename ElementAccumulator,
+    int ElementsPerAccess,
+    typename ThreadblockShape,
+    typename WarpShape,
+    typename InstructionShape,
+    typename ThreadMap
+>
+struct DefaultIteratorsTensorOp {
+    using WarpTileIterator = cutlass::epilogue::warp::TileIteratorTensorOp<
+        WarpShape, InstructionShape, ElementAccumulator, layout::RowMajor>;
+
+    using SharedLoadIterator = cutlass::epilogue::threadblock::SharedLoadIterator<
+        ThreadMap, ElementAccumulator>;
+
+    static int const kFragmentsPerIteration = 1;
+};
+} // namespace detail
+
+/// Defines sensible defaults for epilogues for TensorOps.
+template <
+    typename Shape_,            /// Threadblock-level tile size - gemm::GemmShape
+    typename WarpMmaTensorOp_,  /// Warp-level operator - gemm::warp::MmaTensorOp
+    int PartitionsK,            /// Shape::kK / WarpMmaTensorOp::Shape::kK
+    typename OutputOp_,         /// Epilogue output operator - epilogue::thread::LinearCombination
+    int ElementsPerAccess,      /// 1 for SIMT, and `128 / sizeof_bits<Element>::value` for TensorOp.
+    bool ScatterD = false,
+    typename PermuteDLayout = layout::NoPermute,
+    conv::StrideSupport StrideSupport = conv::StrideSupport::kUnity,
+    int Rank = 4
+>
+struct DefaultEpilogueTensorOp {
+    using Shape = Shape_;
+    using WarpMmaTensorOp = WarpMmaTensorOp_;
+    static int const kPartitionsK = PartitionsK;
+    using OutputOp = OutputOp_;
+    static int const kElementsPerAccess = ElementsPerAccess;
+    static int const kRank = Rank;
+    using LayoutC = typename WarpMmaTensorOp::LayoutC;
+    using ElementOutput = typename OutputOp::ElementOutput;
+    using ElementAccumulator = typename WarpMmaTensorOp::ElementC;
+
+    // Thread map
+    using OutputTileThreadMap = typename cutlass::epilogue::threadblock::DefaultThreadMapTensorOp<
+        Shape, typename WarpMmaTensorOp::Shape,
+        kPartitionsK, ElementOutput, kElementsPerAccess>::Type;
+
+    static bool const UseCUDAStore = platform::is_same<ElementOutput, double>::value;
+
+    using OutputTileIterator = cutlass::epilogue::threadblock::PredicatedTileIterator<
+        OutputTileThreadMap, ElementOutput, ScatterD, PermuteDLayout, UseCUDAStore>;
+
+    using AccumulatorFragmentIterator = cutlass::epilogue::warp::FragmentIteratorTensorOp<
+        typename WarpMmaTensorOp::Shape, typename WarpMmaTensorOp::Policy::Operator::Shape,
+        typename WarpMmaTensorOp::Policy::Operator::ElementC, typename WarpMmaTensorOp::Policy::Operator::FragmentC, LayoutC>;
+
+    /// Support several implementations depending on structure of epilogue
+    using DefaultIterators = detail::DefaultIteratorsTensorOp<
+        ElementOutput, ElementAccumulator, kElementsPerAccess, Shape,
+        typename WarpMmaTensorOp::Shape, typename WarpMmaTensorOp::Policy::Operator::Shape,
+        typename OutputTileThreadMap::CompactedThreadMap>;
+
+    using WarpTileIterator = typename DefaultIterators::WarpTileIterator;
+    using SharedLoadIterator = typename DefaultIterators::SharedLoadIterator;
+
+    /// Hard-coded padding elements added 
+    using Padding = cutlass::MatrixShape<0, 64 / sizeof_bits<ElementAccumulator>::value * 4>;
+    static int const kFragmentsPerIteration = (kPartitionsK == 1 ? DefaultIterators::kFragmentsPerIteration : 1);
+
+    // Define the epilogue
+    using Epilogue = cutlass::epilogue::threadblock::Epilogue<
+        Shape, WarpMmaTensorOp, kPartitionsK,
+        OutputTileIterator, AccumulatorFragmentIterator, WarpTileIterator, SharedLoadIterator,
+        OutputOp, Padding, kFragmentsPerIteration>;
+};
+```
+
+### EpilogueBase
+
+将计算操作、共享内存读写、设备全局内存读写整合在一起，即是一个完整的尾处理操作，这被抽象为epilogue::threadblock::Epilogue模板类，该模板类继承自epilogue::threadblock::EpilogueBase模板类和epilogue::threadblock::EpilogueBaseStreamK模板类。
+
+其中，父类epilogue::threadblock::EpilogueBase用于声明一个Threadblock线程块所需的共享内存空间，并为Warp线程束层级的用于将累加器数据写入到共享内存的TileIteratorSimt模板类和TileIteratorTensorOp模板类设置每个Warp线程束的初始偏移。
+
+在cutlass/epilogue/threadblock/epilogue_base.h头文件中，提供epilogue::threadblock::EpilogueBase的定义，如下所示。
+
+```c++
+/// Base class for epilogues defining warp-level 
+template <
+    typename Shape_,                        /// Shape of threadblock tile (concept: GemmShape)
+    typename WarpShape_,                    /// Warp-level MMA operator (concept: gemm::warp::MmaTensorOp)
+    int PartitionsK,                        /// Number of partitions of the K dimension
+    typename AccumulatorFragmentIterator_,  /// Fragment iterator selecting accumulators
+    typename WarpTileIterator_,             /// Warp-scoped tile iterator writing accumulators to SMEM
+    typename Padding_,                      /// Padding added to SMEM allocation to avoid bank conflicts (concept: MatrixShape)
+    int FragmentsPerIteration = 1
+>
+class EpilogueBase {
+public:
+    using Shape = Shape_;
+    using WarpShape = WarpShape_;
+    static int const kPartitionsK = PartitionsK;
+    using AccumulatorFragmentIterator = AccumulatorFragmentIterator_;
+    using WarpTileIterator = WarpTileIterator_;
+    using Padding = Padding_;
+
+    using Layout = layout::RowMajor;  /// Output layout is always row-major
+    using WarpCount = gemm::GemmShape<Shape::kM / WarpShape::kM, Shape::kN / WarpShape::kN, kPartitionsK>;  /// Number of warps
+
+    using AccumulatorTile = typename AccumulatorFragmentIterator::AccumulatorTile;  /// The complete warp-level accumulator tile
+    using ElementAccumulator = typename AccumulatorTile::Element;                   /// Accumulator element
+
+    /// Use this to control the granularity of one epilogue 'iteration'
+    static int const kFragmentsPerIteration = FragmentsPerIteration;
+
+public:
+    /// Shared storage allocation needed by the epilogue
+    struct SharedStorage {
+        using Element = typename WarpTileIterator::Element;      /// Element type of shared memory
+        using TensorRef = typename WarpTileIterator::TensorRef;  /// Tensor reference to shared memory allocation
+        using Layout = typename WarpTileIterator::Layout;        /// Layout of shared memory allocation
+        /// Logical shape of the shared memory tile written to by all warps.
+        using Shape = MatrixShape<
+            WarpCount::kM * WarpTileIterator::Shape::kRow * WarpCount::kK,
+            WarpCount::kN * WarpTileIterator::Shape::kColumn
+        >;
+        /// Shape of the shared memory allocation with padding for the epilogue.
+        using StorageShape = MatrixShape<
+            (Shape::kRow + Padding::kRow) * kFragmentsPerIteration,
+            Shape::kColumn + Padding::kColumn
+        >;
+        
+        AlignedBuffer<Element, StorageShape::kCount> storage;  /// shared memroy storage
+        
+        /// Returns a pointer to the shared memory buffer
+        Element *data() {
+            return storage.data();
+        }
+
+        /// Returns a tensor reference to the shared memory buffer
+        TensorRef reference() {
+            return TensorRef(storage.data(), Layout::packed({ StorageShape::kRow, StorageShape::kColumn }));
+        }
+    };
+
+protected:
+    SharedStorage &shared_storage_;        /// shared memroy storage
+    WarpTileIterator warp_tile_iterator_;  /// Stores a warp's fragment of accumulators to SMEM
+
+public:
+    /// Constructor
+    EpilogueBase(
+        SharedStorage &shared_storage,  ///< Shared storage object    
+        int thread_idx,                 ///< ID of a thread within the threadblock
+        int warp_idx,                   ///< ID of warp within threadblock
+        int lane_idx                    ///< Id of thread within warp
+    ) : shared_storage_(shared_storage), warp_tile_iterator_(shared_storage.reference(), lane_idx) {
+        // Compute warp location within threadblock tile by mapping the warp_id to three coordinates:
+        // idx_m: the warp's position within the threadblock along the M dimension
+        // idx_n: the warp's position within the threadblock along the N dimension
+        // idx_k: the warp's position within the threadblock along the K dimension
+        int warp_k = warp_idx / (WarpCount::kM * WarpCount::kN);
+        int warp_mn = warp_idx % (WarpCount::kM * WarpCount::kN);
+        int warp_m = warp_mn % WarpCount::kM;
+        int warp_n = warp_mn / WarpCount::kM;
+        MatrixCoord warp_offset{ warp_k * WarpCount::kM + warp_m, warp_n };
+        warp_tile_iterator_.add_tile_offset(warp_offset);
+    }
+};
+```
+
+### EpilogueBaseStreamK
+
+将计算操作、共享内存读写、设备全局内存读写整合在一起，即是一个完整的尾处理操作，这被抽象为epilogue::threadblock::Epilogue模板类，该模板类继承自epilogue::threadblock::EpilogueBase模板类和epilogue::threadblock::EpilogueBaseStreamK模板类。
+
+其中，父类epilogue::threadblock::EpilogueBaseStreamK用于为每个Thread线程所持有的累加器数据执行可选的归约操作。
+
+在cutlass/block_striped.h头文件中，提供一些用于逐条带（strip）访问线程块数据的辅助类，如下所示。
+
+```c++
+/// Computes the maximal power-of-two that evenly divides the size of T, capped at Limit
+template <typename T, int Limit>
+struct AccessWidth {
+    // Inductive case
+    template <
+        int ObjectBytes,  /// Size of T in bytes
+        int AlignBytes,   /// Template induction variable
+        /// Whether ObjectBytes is an even multiple of AlignBytes
+        bool IsAligned = (AlignBytes <= Limit) && (ObjectBytes % AlignBytes == 0)
+    >
+    struct Detail {
+        // 模板元递归：AlignBytes从一个值开始倍增，直到达到Limit上限，或者ObjectBytes不再是AlignBytes的整数倍
+        static const int value = Detail<ObjectBytes, AlignBytes * 2>::value;
+    };
+
+    // Base case (ObjectBytes is not an even multiple of AlignBytes)
+    template <
+        int ObjectBytes,  /// Size of T in bytes
+        int AlignBytes    /// Template induction variable
+    >
+    struct Detail<ObjectBytes, AlignBytes, false> {
+        static const int value = AlignBytes / 2;
+    };
+
+    /// The maximal power-of-two that evenly divides the size of T
+    static const int value = Detail<(int)sizeof(T), 1>::value;
+};
+
+/// ReinterpretCast type for striping a trivially-copyable type in global memory.
+/// Default specialization. Striping granularity is type T.
+template <
+    typename T,                                    /// Data type of each thread, i.e. Fragment
+    int TransferBytes = AccessWidth<T, 16>::value  /// Data access width (16 byte max for global memory access)
+>
+struct alignas(TransferBytes) StripedAccessType : public T {};
+
+/// ReinterpretCast type for striping a trivially-copyable type in global memory.
+/// Specialization for cutlass::Array<T>. Striping granularity is a multiple of T.
+template <
+    typename T,          /// Array element type
+    int N,               /// Number of elements in array
+    bool RegisterSized,  /// T is register-sized
+    int TransferBytes    /// Data access width, Alignment of StripedAccessType
+>
+struct StripedAccessType<Array<T, N, RegisterSized>, TransferBytes>
+    : public AlignedArray<T, __NV_STD_MAX(1, TransferBytes / sizeof(T)), TransferBytes> {};
+```
+
+在cutlass/block_striped.h头文件中，提供cutlass::BlockStriped的定义，用于逐条带（strip）访问线程块数据，如下所示。
+
+```c++
+/// Utility for performing block-striped access (load, store) of trivially-copyable, statically-sized array types to global memory
+/// 一整个线程块的所有线程连续访问一个条带（strip），然后再访问下一个条带，依此类推。[T0,T1,..,TN][T0,T1,..TN]
+template <
+    int BlockThreads,  /// Participating threads in one Threadblock
+    typename ArrayT,   /// Array type of each thread, i.e. Fragment = Array<Element, kElementsPerIteration>
+    typename AccessT = StripedAccessType<ArrayT>
+>
+struct BlockStriped {
+    /// Number of striped accesses
+    static const int kStripes = int(sizeof(ArrayT) / sizeof(AccessT));
+
+    /// Load
+    static void load(ArrayT &data, ArrayT *ptr, int thread_idx) {
+        AccessT *access_input = reinterpret_cast<AccessT*>(ptr);
+        AccessT *access_data = reinterpret_cast<AccessT*>(&data);
+        for (int i = 0; i < kStripes; ++i) {
+            access_data[i] = access_input[(BlockThreads * i) + thread_idx];
+        }
+    }
+
+    /// Load & Add
+    static void load_add(ArrayT &data, ArrayT *ptr, int thread_idx) {
+        AccessT *access_input = reinterpret_cast<AccessT*>(ptr);
+        AccessT *access_data = reinterpret_cast<AccessT*>(&data);
+        plus<AccessT> add;
+        for (int i = 0; i < kStripes; ++i) {
+            access_data[i] = add(access_data[i], access_input[(BlockThreads * i) + thread_idx]);
+        }
+    }
+
+    /// Store
+    static void store(ArrayT *ptr, const ArrayT &data, int thread_idx) {
+        AccessT *access_output = reinterpret_cast<AccessT*>(ptr);
+        const AccessT *access_data = reinterpret_cast<const AccessT*>(&data);
+        for (int i = 0; i < kStripes; ++i) {
+            access_output[(BlockThreads * i) + thread_idx] = access_data[i];
+        }
+    }
+};
+
+```
+
+在cutlass/epilogue/threadblock/epilogue_base_streamk.h头文件中，提供epilogue::threadblock::EpilogueBaseStreamK的定义，如下所示。
+
+```c++
+/// StreamK epilogue functionality for cross-block accumulator fragment reduction
+template <
+    typename Shape,                       /// Shape of threadblock tile (concept: GemmShape)
+    int PartitionsK,                      /// Number of partitions of the K dimension
+    typename WarpMmaOperator,             /// Warp-level MMA operator (concept: gemm::warp::Mma[Simt|TensorOp])
+    typename AccumulatorFragmentIterator  /// Iterator for enumerating fragments within the per-thread tile of raw accumulators
+>
+class EpilogueBaseStreamK {
+protected:
+    /// Number of threads per block
+    static int const kBlockThreads = 32 * WarpCount::kCount;
+    /// Number of warps
+    using WarpCount = gemm::GemmShape<Shape::kM / WarpMmaOperator::Shape::kM, Shape::kN / WarpMmaOperator::Shape::kN, PartitionsK>;
+
+    /// Numerical accumulation element type
+    using ElementAccumulator = typename WarpMmaOperator::ElementC;
+    /// The per-thread tile of raw accumulators
+    using AccumulatorTile = typename AccumulatorFragmentIterator::AccumulatorTile;
+    /// Fragment used by the accumulator tile's fragment iterator
+    using AccumulatorFragment = typename AccumulatorFragmentIterator::Fragment;
+
+public:
+    /// Number of AccumulatorTile fragments per thread
+    static int const kAccumulatorFragments = AccumulatorFragmentIterator::Policy::kIterations;
+
+protected:
+    /// Block-striped transfer utility for sharing AccumulatorFragment
+    using BlockStripedT = BlockStriped<kBlockThreads, AccumulatorFragment>;
+
+    /// Number of AccumulatorTile fragments per block output tile
+    static int const kOutputTileFragments = kBlockThreads * kAccumulatorFragments;
+    /// AccumulatorFragment stride in the shared workspace between different peer blocks.
+    /// (each Threadblock can share accumulators for up to two threadblock output tiles)
+    /// The first tile is the reduced output tile that will be modify by the Threadblock.
+    /// The second tile is the original tile that contain the non-modifing srouce data.
+    static const int kPeerFragmentStride = kOutputTileFragments * 2;
+
+public:
+    /// Workspace bytes per Threadblock
+    static size_t const kWorkspaceBytesPerBlock = sizeof(AccumulatorFragment) * kPeerFragmentStride;
+    int thread_idx;  /// Thread index in the threadblock
+
+public:
+    /// Constructor
+    EpilogueBaseStreamK(int thread_idx) : thread_idx(thread_idx) {}
+
+    /// Aggregates the accumulator sets shared by peer blocks in the global workspace
+    /// @param accum_fragment [out] : sum of all shared accumulator fragments for these peer partials
+    void reduce(AccumulatorFragment &accum_fragment, int peer_idx_begin, int peer_idx_end, int reduce_fragment_idx, void *workspace_ptr) {
+        plus<AccumulatorFragment> add_fragments_op;
+
+        AccumulatorFragment *fragment_workspace = reinterpret_cast<AccumulatorFragment *>(workspace_ptr);
+        int fragment_offset = (peer_idx_begin * kPeerFragmentStride) + (reduce_fragment_idx * kBlockThreads);
+        // Load first peer fragment
+        BlockStripedT::load(accum_fragment, fragment_workspace + fragment_offset, this->thread_idx);
+        fragment_offset += kPeerFragmentStride;   // Move to next peer
+        fragment_offset += kOutputTileFragments;  // Move to the set of fragments for this peer's "non-started" output tile
+
+        // Reduce fragments from additional peers
+        for (; fragment_offset < peer_idx_end * kPeerFragmentStride; fragment_offset += kPeerFragmentStride) {
+            // Load peer fragment
+            AccumulatorFragment addend_fragment;
+            BlockStripedT::load(addend_fragment, fragment_workspace + fragment_offset, this->thread_idx);
+            // Add peer fragment
+            accum_fragment = add_fragments_op(accum_fragment, addend_fragment);
+        }
+    }
+
+    /// Shares the accumulator set with peers in the global workspace
+    /// @param started_tile : Whether this threadblock computed the first work volume for the current output tile
+    void share(int peer_idx, void *workspace_ptr, AccumulatorTile const &accumulators, bool started_tile) {
+        AccumulatorFragment *fragment_workspace = reinterpret_cast<AccumulatorFragment *>(workspace_ptr);
+        int fragment_offset = peer_idx * kPeerFragmentStride;
+        if (started_tile == false) {
+            fragment_offset += kOutputTileFragments;  // Move to the set of fragments for the "non-started" output tile
+        }
+
+        AccumulatorFragmentIterator accum_fragment_iterator(accumulators);
+        // Convert raw accumulator tile to fragments and store
+        for (int iter = 0; iter < kAccumulatorFragments; ++iter) {
+            // Acquire reordered accumulator fragment
+            AccumulatorFragment accum_fragment;
+            accum_fragment_iterator.load(accum_fragment);
+            ++accum_fragment_iterator;
+            // Store accumulator fragment
+            BlockStripedT::store(fragment_workspace + fragment_offset, accum_fragment, this->thread_idx);
+            fragment_offset += kBlockThreads;
+        }
+    }
+};
+```
+
+### Epilogue
+
+将计算操作、共享内存读写、设备全局内存读写整合在一起，即是一个完整的尾处理操作，这被抽象为epilogue::threadblock::Epilogue模板类。
+
+在cutlass/epilogue/threadblock/epilogue.h头文件中，提供epilogue::threadblock::Epilogue的定义，如下所示。
+
+```c++
+/// Epilogue operator
+template <
+    typename Shape_,                        /// Shape of threadblock tile (concept: GemmShape)
+    typename WarpMmaOperator_,              /// Warp-level MMA operator (concept: gemm::warp::MmaTensorOp)
+    int PartitionsK,                        /// Number of partitions of the K dimension
+    typename OutputTileIterator_,           /// Tile iterator reading and writing output tensors
+    typename AccumulatorFragmentIterator_,  /// Fragment iterator selecting accumulators
+    typename WarpTileIterator_,             /// Warp-scoped tile iterator writing accumulators to SMEM
+    typename SharedLoadIterator_,           /// Threadblock-scoped tile iterator loading from SMEM
+    typename OutputOp_,                     /// Output operator
+    typename Padding_,                      /// Padding added to SMEM allocation to avoid bank conflicts (concept: MatrixShape)
+    int FragmentsPerPartition = 1,          /// Used to coarsten the epilogue granularity
+    int IterationsUnroll = 1                /// Used to reduce binary size when epilogue op is large
+>
+class Epilogue
+    : public EpilogueBase<Shape_, typename WarpMmaOperator_::Shape, PartitionsK,
+                          AccumulatorFragmentIterator_, WarpTileIterator_, Padding_, FragmentsPerPartition>,
+      public EpilogueBaseStreamK<Shape_, PartitionsK, WarpMmaOperator_, AccumulatorFragmentIterator_> {
+public:
+    using Base = EpilogueBase<Shape_, typename WarpMmaOperator_::Shape, PartitionsK,
+        AccumulatorFragmentIterator_, WarpTileIterator_, Padding_, FragmentsPerPartition>;
+    using BaseStreamK = EpilogueBaseStreamK<Shape_, PartitionsK, WarpMmaOperator_, AccumulatorFragmentIterator_>;
+
+    using Shape = Shape_;
+    using WarpMmaOperator = WarpMmaOperator_;
+    static int const kPartitionsK = PartitionsK;
+    using OutputTileIterator = OutputTileIterator_;
+    using AccumulatorFragmentIterator = AccumulatorFragmentIterator_;
+    using WarpTileIterator = WarpTileIterator_;
+    using SharedLoadIterator = SharedLoadIterator_;
+    using OutputOp = OutputOp_;
+    using Padding = Padding_;
+    using Layout = layout::RowMajor;
+    using LongIndex = typename Layout::LongIndex;
+
+    using WarpCount = typename Base::WarpCount;               /// Number of warps per block
+    static int const kBlockThreads = 32 * WarpCount::kCount;  /// Number of threads per block
+
+    /// Per-thread complete warp-level accumulator tile
+    using AccumulatorTile = typename Base::AccumulatorTile;
+    /// Fragment type used by the accumulator tile's fragment iterator
+    using AccumulatorFragment = typename AccumulatorFragmentIterator::Fragment;
+
+    using ElementAccumulator = typename WarpMmaOperator::ElementC;  /// Numerical accumulation element type
+    using ElementOutput = typename OutputTileIterator::Element;     /// Output element
+    static int const kElementsPerAccess = OutputTileIterator::kElementsPerAccess;  /// Output access size
+    using TensorRef = typename OutputTileIterator::TensorRef;                      /// Tensor reference to destination tensor
+    using ConstTensorRef = typename OutputTileIterator::ConstTensorRef;            /// Const tensor reference to source tensor
+
+    /// Vector type used by the global output iterator
+    using OutputAccessType = Array<typename OutputTileIterator::Element, OutputTileIterator::kElementsPerAccess>;
+    /// Vector type used by the shared output iterator
+    using AccumulatorAccessType = Array<typename WarpTileIterator::Element, OutputTileIterator::kElementsPerAccess>;
+
+    static int constexpr kSmemTiles = Base::kFragmentsPerIteration > 1 ? Base::kFragmentsPerIteration : kPartitionsK;  // always 1
+    static int constexpr kSmemPointerOffset = Base::SharedStorage::StorageShape::kCount / kSmemTiles;
+
+public:
+    /// Aspect for when epilogue source is not needed
+    struct SourceAspectNotNeeded {
+        /// Constructor
+        SourceAspectNotNeeded() {}
+
+        void load() {}  /// no-op
+
+        /// Invoke the output functor over each vector of output
+        void apply_output_operator(
+            typename OutputTileIterator::Fragment &output_fragment, OutputOp const &output_op,
+            typename SharedLoadIterator::Fragment const &aligned_accum_fragment
+        ) {
+            OutputAccessType *output_frag_ptr = reinterpret_cast<OutputAccessType *>(&output_fragment);
+            AccumulatorAccessType const *compute_frag_ptr = reinterpret_cast<AccumulatorAccessType const *>(&aligned_accum_fragment);
+            int const kOutputOpIterations = OutputTileIterator::Fragment::kElements / OutputTileIterator::kElementsPerAccess;
+            for (int i = 0; i < kOutputOpIterations; ++i) {
+                // Call the output operator
+                output_frag_ptr[i] = output_op(compute_frag_ptr[i]);
+            }
+        }
+    };
+
+    /// Aspect for when epilogue source is needed
+    struct SourceAspectNeeded {
+        OutputTileIterator source_iterator;
+        typename OutputTileIterator::Fragment source_fragment;
+
+        /// Constructor
+        SourceAspectNeeded(OutputTileIterator source_iterator) :
+            source_iterator(source_iterator) {
+            source_fragment.clear();
+        }
+
+        // Load addend source fragment from global memory
+        void load() {
+            source_iterator.load(source_fragment);
+            ++source_iterator;
+        }
+
+        /// Invoke the output functor over each vector of output
+        static void apply_output_operator(
+            typename OutputTileIterator::Fragment &output_fragment, OutputOp const &output_op,
+            typename SharedLoadIterator::Fragment const &aligned_accum_fragment,
+            typename OutputTileIterator::Fragment const &source_fragment
+        ) {
+            OutputAccessType *output_frag_ptr = reinterpret_cast<OutputAccessType *>(&output_fragment);
+            AccumulatorAccessType const *compute_frag_ptr = reinterpret_cast<AccumulatorAccessType const *>(&aligned_accum_fragment);
+            OutputAccessType const *source_frag_ptr = reinterpret_cast<OutputAccessType const *>(&source_fragment);
+            int const kOutputOpIterations = OutputTileIterator::Fragment::kElements / OutputTileIterator::kElementsPerAccess;
+            for (int i = 0; i < kOutputOpIterations; ++i) {
+                // Call the output operator
+                output_frag_ptr[i] = output_op(compute_frag_ptr[i], source_frag_ptr[i]);
+            }
+        }
+
+        /// Invoke the output functor over each vector of output
+        void apply_output_operator(
+            typename OutputTileIterator::Fragment &output_fragment, OutputOp const &output_op,
+            typename SharedLoadIterator::Fragment const &aligned_accum_fragment
+        ) {
+            apply_output_operator(output_fragment, output_op, aligned_accum_fragment, source_fragment);
+        }
+    };
+
+private:
+    SharedLoadIterator shared_load_iterator_;  /// Loads fragment from shared memory aligned with output tensor
+    int thread_idx;  /// Thread index in the threadblock
+    int warp_idx;    /// Warp index in the threadblock
+
+public:
+    /// Constructor
+    Epilogue(
+        typename Base::SharedStorage &shared_storage,  ///< Shared storage object
+        int thread_idx,  ///< ID of a thread within the threadblock
+        int warp_idx,    ///< ID of warp within threadblock
+        int lane_idx     ///< ID of thread within warp
+    ) : Base(shared_storage, thread_idx, warp_idx, lane_idx), BaseStreamK(thread_idx),
+        shared_load_iterator_(shared_storage.reference(), thread_idx),
+        thread_idx(thread_idx), warp_idx(warp_idx) {}
+
+    /// Perform the epilogue computations and stream the result to global memory.
+    void operator()(
+        OutputOp const &output_op,                ///< Output operator
+        OutputTileIterator destination_iterator,  ///< Tile iterator for destination
+        AccumulatorTile const &accumulators       ///< Complete warp-level accumulator tile
+    ) {
+        operator()(output_op, destination_iterator, accumulators, SourceAspectNotNeeded());
+    }
+
+    /// Perform the epilogue computations and stream the result to global memory.
+    /// Implements two alternative codepaths, depending on whether the output op requires addend data to be loaded.
+    void operator()(
+        OutputOp const &output_op,                ///< Output operator
+        OutputTileIterator destination_iterator,  ///< Tile iterator for destination
+        AccumulatorTile const &accumulators,      ///< Complete warp-level accumulator tile
+        OutputTileIterator source_iterator        ///< Tile iterator for addend source
+    ) {
+        if (output_op.is_source_needed()) {
+            operator()(output_op, destination_iterator, accumulators, SourceAspectNeeded(source_iterator));
+        } else {
+            operator()(output_op, destination_iterator, accumulators, SourceAspectNotNeeded());
+        }
+    }
+
+    /// Perform the epilogue computations and stream the result to global memory.
+    /// Implements a single codepath, regardless of whether the output op requires addend data to be loaded
+    void unified(
+        OutputOp const &output_op,                ///< Output operator
+        OutputTileIterator destination_iterator,  ///< Tile iterator for destination
+        AccumulatorTile const &accumulators,      ///< Complete warp-level accumulator tile
+        OutputTileIterator source_iterator        ///< Tile iterator for addend source
+    ) {
+        if (output_op.is_source_needed() == false) {
+            source_iterator.clear_mask();
+            __syncthreads();  // Dummy (CUDA 11.0)
+        }
+        operator()(output_op, destination_iterator, accumulators, SourceAspectNeeded(source_iterator));
+    }
+
+    template<class Seq>
+    struct acc2smem;
+    template <size_t... Seq>
+    struct acc2smem<cutlass::index_sequence<Seq...>> {
+        template<int Advance>
+        static void helper(AccumulatorFragmentIterator accum_fragment_iterator, WarpTileIterator &warp_tile_iterator) {
+            for (int i = 0; i < Advance; i++) {
+                ++accum_fragment_iterator;
+            }
+            typename AccumulatorFragmentIterator::Fragment accum_fragment;
+            accum_fragment_iterator.load(accum_fragment);
+            ++accum_fragment_iterator;
+            warp_tile_iterator.store(accum_fragment);
+        }
+
+        static void push(size_t pos, AccumulatorFragmentIterator const &iterator_begin, WarpTileIterator &warp_tile_iterator) {
+            // int dummy[] = {
+            //     (pos == 0) && (helper<0>(iterator_begin, warp_tile_iterator), 0),
+            //     (pos == 1) && (helper<1>(iterator_begin, warp_tile_iterator), 0),
+            //     (pos == 2) && (helper<2>(iterator_begin, warp_tile_iterator), 0),
+            //     ...
+            // };
+            int dummy[] = { (pos == Seq) && (helper<Seq>(iterator_begin, warp_tile_iterator), 0)... };
+        }
+    };
+
+    /// Streams the result to global memory
+    template <typename SourceAspect>
+    void operator()(
+        OutputOp const &output_op,                ///< Output operator
+        OutputTileIterator destination_iterator,  ///< Tile iterator for destination
+        AccumulatorTile const &accumulators,      ///< Complete warp-level accumulator tile
+        SourceAspect source
+    ) {
+        // Iterator over warp-level accumulator fragment
+        AccumulatorFragmentIterator accum_fragment_iterator(accumulators);
+
+        // Iterate over accumulator tile
+        for (int iter = 0; iter < OutputTileIterator::kIterations; ++iter) {
+            // Load the source
+            source.load();
+
+            // Convert and store fragment
+            __syncthreads();
+            // acc2smem<cutlass::index_sequence<0, 1, 2, ..., N-1>>::push()
+            acc2smem<cutlass::make_index_sequence<OutputTileIterator::kIterations>>::push(
+                iter, accum_fragment_iterator, this->warp_tile_iterator_
+            );
+            __syncthreads();
+
+            // Load fragments from shared memory
+            typename SharedLoadIterator::Fragment aligned_accum_fragment[kPartitionsK];
+            shared_load_iterator_.load(aligned_accum_fragment[0]);
+            if (kPartitionsK > 1) {
+                plus<typename SharedLoadIterator::Fragment> add_fragments_op;
+                for (int i = 1; i < kPartitionsK; ++i) {
+                    shared_load_iterator_.add_pointer_offset(kSmemPointerOffset);
+                    shared_load_iterator_.load(aligned_accum_fragment[i]);
+                    aligned_accum_fragment[0] = add_fragments_op(aligned_accum_fragment[0], aligned_accum_fragment[i]);
+                }
+                shared_load_iterator_.add_pointer_offset((1 - kPartitionsK) * kSmemPointerOffset);
+            }
+
+            // Compute the output result
+            typename OutputTileIterator::Fragment output_fragment;
+            source.apply_output_operator(output_fragment, output_op, aligned_accum_fragment[0]);
+
+            // Store the final result
+            destination_iterator.store(output_fragment);
+            ++destination_iterator;
+        }
     }
 };
 ```
