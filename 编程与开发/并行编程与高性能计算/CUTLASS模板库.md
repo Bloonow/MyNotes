@@ -440,6 +440,22 @@ static const int NumThreadsPerQuad = 4;
 static const int NumThreadsPerQuadPair = NumThreadsPerQuad * 2;
 ```
 
+在cutlass/device_kernel.h头文件中，提供一个辅助的内核函数cutlass::Kernel定义，可以用于启动所需的内核函数，如下所示。
+
+```c++
+/// Generic CUTLASS kernel template.
+template <typename Operator>
+__global__ static void Kernel(typename Operator::Params params) {
+    // Dynamic shared memory base pointer
+    extern __shared__ int SharedStorageBase[];
+    // Declare pointer to dynamic shared memory.
+    typename Operator::SharedStorage *shared_storage = reinterpret_cast<typename Operator::SharedStorage *>(SharedStorageBase);
+    Operator op;
+    op(params, *shared_storage);
+    cutlass::arch::synclog_print();
+}
+```
+
 在cutlass/detail/helper_macros.hpp头文件中，提供一些辅助宏定义，如下所示。
 
 ```c++
@@ -5036,7 +5052,7 @@ struct GemmSplitKIdentityThreadblockSwizzle {
 
 ## Kernel Level
 
-在cutlass/gemm/kernel目录中，提供矩阵乘法GEMM在Kernel内核层级的实现，用于设置各种参数，并对底层的Threadblock线程块层级的矩阵乘加操作进行封装，以及对诸如epilogue::threadblock::Epilogue的尾处理操作进行封装。这些操作被抽象为gemm::kernel::Gemm模板类、gemm::kernel::GemmArray模板类、gemm::kernel::GemmBatched模板类、gemm::kernel::GemmSplitKParallel模板类。此外，还提供一些相关的辅助类型，例如默认执行配置等。
+在cutlass/gemm/kernel目录中，提供矩阵乘法GEMM在Kernel内核层级的实现，用于设置各种参数，并对底层的Threadblock线程块层级的矩阵乘加操作进行封装，以及对诸如epilogue::threadblock::Epilogue的尾处理操作进行封装。这些操作被抽象为gemm::kernel::Gemm模板类、gemm::kernel::GemmBatched模板类、gemm::kernel::GemmSplitKParallel模板类。此外，还提供一些相关的辅助类型，例如默认执行配置等。
 
 ![](CUTLASS模板库.assets/gemm-kernel.png)
 
@@ -5197,7 +5213,7 @@ struct DefaultGemm<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignment
 template <
     typename Mma_,                 /// Threadblock-scoped matrix multiply-accumulate 
     typename Epilogue_,            /// Epilogue
-    typename ThreadblockSwizzle_,  /// Threadblock swizzling function
+    typename ThreadblockSwizzle_,  /// Threadblock swizzling function. gemm::threadblock::GemmIdentityThreadblockSwizzle
     bool SplitKSerial              /// If true, code supporting split-K via serial reduction is enabled.
 >
 struct Gemm {
@@ -5405,9 +5421,149 @@ struct Gemm {
 };
 ```
 
+### GemmBatched
+
+在cutlass/gemm/kernel/gemm_batched.h头文件中，提供gemm::kernel::GemmBatched的定义，如下所示。
+
+```c++
+template <
+    typename Mma_,                 /// Threadblock-scoped matrix multiply-accumulate 
+    typename Epilogue_,            /// Epilogue
+    typename ThreadblockSwizzle_   /// Threadblock swizzling function. gemm::threadblock::GemmBatchedIdentityThreadblockSwizzle
+>
+struct GemmBatched {
+    using Mma = Mma_;
+    using Epilogue = Epilogue_;
+    using OutputOp = typename Epilogue::OutputOp;
+    using ThreadblockSwizzle = ThreadblockSwizzle_;
+
+    using WarpCount = typename Mma::WarpCount;  /// Warp count (concept: GemmShape)
+    static int const kThreadCount = 32 * WarpCount::kCount;
+
+    /// Parameters structure
+    struct Params {
+        cutlass::gemm::GemmCoord problem_size{};
+        cutlass::gemm::GemmCoord grid_tiled_shape{};
+        int swizzle_log_tile{ 0 };
+        typename Mma::IteratorA::Params params_A{};
+        typename Mma::IteratorA::TensorRef ref_A{};
+        int64_t stride_A{ 0 };
+        typename Mma::IteratorB::Params params_B{};
+        typename Mma::IteratorB::TensorRef ref_B{};
+        int64_t stride_B{ 0 };
+        typename Epilogue::OutputTileIterator::Params params_C{};
+        typename Epilogue::OutputTileIterator::TensorRef ref_C{};
+        int64_t stride_C{ 0 };
+        typename Epilogue::OutputTileIterator::Params params_D{};
+        typename Epilogue::OutputTileIterator::TensorRef ref_D{};
+        int64_t stride_D{ 0 };
+        typename OutputOp::Params epilogue{};
+        int batch_count{ 1 };
+        int gemm_k_iterations{ 0 };
+
+        Params() = default;
+
+        Params(
+            cutlass::gemm::GemmCoord const & problem_size_,
+            cutlass::gemm::GemmCoord const & grid_tiled_shape_,
+            typename Mma::IteratorA::TensorRef ref_A_,
+            int64_t stride_A_,
+            typename Mma::IteratorB::TensorRef ref_B_,
+            int64_t stride_B_,
+            typename Epilogue::OutputTileIterator::TensorRef ref_C_,
+            int64_t stride_C_,
+            typename Epilogue::OutputTileIterator::TensorRef ref_D_,
+            int64_t stride_D_,
+            typename OutputOp::Params epilogue_,
+            int batch_count_
+        ) : problem_size(problem_size_),
+            grid_tiled_shape(grid_tiled_shape_),
+            swizzle_log_tile(ThreadblockSwizzle().get_log_tile(grid_tiled_shape)),
+            params_A(ref_A_.layout()), ref_A(ref_A_), stride_A(stride_A_),
+            params_B(ref_B_.layout()), ref_B(ref_B_), stride_B(stride_B_),
+            params_C(ref_C_.layout()), ref_C(ref_C_), stride_C(stride_C_),
+            params_D(ref_D_.layout()), ref_D(ref_D_), stride_D(stride_D_),
+            epilogue(epilogue_),
+            batch_count(batch_count_),
+            gemm_k_iterations((problem_size.k() + Mma::Shape::kK - 1) / Mma::Shape::kK) {}
+    };
+
+    /// Shared memory storage structure
+    union SharedStorage {
+        typename Mma::SharedStorage main_loop;
+        typename Epilogue::SharedStorage epilogue;
+    };
+
+    /// Default Constructor
+    GemmBatched() = default;
+
+    /// Executes one GEMM
+    void operator()(Params const &params, SharedStorage &shared_storage) {
+        // Compute threadblock location
+        ThreadblockSwizzle threadblock_swizzle;
+        cutlass::gemm::GemmCoord threadblock_tile_offset = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
+
+        // Early exit if CTA is out of range
+        if (params.grid_tiled_shape.m() <= threadblock_tile_offset.m() || params.grid_tiled_shape.n() <= threadblock_tile_offset.n()) {
+            return;
+        }
+
+
+        // Each CTA handles multiple batch indices to accommodate limited range of CUDA grid's Z dimension
+        for (int batch_idx = threadblock_swizzle.get_batch_idx(); batch_idx < params.batch_count; batch_idx += gridDim.z) {
+            // Compute initial location in logical coordinates
+            cutlass::MatrixCoord tb_offset_A{ threadblock_tile_offset.m() * Mma::Shape::kM, 0 };
+            cutlass::MatrixCoord tb_offset_B{ 0, threadblock_tile_offset.n() * Mma::Shape::kN };
+
+            // Compute position within threadblock
+            int thread_idx = threadIdx.x;
+
+            // Construct iterators to A and B operands
+            typename Mma::IteratorA iterator_A(params.params_A, params.ref_A.data(), params.problem_size.mk(), thread_idx, tb_offset_A);
+            iterator_A.add_pointer_offset(params.stride_A * batch_idx);
+            typename Mma::IteratorB iterator_B(params.params_B, params.ref_B.data(), params.problem_size.kn(), thread_idx, tb_offset_B);
+            iterator_B.add_pointer_offset(params.stride_B * batch_idx);
+
+            // Broadcast the warp_id computed by lane 0 to ensure dependent code is compiled as warp-uniform.
+            int warp_idx = canonical_warp_idx_sync();
+            int lane_idx = threadIdx.x % 32;
+
+            // Main loop
+            Mma mma(shared_storage.main_loop, thread_idx, warp_idx, lane_idx);
+            typename Mma::FragmentC accumulators;
+            accumulators.clear();
+            // Compute threadblock-scoped matrix multiply-add
+            mma(params.gemm_k_iterations, accumulators, iterator_A, iterator_B, accumulators);
+
+            // Epilogue
+            OutputOp output_op(params.epilogue);
+            // Masked tile iterators constructed from members
+            threadblock_tile_offset = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
+
+            //assume identity swizzle
+            MatrixCoord threadblock_offset(threadblock_tile_offset.m() * Mma::Shape::kM, threadblock_tile_offset.n() * Mma::Shape::kN);
+            // Tile iterator writing to output tile
+            typename Epilogue::OutputTileIterator iterator_C(
+                params.params_C, params.ref_C.data(), params.problem_size.mn(), thread_idx, threadblock_offset
+            );
+            iterator_C.add_pointer_offset(params.stride_C * batch_idx);
+            // Tile iterator writing to output tile
+            typename Epilogue::OutputTileIterator iterator_D(
+                params.params_D, params.ref_D.data(), params.problem_size.mn(), thread_idx, threadblock_offset
+            );
+            iterator_D.add_pointer_offset(params.stride_D * batch_idx);
+
+            Epilogue epilogue(shared_storage.epilogue, thread_idx, warp_idx, lane_idx);
+            // run efficient epilogue
+            epilogue(output_op, iterator_D, accumulators, iterator_C);
+        }
+    }
+};
+```
+
 ## Device Level
 
-在cutlass/gemm/device目录中，提供矩阵乘法GEMM在Device设备层级的接口，用于在GPU设备上启动矩阵乘法的kernel内核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。这些操作被抽象为gemm::device::Gemm模板类、gemm::device::GemmArray模板类、gemm::device::GemmBatched模板类、gemm::device::GemmSplitKParallel模板类。此外，还提供一些相关的辅助类型，例如默认执行配置等。
+在cutlass/gemm/device目录中，提供矩阵乘法GEMM在Device设备层级的接口，用于在GPU设备上启动矩阵乘法的kernel内核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。这些操作被抽象为gemm::device::Gemm模板类、gemm::device::GemmBatched模板类、gemm::device::GemmSplitKParallel模板类。此外，还提供一些相关的辅助类型，例如默认执行配置等。
 
 ![](CUTLASS模板库.assets/gemm-device.png)
 
@@ -5474,22 +5630,6 @@ struct DefaultGemmConfiguration<arch::OpClassTensorOp, arch::Sm75, ElementA, Ele
 
 在Device设备层级实现矩阵乘法GEMM时，需要为用户提供调用接口，接收、处理、存储矩阵乘加GEMM的各种配置参数。首先需要设置底层Kernel内核函数的启动配置，包括Grid网格与Threadblock线程块的尺寸大小，所需的共享内存空间大小，所需的操作缓冲区的内存空间大小等，然后需要启动内核函数执行。
 
-在cutlass/device_kernel.h头文件中，提供一个辅助的内核函数cutlass::Kernel定义，可以用于启动所需的内核函数，如下所示。
-
-```c++
-/// Generic CUTLASS kernel template.
-template <typename Operator>
-__global__ static void Kernel(typename Operator::Params params) {
-    // Dynamic shared memory base pointer
-    extern __shared__ int SharedStorageBase[];
-    // Declare pointer to dynamic shared memory.
-    typename Operator::SharedStorage *shared_storage = reinterpret_cast<typename Operator::SharedStorage *>(SharedStorageBase);
-    Operator op;
-    op(params, *shared_storage);
-    cutlass::arch::synclog_print();
-}
-```
-
 在cutlass/gemm/device/gemm.h头文件中，提供gemm::device::Gemm的定义，如下所示。
 
 ```c++
@@ -5505,32 +5645,32 @@ template <
     typename ArchTag_ = arch::Sm70,               /// Tag indicating architecture to tune for
     /// Threadblock-level tile size (concept: GemmShape)
     typename ThreadblockShape_ = typename DefaultGemmConfiguration<
-    OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::ThreadblockShape,
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::ThreadblockShape,
     /// Warp-level tile size (concept: GemmShape)
     typename WarpShape_ = typename DefaultGemmConfiguration<
-    OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::WarpShape,
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::WarpShape,
     /// Instruction-level tile size (concept: GemmShape)
     typename InstructionShape_ = typename DefaultGemmConfiguration<
-    OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::InstructionShape,
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::InstructionShape,
     /// Epilogue output operator
     typename EpilogueOutputOp_ = typename DefaultGemmConfiguration<
-    OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::EpilogueOutputOp,
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::EpilogueOutputOp,
     /// Threadblock-level swizzling operator
     typename ThreadblockSwizzle_ = typename threadblock::GemmIdentityThreadblockSwizzle<>,
     /// Number of stages used in the pipelined mainloop
     int Stages = DefaultGemmConfiguration<
-    OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::kStages,
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::kStages,
     /// Access granularity of A matrix in units of elements
     int AlignmentA = DefaultGemmConfiguration<
-    OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::kAlignmentA,
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::kAlignmentA,
     /// Access granularity of B matrix in units of elements
     int AlignmentB = DefaultGemmConfiguration<
-    OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::kAlignmentB,
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::kAlignmentB,
     /// If true, kernel supports split-K with serial reduction
     bool SplitKSerial = false,
     /// Operation performed by GEMM
     typename Operator_ = typename DefaultGemmConfiguration<
-    OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::Operator,
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::Operator,
     bool GatherA = false,   /// Gather operand A by using an index array
     bool GatherB = false,   /// Gather operand B by using an index array
     bool ScatterD = false,  /// Scatter result D by using an index array
@@ -5725,6 +5865,205 @@ public:
         return run(stream);
     }
 
+};
+```
+
+### GemmBatched
+
+在cutlass/gemm/device/gemm_batched.h头文件中，提供gemm::device::GemmBatched的定义，如下所示。
+
+```c++
+template <
+    typename ElementA_,  /// Element type for A matrix operand
+    typename LayoutA_,   /// Layout type for A matrix operand
+    typename ElementB_,  /// Element type for B matrix operand
+    typename LayoutB_,   /// Layout type for B matrix operand
+    typename ElementC_,  /// Element type for C and D matrix operands
+    typename LayoutC_,   /// Layout type for C and D matrix operands
+    typename ElementAccumulator_ = ElementC_,     /// Element type for internal accumulation
+    typename OperatorClass_ = arch::OpClassSimt,  /// Operator class tag
+    typename ArchTag_ = arch::Sm70,               /// Tag indicating architecture to tune for
+    /// Threadblock-level tile size (concept: GemmShape)
+    typename ThreadblockShape_ = typename DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::ThreadblockShape,
+    /// Warp-level tile size (concept: GemmShape)
+    typename WarpShape_ = typename DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::WarpShape,
+    /// Instruction-level tile size (concept: GemmShape)
+    typename InstructionShape_ = typename DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::InstructionShape,
+    /// Epilogue output operator
+    typename EpilogueOutputOp_ = typename DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::EpilogueOutputOp,
+    /// Threadblock-level swizzling operator
+    typename ThreadblockSwizzle_ = threadblock::GemmBatchedIdentityThreadblockSwizzle,
+    /// Number of stages used in the pipelined mainloop
+    int Stages = DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::kStages,
+    /// Access granularity of A matrix in units of elements
+    int AlignmentA = DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::kAlignmentA,
+    /// Access granularity of B matrix in units of elements
+    int AlignmentB = DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::kAlignmentB,
+    /// Operation performed by GEMM
+    typename Operator_ = typename DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::Operator
+>
+class GemmBatched {
+public:
+    using ElementA = ElementA_;
+    using LayoutA = LayoutA_;
+    using TensorRefA = TensorRef<ElementA const, LayoutA>;
+    using ElementB = ElementB_;
+    using LayoutB = LayoutB_;
+    using TensorRefB = TensorRef<ElementB const, LayoutB>;
+    using ElementC = ElementC_;
+    using LayoutC = LayoutC_;
+    using TensorRefC = TensorRef<ElementC const, LayoutC>;
+    using TensorRefD = TensorRef<ElementC, LayoutC>;
+    using ElementAccumulator = ElementAccumulator_;
+    using OperatorClass = OperatorClass_;
+    using ArchTag = ArchTag_;
+    using ThreadblockShape = ThreadblockShape_;
+    using WarpShape = WarpShape_;
+    using InstructionShape = InstructionShape_;
+    using EpilogueOutputOp = EpilogueOutputOp_;
+    using ThreadblockSwizzle = ThreadblockSwizzle_;
+    using Operator = Operator_;
+    static int const kStages = Stages;
+    static int const kAlignmentA = AlignmentA;
+    static int const kAlignmentB = AlignmentB;
+    static int const kAlignmentC = EpilogueOutputOp::kCount;
+
+    /// Define the kernel
+    using DefaultGemmKernel = typename kernel::DefaultGemm<
+        ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB, ElementC, LayoutC, ElementAccumulator,
+        OperatorClass, ArchTag, ThreadblockShape, WarpShape, InstructionShape, EpilogueOutputOp, ThreadblockSwizzle,
+        kStages, false, Operator
+    >::GemmKernel;
+    using GemmKernel = kernel::GemmBatched<typename DefaultGemmKernel::Mma, typename DefaultGemmKernel::Epilogue, ThreadblockSwizzle>;
+
+    /// Argument structure
+    struct Arguments {
+        GemmCoord problem_size;
+        TensorRef<ElementA const, LayoutA> ref_A;
+        int64_t stride_A;
+        TensorRef<ElementB const, LayoutB> ref_B;
+        int64_t stride_B;
+        TensorRef<ElementC const, LayoutC> ref_C;
+        int64_t stride_C;
+        TensorRef<ElementC, LayoutC> ref_D;
+        int64_t stride_D;
+        typename EpilogueOutputOp::Params epilogue;
+        int batch_count;
+
+        /// Default Constructor
+        Arguments() {}
+
+        /// Constructs an Arguments structure 
+        Arguments(
+            GemmCoord problem_size_,
+            TensorRef<ElementA const, LayoutA> ref_A_,
+            int64_t stride_A_,
+            TensorRef<ElementB const, LayoutB> ref_B_,
+            int64_t stride_B_,
+            TensorRef<ElementC const, LayoutC> ref_C_,
+            int64_t stride_C_,
+            TensorRef<ElementC, LayoutC> ref_D_,
+            int64_t stride_D_,
+            typename EpilogueOutputOp::Params epilogue_,
+            int batch_count_
+        ) : problem_size(problem_size_),
+            ref_A(ref_A_), stride_A(stride_A_),
+            ref_B(ref_B_), stride_B(stride_B_),
+            ref_C(ref_C_), stride_C(stride_C_),
+            ref_D(ref_D_), stride_D(stride_D_),
+            epilogue(epilogue_),
+            batch_count(batch_count_) {}
+    };
+
+private:
+    typename GemmKernel::Params params_;  /// Kernel parameters object
+
+public:
+    /// Constructs the GEMM.
+    GemmBatched() {}
+
+    /// Gets the workspace size
+    static size_t get_workspace_size(Arguments const &args) {
+        return 0;
+    }
+
+    /// Initializes GEMM state from arguments.
+    Status initialize(Arguments const &args, void *workspace = nullptr, cudaStream_t stream = nullptr) {
+        // Determine grid shape
+        ThreadblockSwizzle threadblock_swizzle;
+        cutlass::gemm::GemmCoord grid_shape = threadblock_swizzle.get_tiled_shape(
+            args.problem_size, { ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK }, args.batch_count
+        );
+
+        // Initialize the Params structure
+        params_ = typename GemmKernel::Params{
+            args.problem_size,
+            grid_shape,
+            args.ref_A.non_const_ref(),
+            args.stride_A,
+            args.ref_B.non_const_ref(),
+            args.stride_B,
+            args.ref_C.non_const_ref(),
+            args.stride_C,
+            args.ref_D,
+            args.stride_D,
+            args.epilogue,
+            args.batch_count
+        };
+        return Status::kSuccess;
+    }
+
+    /// Lightweight update given a subset of arguments
+    Status update(Arguments const &args, void *workspace = nullptr) {
+        params_.ref_A.reset(args.ref_A.non_const_ref().data());
+        params_.ref_B.reset(args.ref_B.non_const_ref().data());
+        params_.ref_C.reset(args.ref_C.non_const_ref().data());
+        params_.ref_D.reset(args.ref_D.data());
+        return Status::kSuccess;
+    }
+
+    /// Runs the kernel using initialized state.
+    Status run(cudaStream_t stream = nullptr) {
+        ThreadblockSwizzle threadblock_swizzle;
+        dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
+        dim3 block(GemmKernel::kThreadCount, 1, 1);
+        cudaError_t result;
+
+        int smem_size = int(sizeof(typename GemmKernel::SharedStorage));
+        if (smem_size >= (48 << 10)) {
+            result = cudaFuncSetAttribute(Kernel<GemmKernel>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+            if (result != cudaSuccess) {
+                return Status::kErrorInternal;
+            }
+        }
+        cutlass::arch::synclog_setup();
+        cutlass::Kernel<GemmKernel><<<grid, block, smem_size, stream>>>(params_);
+        result = cudaGetLastError();
+
+        return result == cudaSuccess ? Status::kSuccess : Status::kErrorInternal;
+    }
+
+    /// Runs the kernel using initialized state.
+    Status operator()(Arguments const &args, void *workspace = nullptr, cudaStream_t stream = nullptr) {
+        Status status = initialize(args, workspace);
+        if (status == Status::kSuccess) {
+            status = run(stream);
+        }
+        return status;
+    }
+
+    /// Runs the kernel using initialized state.
+    Status operator()(cudaStream_t stream = nullptr) {
+        return run(stream);
+    }
 };
 ```
 
