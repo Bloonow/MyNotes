@@ -4990,12 +4990,11 @@ struct GemmBatchedIdentityThreadblockSwizzle {
 };
 ```
 
-在cutlass/gemm/threadblock/threadblock_swizzle.h头文件中，提供gemm::threadblock::GemmSplitKIdentityThreadblockSwizzle的定义，如下所示。
+在cutlass/gemm/threadblock/threadblock_swizzle.h头文件中，提供gemm::threadblock::GemmSplitKHorizontalThreadblockSwizzle的定义，如下所示。
 
 ```c++
 /// Threadblock swizzling function for split-K GEMMs
-template <int N = 1>
-struct GemmSplitKIdentityThreadblockSwizzle {
+struct GemmSplitKHorizontalThreadblockSwizzle {
     /// Returns the shape of the problem in units of logical tiles
     static GemmCoord get_tiled_shape(GemmCoord problem_size, GemmCoord tile_size, int partitions) {
         return GemmCoord(
@@ -5007,43 +5006,28 @@ struct GemmSplitKIdentityThreadblockSwizzle {
 
     /// Calculates optimal swizzle width
     static int get_log_tile(GemmCoord tiled_shape) {
-        auto n = tiled_shape.n();
-        // Thresholds picked so that it doesn't cause too many no-op CTAs
-        if (N >= 8 && n >= 6)      return 3;
-        else if (N >= 4 && n >= 3) return 2;
-        else if (N >= 2 && n >= 2) return 1;
-        else /* N == 1 */          return 0;
+        return 0;
     }
-
+    
     /// Computes CUDA grid dimensions given a size in units of logical tiles
     static dim3 get_grid_shape(GemmCoord tiled_shape) {
-        int tile = 1 << get_log_tile(tiled_shape);
-        return dim3(tiled_shape.m() * tile, (tiled_shape.n() + tile - 1) / tile, tiled_shape.k());
+        return dim3(tiled_shape.n(), tiled_shape.m(), tiled_shape.k());
     }
 
     /// Obtains the threadblock offset (in units of threadblock-scoped tiles)
     static GemmCoord get_tile_offset(int log_tile) {
-        int block_idx_x = RematerializeBlockIdxX();
-        int block_idx_y = RematerializeBlockIdxY();
-        int block_idx_z = RematerializeBlockIdxZ();
         return GemmCoord{
-            (block_idx_x >> log_tile),
-            (block_idx_y << log_tile) + ((block_idx_x) & ((1 << (log_tile)) - 1)),
-            block_idx_z
+            RematerializeBlockIdxY(),
+            RematerializeBlockIdxX(),
+            RematerializeBlockIdxZ()
         };
     }
 
     /// Obtains the threadblock offset (in units of threadblock-scoped tiles)
     static GemmCoord get_tile_offset(GemmCoord tiled_shape) {
-        int const kTile = N;
-        int block_idx_x = RematerializeBlockIdxX();
-        int block_idx_y = RematerializeBlockIdxY();
-        if ((tiled_shape.m() < kTile) || (tiled_shape.n() < kTile)) {
-            return GemmCoord{ block_idx_x, block_idx_y, RematerializeBlockIdxZ() };
-        }
         return GemmCoord{
-            (block_idx_x / kTile),
-            (block_idx_y * kTile) + (block_idx_x % kTile),
+            RematerializeBlockIdxY(),
+            RematerializeBlockIdxX(),
             RematerializeBlockIdxZ()
         };
     }
@@ -5561,6 +5545,162 @@ struct GemmBatched {
 };
 ```
 
+### GemmSplitKParallel
+
+在cutlass/gemm/kernel/gemm_splitk_parallel.h头文件中，提供gemm::kernel::GemmSplitKParallel的定义，如下所示。
+
+```c++
+template <
+    typename Mma_,                /// Threadblock-scoped matrix multiply-accumulate 
+    typename Epilogue_,           /// Epilogue
+    typename ThreadblockSwizzle_  /// Threadblock swizzling function
+>
+struct GemmSplitKParallel {
+    using Mma = Mma_;
+    using Epilogue = Epilogue_;
+    using OutputOp = typename Epilogue::OutputOp;
+    using ThreadblockSwizzle = ThreadblockSwizzle_;
+
+    using WarpCount = typename Mma::WarpCount;  /// Warp count (concept: GemmShape)
+    static int const kThreadCount = 32 * WarpCount::kCount;
+    static int const kAlignmentK = Mma::Operator::Shape::kK;
+
+    /// Parameters structure
+    struct Params {
+        cutlass::gemm::GemmCoord problem_size;
+        cutlass::gemm::GemmCoord grid_tiled_shape;
+        int swizzle_log_tile;
+        typename Mma::IteratorA::Params params_A;
+        typename Mma::IteratorA::TensorRef ref_A;
+        typename Mma::IteratorB::Params params_B;
+        typename Mma::IteratorB::TensorRef ref_B;
+        typename Epilogue::OutputTileIterator::Params params_D;
+        typename Epilogue::OutputTileIterator::TensorRef ref_D;
+        typename OutputOp::Params output_op;
+        int64_t splitk_slice_stride;
+        int gemm_k_size;
+
+        Params() : swizzle_log_tile(0) {}
+
+        Params(
+            cutlass::gemm::GemmCoord const & problem_size,
+            cutlass::gemm::GemmCoord const & grid_tiled_shape,
+            typename Mma::IteratorA::TensorRef ref_A,
+            typename Mma::IteratorB::TensorRef ref_B,
+            typename Epilogue::OutputTileIterator::TensorRef ref_D,
+            typename OutputOp::Params output_op,
+            int64_t splitk_slice_stride
+        ) : problem_size(problem_size),
+            grid_tiled_shape(grid_tiled_shape),
+            swizzle_log_tile(ThreadblockSwizzle().get_log_tile(grid_tiled_shape)),
+            params_A(ref_A.layout()), ref_A(ref_A),
+            params_B(ref_B.layout()), ref_B(ref_B),
+            params_D(ref_D.layout()), ref_D(ref_D),
+            output_op(output_op),
+            splitk_slice_stride(splitk_slice_stride) {
+            int full_gemm_k_iterations = problem_size.k() / Mma::Shape::kK;
+            int gemm_k_iterations = full_gemm_k_iterations / grid_tiled_shape.k();
+            gemm_k_size = gemm_k_iterations * Mma::Shape::kK;
+        }
+    };
+
+    /// Shared memory storage structure
+    union SharedStorage {
+        typename Mma::SharedStorage main_loop;
+        typename Epilogue::SharedStorage epilogue;
+    };
+
+    GemmSplitKParallel() {}
+
+    /// Executes one GEMM
+    void operator()(Params const &params, SharedStorage &shared_storage) {
+        // Compute threadblock location
+        ThreadblockSwizzle threadblock_swizzle;
+        cutlass::gemm::GemmCoord threadblock_tile_offset = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
+
+        // Early exit if CTA is out of range
+        if (params.grid_tiled_shape.m() <= threadblock_tile_offset.m() || params.grid_tiled_shape.n() <= threadblock_tile_offset.n()) {
+            return;
+        }
+
+        // Compute initial location in logical coordinates
+        cutlass::MatrixCoord tb_offset_A{
+            threadblock_tile_offset.m() * Mma::Shape::kM,
+            threadblock_tile_offset.k() * params.gemm_k_size,
+        };
+        cutlass::MatrixCoord tb_offset_B{
+            threadblock_tile_offset.k() * params.gemm_k_size,
+            threadblock_tile_offset.n() * Mma::Shape::kN
+        };
+
+        // Problem size is a function of threadblock index in the K dimension
+        int problem_size_k;
+        if (threadblock_tile_offset.k() == params.grid_tiled_shape.k() - 1) {
+            problem_size_k = params.problem_size.k();
+        } else {
+            problem_size_k = (threadblock_tile_offset.k() + 1) * params.gemm_k_size;
+        }
+
+        // Compute threadblock-scoped matrix multiply-add
+        int gemm_k_iterations = (problem_size_k - tb_offset_A.column() + Mma::Shape::kK - 1) / Mma::Shape::kK;
+
+        // Compute position within threadblock
+        int thread_idx = threadIdx.x;
+
+        // Construct iterators to A and B operands
+        typename Mma::IteratorA iterator_A(
+            params.params_A,
+            params.ref_A.data(),
+            { params.problem_size.m(), problem_size_k },
+            thread_idx,
+            tb_offset_A
+        );
+        typename Mma::IteratorB iterator_B(
+            params.params_B,
+            params.ref_B.data(),
+            { problem_size_k, params.problem_size.n() },
+            thread_idx,
+            tb_offset_B
+        );
+
+        int warp_idx = threadIdx.x / 32;
+        int lane_idx = threadIdx.x % 32;
+
+        // Main loop
+        // Construct thread-scoped matrix multiply
+        Mma mma(shared_storage.main_loop, thread_idx, warp_idx, lane_idx);
+        typename Mma::FragmentC accumulators;
+        accumulators.clear();
+        mma(gemm_k_iterations, accumulators, iterator_A, iterator_B, accumulators);
+
+        // Epilogue
+        OutputOp output_op(params.output_op);
+        // Masked tile iterators constructed from members
+        threadblock_tile_offset = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
+        //assume identity swizzle
+        MatrixCoord threadblock_offset(
+            threadblock_tile_offset.m() * Mma::Shape::kM,
+            threadblock_tile_offset.n() * Mma::Shape::kN
+        );
+
+        // Tile iterator writing to output tile
+        typename Epilogue::OutputTileIterator iterator_D(
+            params.params_D,
+            params.ref_D.data(),
+            params.problem_size.mn(),
+            thread_idx,
+            threadblock_offset
+        );
+        iterator_D.add_pointer_offset(params.splitk_slice_stride * threadblock_tile_offset.k());
+
+        // Execute the epilogue
+        Epilogue epilogue(shared_storage.epilogue, thread_idx, warp_idx, lane_idx);
+        // Run efficient epilogue
+        epilogue(output_op, iterator_D, accumulators, iterator_D);
+    }
+};
+```
+
 ## Device Level
 
 在cutlass/gemm/device目录中，提供矩阵乘法GEMM在Device设备层级的接口，用于在GPU设备上启动矩阵乘法的kernel内核函数，主要包括标准GEMM计算、分组GEMM计算、批量GEMM计算、SplitK算法GEMM计算。这些操作被抽象为gemm::device::Gemm模板类、gemm::device::GemmBatched模板类、gemm::device::GemmSplitKParallel模板类。此外，还提供一些相关的辅助类型，例如默认执行配置等。
@@ -6047,6 +6187,245 @@ public:
         cutlass::arch::synclog_setup();
         cutlass::Kernel<GemmKernel><<<grid, block, smem_size, stream>>>(params_);
         result = cudaGetLastError();
+
+        return result == cudaSuccess ? Status::kSuccess : Status::kErrorInternal;
+    }
+
+    /// Runs the kernel using initialized state.
+    Status operator()(Arguments const &args, void *workspace = nullptr, cudaStream_t stream = nullptr) {
+        Status status = initialize(args, workspace);
+        if (status == Status::kSuccess) {
+            status = run(stream);
+        }
+        return status;
+    }
+
+    /// Runs the kernel using initialized state.
+    Status operator()(cudaStream_t stream = nullptr) {
+        return run(stream);
+    }
+};
+```
+
+### GemmSplitKParallel
+
+在cutlass/gemm/device/gemm_splitk_parallel.h头文件中，提供gemm::device::GemmSplitKParallel的定义，如下所示。
+
+```c++
+template <
+    typename ElementA_,  /// Element type for A matrix operand
+    typename LayoutA_,   /// Layout type for A matrix operand
+    typename ElementB_,  /// Element type for B matrix operand
+    typename LayoutB_,   /// Layout type for B matrix operand
+    typename ElementC_,  /// Element type for C and D matrix operands
+    typename LayoutC_,   /// Layout type for C and D matrix operands
+    typename ElementAccumulator_ = ElementC_,     /// Element type for internal accumulation
+    typename OperatorClass_ = arch::OpClassSimt,  /// Operator class tag
+    /// Tag indicating architecture to tune for. This is the minimum SM that supports the intended feature.
+    typename ArchTag_ = arch::Sm70,
+    /// Threadblock-level tile size (concept: GemmShape)
+    typename ThreadblockShape_ = typename DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::ThreadblockShape,
+    /// Warp-level tile size (concept: GemmShape)
+    typename WarpShape_ = typename DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::WarpShape,
+    /// Instruction-level tile size (concept: GemmShape)
+    typename InstructionShape_ = typename DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::InstructionShape,
+    /// Epilogue output operator
+    typename EpilogueOutputOp_ = typename DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::EpilogueOutputOp,
+    /// Epilogue output operator
+    typename ConvertScaledOp_ = cutlass::epilogue::thread::Convert<
+        ElementAccumulator_, DefaultGemmConfiguration<OperatorClass_, ArchTag_, ElementA_, ElementB_,
+            ElementAccumulator_, ElementAccumulator_>::EpilogueOutputOp::kCount,
+        ElementAccumulator_>,
+    /// Reduction operator
+    typename ReductionOp_ = cutlass::reduction::thread::ReduceAdd<
+        ElementAccumulator_, typename EpilogueOutputOp_::ElementAccumulator, EpilogueOutputOp_::kCount>,
+    /// Threadblock-level swizzling operator
+    typename ThreadblockSwizzle_ = threadblock::GemmSplitKHorizontalThreadblockSwizzle,
+    /// Number of stages used in the pipelined mainloop
+    int Stages = DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::kStages,
+    /// Access granularity of A matrix in units of elements
+    int kAlignmentA = DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::kAlignmentA,
+    /// Access granularity of B matrix in units of elements
+    int kAlignmentB = DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::kAlignmentB,
+    /// Operation performed by GEMM
+    typename Operator_ = typename DefaultGemmConfiguration<
+        OperatorClass_, ArchTag_, ElementA_, ElementB_, ElementC_, ElementAccumulator_>::Operator
+>
+class GemmSplitKParallel {
+public:
+    using ElementA = ElementA_;
+    using LayoutA = LayoutA_;
+    using ElementB = ElementB_;
+    using LayoutB = LayoutB_;
+    using ElementC = ElementC_;
+    using LayoutC = LayoutC_;
+    using ElementAccumulator = ElementAccumulator_;
+    using OperatorClass = OperatorClass_;
+    using ArchTag = ArchTag_;
+    using ThreadblockShape = ThreadblockShape_;
+    using WarpShape = WarpShape_;
+    using InstructionShape = InstructionShape_;
+    using ConvertScaledOp = ConvertScaledOp_;
+    using EpilogueOutputOp = EpilogueOutputOp_;
+    using ReductionOp = ReductionOp_;
+    using ThreadblockSwizzle = ThreadblockSwizzle_;
+    using Operator = Operator_;
+    static int const kStages = Stages;
+
+    /// GEMM kernel 
+    using GemmKernel = typename kernel::DefaultGemmSplitKParallel<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB,
+        ElementAccumulator, LayoutC, ElementAccumulator, OperatorClass, ArchTag, ThreadblockShape, WarpShape, InstructionShape,
+        ConvertScaledOp, ThreadblockSwizzle, kStages, Operator>::GemmKernel;
+
+    /// Reduction kernel
+    using ReductionKernel = cutlass::reduction::kernel::ReduceSplitK<
+        cutlass::MatrixShape<4, 32 * EpilogueOutputOp::kCount>, EpilogueOutputOp, ReductionOp>;
+
+    /// Argument structure
+    struct Arguments {
+        GemmCoord problem_size;
+        TensorRef<ElementA const, LayoutA> ref_A;
+        TensorRef<ElementB const, LayoutB> ref_B;
+        TensorRef<ElementC const, LayoutC> ref_C;
+        TensorRef<ElementC, LayoutC> ref_D;
+        typename EpilogueOutputOp::Params epilogue;
+        int split_k_slices;
+        typename ConvertScaledOp::Params convert;
+        typename ReductionOp::Params reduction;
+
+        Arguments() {}
+
+        /// Constructs an Arguments structure 
+        Arguments(
+            GemmCoord problem_size_,
+            TensorRef<ElementA const, LayoutA> ref_A_,
+            TensorRef<ElementB const, LayoutB> ref_B_,
+            TensorRef<ElementC const, LayoutC> ref_C_,
+            TensorRef<ElementC, LayoutC> ref_D_,
+            typename EpilogueOutputOp::Params epilogue_ = typename EpilogueOutputOp::Params(),
+            int split_k_slices = 1,
+            typename ConvertScaledOp::Params convert_ = typename ConvertScaledOp::Params(),
+            typename ReductionOp::Params reduction_ = typename ReductionOp::Params()
+        ) : problem_size(problem_size_),
+            ref_A(ref_A_), ref_B(ref_B_), ref_C(ref_C_), ref_D(ref_D_),
+            epilogue(epilogue_),
+            split_k_slices(split_k_slices),
+            convert(convert_),
+            reduction(reduction_) {}
+    };
+
+private:
+    typename GemmKernel::Params gemm_params_;            /// Kernel parameters object
+    typename ReductionKernel::Params reduction_params_;  /// Reduction kernel parameters object
+
+public:
+    /// Constructs the GEMM.
+    GemmSplitKParallel() {}
+
+    /// Gets the workspace size
+    static size_t get_workspace_size(Arguments const &args) {
+        // Determine grid shape
+        ThreadblockSwizzle threadblock_swizzle;
+        cutlass::gemm::GemmCoord grid_shape = threadblock_swizzle.get_tiled_shape(
+            args.problem_size,
+            { ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK },
+            args.split_k_slices
+        );
+        // 缓冲区空间的大小与问题规模有关，M * N * splitK
+        return sizeof(ElementAccumulator_) * size_t(args.problem_size.m()) * size_t(args.problem_size.n()) * grid_shape.k();
+    }
+
+    /// Initializes GEMM state from arguments.
+    Status initialize(Arguments const &args, void *workspace) {
+        // Determine grid shape
+        ThreadblockSwizzle threadblock_swizzle;
+        cutlass::gemm::GemmCoord grid_shape = threadblock_swizzle.get_tiled_shape(
+            args.problem_size,
+            { ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK },
+            args.split_k_slices
+        );
+
+        // Define a reference to the workspace - this is an aligned region in device memory.
+        if (workspace == nullptr) {
+            return Status::kErrorWorkspaceNull;
+        }
+
+        TensorRef<ElementAccumulator_, layout::RowMajor> ref_workspace(static_cast<ElementAccumulator_ *>(workspace), args.problem_size.n());
+        int64_t partition_stride = int64_t(args.problem_size.m()) * int64_t(args.problem_size.n());
+
+        // Initialize the Params structure
+        gemm_params_ = typename GemmKernel::Params{
+            args.problem_size,
+            grid_shape,
+            args.ref_A.non_const_ref(),
+            args.ref_B.non_const_ref(),
+            ref_workspace,  // 使用缓冲区空间，作为矩阵D的部分和的临时存储位置
+            args.convert,
+            partition_stride
+        };
+        reduction_params_ = typename ReductionKernel::Params(
+            args.problem_size.mn(),
+            grid_shape.k(),
+            partition_stride,
+            ref_workspace,  // 缓冲区空间
+            args.ref_D,     // 最终结果矩阵D的存储位置
+            args.ref_C.non_const_ref(),
+            args.epilogue
+        );
+        return Status::kSuccess;
+    }
+
+    /// Lightweight update given a subset of arguments
+    Status update(Arguments const &args, void *workspace = nullptr) {
+        if (workspace == nullptr) {
+            return Status::kErrorWorkspaceNull;
+        }
+        gemm_params_.ref_A.reset(args.ref_A.data());
+        gemm_params_.ref_B.reset(args.ref_B.data());
+        gemm_params_.ref_D.reset(workspace);
+        reduction_params_.ref_D.reset(args.ref_D.data());
+        reduction_params_.ref_C.reset(args.ref_C.data());
+        return Status::kSuccess;
+    }
+
+    /// Runs the kernel using initialized state.
+    Status run(cudaStream_t stream = nullptr) {
+        // Launch GEMM kernel
+        ThreadblockSwizzle threadblock_swizzle;
+        dim3 grid = threadblock_swizzle.get_grid_shape(gemm_params_.grid_tiled_shape);
+        dim3 block(GemmKernel::kThreadCount, 1, 1);
+        cudaError_t result;
+
+        int smem_size = int(sizeof(typename GemmKernel::SharedStorage));
+        if (smem_size >= (48 << 10)) {
+            result = cudaFuncSetAttribute(Kernel<GemmKernel>, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+            if (result != cudaSuccess) {
+                return Status::kErrorInternal;
+            }
+        }
+
+        cutlass::arch::synclog_setup();
+        Kernel<GemmKernel><<<grid, block, smem_size, stream>>>(gemm_params_);
+        result = cudaGetLastError();
+        if (result != cudaSuccess) {
+            return Status::kErrorInternal;
+        }
+
+        // Launch reduction kernel
+        block = ReductionKernel::block_shape();
+        grid = ReductionKernel::grid_shape(gemm_params_.problem_size.mn());
+        Kernel<ReductionKernel><<<grid, block, 0, stream>>>(reduction_params_);
+        result = cudaGetLastError();
+        if (result != cudaSuccess) {
+            return Status::kErrorInternal;
+        }
 
         return result == cudaSuccess ? Status::kSuccess : Status::kErrorInternal;
     }
@@ -7967,10 +8346,6 @@ public:
     }
 };
 ```
-
-
-
-
 
 # Epilogue API
 
@@ -10354,3 +10729,184 @@ public:
     }
 };
 ```
+
+# Reduction API
+
+在cutlass/reduction目录中，提供归约操作的代码实现，主要用于SplitK算法，即在执行完矩阵乘法GEMM计算之后，进行多个线程块之间的归约操作。
+
+在cutlass/reduction/thread/reduction_operators.h头文件中，提供Thread线程层级的reduction::thread::ReduceAdd的定义，如下所示。
+
+```c++
+/// Mixed-precision reduction
+template <
+    typename ElementAccumulator_,
+    typename Element_,
+    int Count = 1
+>
+struct ReduceAdd {
+    using ElementAccumulator = ElementAccumulator_;
+    using Element = Element_;
+    static int const kCount = Count;
+
+    using FragmentAccumulator = cutlass::Array<ElementAccumulator, kCount>;
+    using FragmentElement = cutlass::Array<Element, kCount>;
+
+    struct Params {};
+
+    /// Parameters object
+    Params params;
+
+    /// Constructor
+    ReduceAdd(Params params_ = Params()) : params(params_) {}
+
+    /// Operator
+    FragmentAccumulator operator()(FragmentAccumulator accumulator, FragmentElement element) const {
+        plus<FragmentAccumulator> op;
+
+        NumericArrayConverter<
+            ElementAccumulator, Element, kCount, PreferredRoundingMode<ElementAccumulator, Element>::kRound
+        > converter;
+        
+        return op(accumulator, converter(element));
+    }
+};
+```
+
+在cutlass/reduction/kernel/reduce_split_k.h头文件中，提供Kernel内核函数层级的reduction::kernel::ReduceSplitK的定义，用于在设备全局内存上归约。
+
+```c++
+template <
+    typename Shape_,             /// shape of CTA level  (concept: MatrixShape<4, 32 * OutputOp::kCount>)
+    typename OutputOp_,          /// output operator     (concept: epilogue::thread operator)
+    typename ReductionOp_,       /// reduction operator  (concept: ReductionOperator)
+    int PartitionsPerStage = 4   /// number of partitions to issue
+>
+class ReduceSplitK {
+public:
+    using Shape = Shape_;
+    using OutputOp = OutputOp_;
+    using ReductionOp = ReductionOp_;
+    static int const kPartitionsPerStage = PartitionsPerStage;
+
+    using ElementWorkspace = typename ReductionOp::Element;
+    using ElementAccumulator = typename ReductionOp::ElementAccumulator;
+    using ElementOutput = typename OutputOp::ElementOutput;
+    using WorkspaceTensorRef = TensorRef<ElementWorkspace, layout::RowMajor>;
+    using OutputTensorRef = TensorRef<ElementOutput, layout::RowMajor>;
+    using StrideIndex = typename WorkspaceTensorRef::Layout::Stride::Index;
+
+    static int const kElementsPerAccess = OutputOp::kCount;
+    using FragmentWorkspace = AlignedArray<ElementWorkspace, kElementsPerAccess>;
+    using FragmentAccumulator = Array<ElementAccumulator, kElementsPerAccess>;
+    using FragmentOutput = AlignedArray<ElementOutput, kElementsPerAccess>;
+
+    /// Params structure
+    struct Params {
+        MatrixCoord problem_size;
+        int partitions;
+        size_t partition_stride;
+        WorkspaceTensorRef workspace;  // 缓冲区空间
+        OutputTensorRef destination;
+        OutputTensorRef source;
+        typename OutputOp::Params output;
+        typename ReductionOp::Params reduction;
+
+        Params() {}
+
+        Params(
+            MatrixCoord problem_size_,
+            int partitions_,
+            size_t partition_stride_,
+            WorkspaceTensorRef workspace_,
+            OutputTensorRef destination_,
+            OutputTensorRef source_,
+            typename OutputOp::Params output_ = typename OutputOp::Params(),
+            typename ReductionOp::Params reduction_ = typename ReductionOp::Params()
+        ) : problem_size(problem_size_),
+            partitions(partitions_),
+            partition_stride(sizeof(FragmentWorkspace) * partition_stride_ / kElementsPerAccess),
+            workspace(workspace_),
+            destination(destination_),
+            source(source_),
+            output(output_),
+            reduction(reduction_) {}
+    };
+
+    struct SharedStorage {};
+
+public:
+
+    /// Computes the grid size given a chosen threadblock shape
+    static dim3 grid_shape(cutlass::MatrixCoord problem_size) {
+        return dim3(
+            (problem_size.row() + Shape::kRow - 1) / Shape::kRow,
+            (problem_size.column() + Shape::kColumn - 1) / Shape::kColumn
+        );
+    }
+
+    /// Determines the threadblock shape
+    static dim3 block_shape() {
+        return dim3(Shape::kColumn / kElementsPerAccess, Shape::kRow);
+    }
+
+    /// Perform a reduction
+    void operator()(Params const &params, SharedStorage &storage) {
+        // Determine CTA position
+        MatrixCoord thread_offset(
+            MatrixCoord::Index(int(blockIdx.x) * Shape::kRow + threadIdx.y),
+            MatrixCoord::Index(int(blockIdx.y) * Shape::kColumn + threadIdx.x * kElementsPerAccess)
+        );
+
+        // One guard conditional
+        if (thread_offset.row() >= params.problem_size.row() || thread_offset.column() >= params.problem_size.column()) {
+            return;
+        }
+
+        ReductionOp reduction_op(params.reduction);
+        FragmentAccumulator accumulator;
+        accumulator.clear();
+
+        // Load the first slice
+        char const *workspace_ptr = reinterpret_cast<char const *>(params.workspace.data() + params.workspace.offset(thread_offset));
+        FragmentWorkspace workspace_frag[kPartitionsPerStage];
+
+        // Load and accumulate with a simple batched loading sequence.
+        for (int k = 0; k < params.partitions; k += kPartitionsPerStage) {
+            for (int i = 0; i < kPartitionsPerStage; ++i) {
+                if (k + i < params.partitions) {
+                    // 每次迭代workspace_ptr逐渐向后偏移，将kPartitionsPerStage个数据块搬移到workspace_frag最前面的位置
+                    workspace_frag[i] = *reinterpret_cast<FragmentWorkspace const *>(workspace_ptr);
+                    workspace_ptr += params.partition_stride;
+                }
+            }
+            for (int i = 0; i < kPartitionsPerStage; ++i) {
+                if (k + i < params.partitions) {
+                    // 将workspace_frag中的数据进行归约求和
+                    accumulator = reduction_op(accumulator, workspace_frag[i]);
+                }
+            }
+        }
+
+        // Construct the output operator
+        OutputOp output_op(params.output);
+
+        // Conditionally load the source
+        FragmentOutput source_frag;
+        source_frag.clear();
+        FragmentOutput const *source_ptr = reinterpret_cast<FragmentOutput const *>(
+            params.source.data() + params.source.offset(thread_offset)
+        );
+        if (output_op.is_source_needed()) {
+            reinterpret_cast<FragmentOutput &>(source_frag) = *source_ptr;
+        }
+        // Compute the output
+        typename OutputOp::FragmentOutput output_frag = output_op(accumulator, source_frag);
+        // Store
+        FragmentOutput *dest_ptr = reinterpret_cast<FragmentOutput *>(
+            params.destination.data() + params.destination.offset(thread_offset)
+        );
+        *dest_ptr = reinterpret_cast<FragmentOutput const &>(output_frag);
+    }
+};
+```
+
