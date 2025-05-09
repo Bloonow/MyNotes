@@ -1047,11 +1047,14 @@ result = list(map(lambda x, y: (x + y, x - y, x * y, x / y), arr_1, arr_2))
 ```python
 RowIndices = [0, 1]
 ColIndices = [0, 1, 2]
+
 for i in RowIndices:
     for j in ColIndices:
         print(f'(i,j) = ({i},{j})')
+
 for i, j in itertools.product(RowIndices, ColIndices):
     print(f'(i,j) = ({i},{j})')
+
 for i, j in [(i, j) for i in RowIndices for j in ColIndices]:
     print(f'(i,j) = ({i},{j})')
 ```
