@@ -63,3 +63,8 @@ $$
 对于一个卷积操作，假设输入的维数是[N, H, W, C]，卷积核的维数是[K, R, S, C]，输出的维数是[N, P, Q, K]，则对于一个图像而言，Im2Col模式如下所示。
 
 ![](Conv卷积操作.assets/Im2Col示意图.png)
+
+# CUTLASS的卷积实现
+
+在CUTLASS模板库中，提供ImplicitGemmConvolution卷积实现。在cutlass/conv根目录中，提供一些配置信息的头文件，包括二维卷积的问题规模、三维卷积的问题规模、卷积操作的各种具体配置等。此外，根目录cutlass/conv中的代码组织，也诸如通用矩阵乘法GEMM一样，分为Thread线程层级、Warp线程束层级、Threadblock线程块层级、Kernel内核层级、Device设备层级。
+
