@@ -6004,7 +6004,6 @@ public:
     Status operator()(cudaStream_t stream = nullptr) {
         return run(stream);
     }
-
 };
 ```
 
