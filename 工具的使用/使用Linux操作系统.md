@@ -104,9 +104,9 @@ systemctl [option] command [unit]
 
 使用systemctl list-units命令列出所有unit信息；使用systemctl status命令查看unit信息；使用systemctl start命令或systemctl stop命令启动或停止一个unit；使用systemctl restart命令或systemctl reload命令重新启动或重新加载一个unit；使用systemctl enable命令启用一个unit随系统开机启动；使用systemctl disable命令禁用一个unit不随系统开机启动。
 
-# 配置Linux环境变量
+# Linux环境变量
 
-对于Linux平台，可以在.bashrc文件中配置每次bash环境启动是需要执行的命令，并通过export命令将所需的头文件和库文件目录添加到环境变量中。注意，在Linux平台下的.sh文件，要保证其换行符为LF，而不能是Windows平台下的CRLF换行符，否则会出现莫名其妙的的错误。
+对于Linux平台，可以在.bashrc文件中配置每次bash环境启动时需要执行的命令，并通过export命令将所需的头文件和库文件目录添加到环境变量中。注意，在Linux平台下的.sh文件，要保证其换行符为LF，而不能是Windows平台下的CRLF换行符，否则会出现莫名其妙的的错误。
 
 配置用户bash的环境变量如下所示。推荐在$HOME/.bashrc中添加以下代码，以执行特定的配置文件。
 

@@ -2,8 +2,6 @@
 
 Git是一个分布式版本控制系统，具有丰富的命令集，可提供高级操作和对内部的完全访问。版本控制是基于工作目录的，每次目录状态的变化，无论是新建或删除文件，亦或是修改文件内容，都可以称为是一个版本。Git版本控制系统可以记录工作目录的所有状态变化，并支持回滚到历史上的某一个版本。
 
-可以从https://git-scm.com/downloads网址下载或直接在Linux中使用apt install git安装。在Linux平台中，Git套件被集成到bash shell终端中；在Windows平台中，可使用git-bash终端。
-
 Git使用三树原理来管理版本变化，包括工作区树（working tree）、暂存区树（staging area/index）、版本库树（commit/HEAD），可使用treeish树对象代指这三种树。
 
 工作区树（working tree），工作区树即是实际文件系统中的项目目录，是工作时实际操作和修改的目录，是项目的当前状态。
@@ -11,6 +9,42 @@ Git使用三树原理来管理版本变化，包括工作区树（working tree�
 暂存区树（staging area/index），暂存区树是一个中间临时区域，在对工作区树做出修改但还没有提交修改时，可以使用git add命令将工作区的修改添加到暂存区，暂存区树保存即将提交的修改。
 
 版本库树（commit/HEAD），版本库树是存储所有历史记录和版本的目录结构，每做出一次提交，都会在版本库中创建一个新的版本，每个版本都包含一组文件的快照，以及提交相关的元数据，如作者、时间戳和提交消息。版本库树由一系列的提交（commit）组成，最新的提交被称为HEAD头。
+
+## 安装与LFS
+
+在Windows平台上，可以从https://git-scm.com/downloads网址下载安装包，并安装。在安装之后，可以使用git-bash终端，也可以在CMD中使用git命令。
+
+在Linux平台上，可以使用apt install git命令安装。在安装之后，Git套件被集成到bash shell终端中，可以直接使用git命令。
+
+近几年，随着大模型技术的发展，越来越多的Git仓库中包含着预训练的模型文件，这些文件通常能达到GiB级别。为更好的处理Git仓库中的大文件，一个开源的扩展Git Large File Storage（LFS）对Git仓库中的大文件管理和存储进行了优化，它通过替换Git仓库中的大文件为指针文件，并将实际的文件存储在远程LFS服务器上，从而避免Git仓库体积过大，提高克隆和拉取的速度。
+
+在Windows平台上，可以从https://git-lfs.com网站下载安装包，并安装。在Linux平台上，可以使用apt install git-lfs命令安装Git LFS扩展。
+
+在使用Git LFS之前，需要为每个Git账户启用GIT LFS功能，执行如下命令即可，每个Git账户仅需执行一次，这会在.gitconfig文件中配置Git LFS功能。
+
+```shell
+git lfs install
+```
+
+在仓库项目中，使用如下命令添加要以LFS模式跟踪的大文件，也可以直接编辑.gitattributes配置文件。
+
+```shell
+git lfs track "*.psd"
+```
+
+在使用LFS跟踪之后，会在仓库项目的目录中创建.gitattributes配置文件（如果不存在），并在文件中添加如下内容。
+
+```
+*.psd filter=lfs diff=lfs merge=lfs -text
+```
+
+之后需要Git仓库跟踪.gitattributes配置文件，如下所示。
+
+```shell
+git add .gitattributes
+```
+
+然后就可以正常使用Git命令，而对于诸如之前配置的*.psd文件，Git LFS会自动管理。在使用git push命令时，Git LFS会将所管理的大文件上传到LFS服务器。在使用git clone命令或git pull命令时，Git LFS会自动下载相应的大文件。当然，也可以使用git lfs xxx系列命令手动管理大文件。
 
 ## 设置与配置
 

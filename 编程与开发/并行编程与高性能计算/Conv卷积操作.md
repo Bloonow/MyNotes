@@ -205,7 +205,7 @@ public:
 
     /// Returns filter extent as Tensor4DCoord
     cutlass::Tensor4DCoord filter_extent(bool is_deconv = false) const {
-        return is_deconv ? cutlass::Tensor4DCoord({ C, R, S, K / groups }) : cutlass::Tensor4DCoord({ K, R, S, C / groups });
+        return is_deconv == false ? cutlass::Tensor4DCoord({ K, R, S, C / groups }) : cutlass::Tensor4DCoord({ C, R, S, K / groups });
     }
 
     /// Returns output extent as Tensor4DCoord
@@ -371,6 +371,94 @@ int implicit_gemm_k_iterations(
         }
     }
     return iterations;
+}
+
+int implicit_gemm_k_iterations_per_channel(
+    Operator conv_operator, Conv2dProblemSize const &problem_size, IteratorAlgorithm algorithm = IteratorAlgorithm::kAnalytic
+) {
+    int iterations = 0;  // 0 means not applicable
+    if (algorithm == IteratorAlgorithm::kAnalytic || algorithm == IteratorAlgorithm::kOptimized) {
+        if (conv_operator == Operator::kFprop || conv_operator == Operator::kDeconv || conv_operator == Operator::kDgrad) {
+            iterations = problem_size.R * problem_size.S;
+        }
+    }
+    return iterations;
+}
+
+//////////////////////////////////////////////////////////////////////////////////
+//  Mapping function (ImplicitGemm A, B, C -> Conv Activation, Filter, Output)  //
+//////////////////////////////////////////////////////////////////////////////////
+
+/// Returns ImplicitGemm tensor A extent as Tensor4DCoord
+cutlass::Tensor4DCoord implicit_gemm_tensor_a_extent(Operator conv_operator, Conv2dProblemSize const &problem_size) {
+    switch (conv_operator) {
+    case cutlass::conv::Operator::kFprop: return problem_size.activation_extent();
+    case cutlass::conv::Operator::kDeconv:
+    case cutlass::conv::Operator::kDgrad: return problem_size.output_extent();
+    case cutlass::conv::Operator::kWgrad: return problem_size.output_extent();
+    default: break;
+    }
+    return cutlass::Tensor4DCoord();
+}
+
+/// Returns ImplicitGemm tensor B extent as Tensor4DCoord
+cutlass::Tensor4DCoord implicit_gemm_tensor_b_extent(Operator conv_operator, Conv2dProblemSize const &problem_size) {
+    switch (conv_operator) {
+    case cutlass::conv::Operator::kFprop: return problem_size.filter_extent();
+    case cutlass::conv::Operator::kDeconv: return problem_size.filter_extent(true);
+    case cutlass::conv::Operator::kDgrad: return problem_size.filter_extent();
+    case cutlass::conv::Operator::kWgrad: return problem_size.activation_extent();
+    default: break;
+    }
+    return cutlass::Tensor4DCoord();
+}
+
+/// Returns ImplicitGemm tensor C extent as Tensor4DCoord
+cutlass::Tensor4DCoord implicit_gemm_tensor_c_extent(Operator conv_operator, Conv2dProblemSize const &problem_size) {
+    switch (conv_operator) {
+    case cutlass::conv::Operator::kFprop: return problem_size.output_extent();
+    case cutlass::conv::Operator::kDeconv:
+    case cutlass::conv::Operator::kDgrad: return problem_size.activation_extent();
+    case cutlass::conv::Operator::kWgrad: return problem_size.filter_extent();
+    default: break;
+    }
+    return cutlass::Tensor4DCoord();
+}
+
+/// Returns ImplicitGemm tensor A size in number of elements
+int64_t implicit_gemm_tensor_a_size(Operator conv_operator, Conv2dProblemSize const &problem_size) {
+    switch (conv_operator) {
+    case cutlass::conv::Operator::kFprop: return problem_size.activation_size();
+    case cutlass::conv::Operator::kDeconv:
+    case cutlass::conv::Operator::kDgrad: return problem_size.output_size();
+    case cutlass::conv::Operator::kWgrad: return problem_size.output_size();
+    default: break;
+    }
+    return 0;
+}
+
+/// Returns ImplicitGemm tensor B size in number of elements
+int64_t implicit_gemm_tensor_b_size(Operator conv_operator, Conv2dProblemSize const &problem_size) {
+    switch (conv_operator) {
+    case cutlass::conv::Operator::kFprop: return problem_size.filter_size();
+    case cutlass::conv::Operator::kDeconv:
+    case cutlass::conv::Operator::kDgrad: return problem_size.filter_size();
+    case cutlass::conv::Operator::kWgrad: return problem_size.activation_size();
+    default: break;
+    }
+    return 0;
+}
+
+/// Returns ImplicitGemm tensor C size in number of elements
+int64_t implicit_gemm_tensor_c_size(Operator conv_operator, Conv2dProblemSize const &problem_size) {
+    switch (conv_operator) {
+    case cutlass::conv::Operator::kFprop: return problem_size.output_size();
+    case cutlass::conv::Operator::kDeconv:
+    case cutlass::conv::Operator::kDgrad: return problem_size.activation_size();
+    case cutlass::conv::Operator::kWgrad: return problem_size.filter_size();
+    default: break;
+    }
+    return 0;
 }
 ```
 
@@ -590,6 +678,272 @@ struct DefaultConv2dFprop<
 在cutlass/conv/kernel/implicit_gemm_convolution.h头文件中，提供Kernel内核函数层级的隐式卷积实现，即conv::kernel::ImplicitGemmConvolution模板类。
 
 ```c++
+template <
+    typename Mma_,                 /// Threadblock-scoped matrix multiply-accumulate. `conv::threadblock::ImplicitGemmMultistage`
+    typename Epilogue_,            /// Epilogue. `epilogue::threadblock::Epilogue`
+    typename ThreadblockSwizzle_,  /// Threadblock swizzling function. `gemm::threadblock::GemmIdentityThreadblockSwizzle`
+    conv::Operator ConvOperator,   /// Convolutional operator (Fprop, Dgrad, Wgrad, Deconv)
+    typename ConvProblemSize_ = Conv2dProblemSize,  /// Convolutional operator on 2D or 3D problem
+    conv::GroupMode GroupMode_ = conv::GroupMode::kNone
+>
+struct ImplicitGemmConvolution {
+    using Mma = Mma_;
+    using Epilogue = Epilogue_;
+    using EpilogueOutputOp = typename Epilogue::OutputOp;
+    using ThreadblockSwizzle = ThreadblockSwizzle_;
+    static conv::Operator const kConvolutionalOperator = ConvOperator;
+    using ConvProblemSize = ConvProblemSize_;
+    static conv::GroupMode const kGroupMode = GroupMode_;
 
+    static IteratorAlgorithm const kIteratorAlgorithm = Mma::IteratorA::kIteratorAlgorithm;
+    static StrideSupport const kStrideSupport = Mma::IteratorA::kStrideSupport;
+    static int const kConvDim = Mma::IteratorA::kConvDim;
+    static int const kStages = Mma::kStages;
+
+    using ElementA = typename Mma::IteratorA::Element;
+    using LayoutA = typename Mma::IteratorA::Layout;
+    using ElementB = typename Mma::IteratorB::Element;
+    using LayoutB = typename Mma::IteratorB::Layout;
+    using ElementC = typename EpilogueOutputOp::ElementOutput;
+    using LayoutC = LayoutA;  /// Set output tensor C layout
+    using ElementAccumulator = typename EpilogueOutputOp::ElementAccumulator;
+    using ElementCompute = typename EpilogueOutputOp::ElementCompute;
+    using TensorRefA = typename Mma::IteratorA::TensorRef;
+    using TensorRefB = typename Mma::IteratorB::TensorRef;
+    using TensorRefC = cutlass::TensorRef<ElementC, LayoutC>;
+    using WarpMmaOperator = typename Mma::Policy::Operator;
+    using ArchMmaOperator = typename WarpMmaOperator::ArchMmaOperator;
+    using MathOperator = typename ArchMmaOperator::Operator;
+    using OperatorClass = typename WarpMmaOperator::OperatorClass;
+    using ArchTag = typename WarpMmaOperator::ArchTag;
+    using ThreadblockShape = typename Mma::Shape;
+    using WarpShape = typename WarpMmaOperator::Shape;
+    using InstructionShape = typename ArchMmaOperator::Shape;
+    using WarpCount = typename Mma::WarpCount;  /// Warp count (concept: GemmShape)
+    static int const kThreadCount = 32 * WarpCount::kCount;
+
+    /// Wgrad C stride idx for implicit gemm algorithm.
+    /// Conv2d row-major matrix C (KxRSC) and Conv3d row-major matrix C (KxTRSC)
+    static int const kWgradCStrideIdx = platform::is_same<LayoutC, cutlass::layout::TensorNHWC>::value ? 2 : 3;
+    /// This chooses the appropriate stride element of the C tensor.
+    static int const kTensorCStrideIdx = (kConvolutionalOperator == conv::Operator::kWgrad ? kWgradCStrideIdx : 0);
+
+    using ConvOutputIteratorParameter = epilogue::threadblock::ConvOutputIteratorParameter<
+        LayoutC, typename Epilogue::OutputTileIterator::Layout, TensorRefC, ConvOperator, ConvProblemSize>;
+
+    /// Argument structure
+    struct Arguments {
+        ConvProblemSize problem_size;
+        TensorRefA ref_A;
+        TensorRefB ref_B;
+        TensorRefC ref_C;
+        TensorRefC ref_D;
+        typename EpilogueOutputOp::Params output_op;
+        SplitKMode split_k_mode;
+
+        Arguments() {}
+
+        Arguments(
+            ConvProblemSize const & problem_size,
+            TensorRefA const & ref_A,
+            TensorRefB const & ref_B,
+            TensorRefC const & ref_C,
+            TensorRefC const & ref_D,
+            typename EpilogueOutputOp::Params const & output_op,
+            SplitKMode const & split_k_mode = SplitKMode::kSerial
+        ) : problem_size(problem_size),
+            ref_A(ref_A), ref_B(ref_B), ref_C(ref_C), ref_D(ref_D),
+            output_op(output_op),
+            split_k_mode(split_k_mode) {}
+    };
+
+    /// Parameters structure
+    struct Params {
+        ConvProblemSize problem_size;
+        cutlass::gemm::GemmCoord grid_tiled_shape;
+        gemm::GemmCoord implicit_gemm_problem_size;
+        int swizzle_log_tile;
+        int gemm_k_iterations;
+        int gemm_k_iterations_per_channel;
+        typename Mma::IteratorA::Params iterator_A;
+        typename Mma::IteratorA::Element const *ptr_A;
+        typename Mma::IteratorB::Params iterator_B;
+        typename Mma::IteratorB::Element const *ptr_B;
+        typename Epilogue::OutputTileIterator::Params iterator_C;
+        typename Epilogue::OutputTileIterator::Element *ptr_C;
+        typename Epilogue::OutputTileIterator::Params iterator_D;
+        typename Epilogue::OutputTileIterator::Element *ptr_D;
+        typename EpilogueOutputOp::Params output_op;
+        int *semaphore;
+        SplitKMode split_k_mode;
+
+        Params() : swizzle_log_tile(0), gemm_k_iterations(0) {}
+
+        Params(Arguments const &args, int *semaphore = nullptr) :
+            problem_size(args.problem_size),
+            implicit_gemm_problem_size(cutlass::conv::implicit_gemm_problem_size(kConvolutionalOperator, args.problem_size)),
+            iterator_A(Mma::IteratorA::getParams(args.problem_size, args.ref_A.layout())),
+            ptr_A(args.ref_A.data()),
+            iterator_B(args.problem_size, args.ref_B.layout()), ptr_B(args.ref_B.data()),
+            iterator_C(ConvOutputIteratorParameter::layout(args.ref_C),
+                implicit_gemm_tensor_c_extent(kConvolutionalOperator, args.problem_size)),
+            ptr_C(args.ref_C.data()),
+            iterator_D(ConvOutputIteratorParameter::layout(args.ref_D),
+                implicit_gemm_tensor_c_extent(kConvolutionalOperator, args.problem_size)),
+            ptr_D(args.ref_D.data()),
+            output_op(args.output_op),
+            semaphore(semaphore),
+            split_k_mode(args.split_k_mode) {
+            // initialize the parameters
+            gemm_k_iterations = implicit_gemm_k_iterations(
+                kConvolutionalOperator, ThreadblockShape::kK, args.problem_size, kIteratorAlgorithm, kGroupMode, ThreadblockShape::kN
+            );
+            gemm_k_iterations_per_channel = implicit_gemm_k_iterations_per_channel(
+                kConvolutionalOperator, args.problem_size, kIteratorAlgorithm
+            );
+            ThreadblockSwizzle threadblock_swizzle;
+            grid_tiled_shape = threadblock_swizzle.get_tiled_shape(
+                implicit_gemm_problem_size,
+                { ThreadblockShape::kM, ThreadblockShape::kN, ThreadblockShape::kK },
+                args.problem_size.split_k_slices
+            );
+            swizzle_log_tile = threadblock_swizzle.get_log_tile(grid_tiled_shape);
+        }
+    };
+
+    /// Shared memory storage structure
+    union SharedStorage {
+        typename Mma::SharedStorage main_loop;
+        typename Epilogue::SharedStorage epilogue;
+    };
+
+    ImplicitGemmConvolution() {}
+
+    /// Executes one ImplicitGEMM
+    void operator()(Params const &params, SharedStorage &shared_storage) {
+        // Compute threadblock location
+        ThreadblockSwizzle threadblock_swizzle;
+        cutlass::gemm::GemmCoord threadblock_tile_idx = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
+        // Early exit if CTA is out of range
+        if (params.grid_tiled_shape.m() <= threadblock_tile_idx.m() || params.grid_tiled_shape.n() <= threadblock_tile_idx.n()) {
+            return;
+        }
+
+        // Compute position within threadblock
+        int thread_idx = threadIdx.x;
+        int iterator_A_column_offset = threadblock_tile_idx.k() * Mma::Shape::kK;
+        if (kGroupMode != GroupMode::kNone) {
+            if (kGroupMode != GroupMode::kDepthwise) {
+                int k_per_group = params.problem_size.K / params.problem_size.groups;
+                int group_idx = threadblock_tile_idx.n() * Mma::Shape::kN / k_per_group;
+                int channels_per_group = params.problem_size.C / params.problem_size.groups;
+                iterator_A_column_offset += group_idx * channels_per_group;
+            } else {
+                iterator_A_column_offset += threadblock_tile_idx.n() * Mma::Shape::kN;
+            }
+        }
+
+        // Construct iterators to A and B operands
+        typename Mma::IteratorA iterator_A(
+            params.iterator_A,
+            params.problem_size,
+            params.ptr_A,
+            thread_idx,
+            MatrixCoord(threadblock_tile_idx.m() * Mma::Shape::kM, iterator_A_column_offset)
+        );
+        typename Mma::IteratorB iterator_B(
+            params.iterator_B,
+            params.problem_size,
+            params.ptr_B,
+            thread_idx,
+            MatrixCoord(threadblock_tile_idx.k() * Mma::Shape::kK, threadblock_tile_idx.n() * Mma::Shape::kN)
+        );
+
+        // Broadcast the warp_id computed by lane 0 to ensure dependent code is compiled as warp-uniform.
+        int warp_idx = canonical_warp_idx_sync();
+        int lane_idx = threadIdx.x % 32;
+
+        // Construct thread-scoped matrix multiply
+        Mma mma(shared_storage.main_loop, thread_idx, warp_idx, lane_idx);
+        typename Mma::FragmentC accumulators;
+        accumulators.clear();
+        // Compute threadblock-scoped matrix multiply-add
+        mma(params.gemm_k_iterations, accumulators, iterator_A, iterator_B, accumulators, params.gemm_k_iterations_per_channel);
+
+        // Epilogue
+        EpilogueOutputOp output_op(params.output_op);
+        // Compute logical position within grid
+        threadblock_tile_idx = threadblock_swizzle.get_tile_offset(params.swizzle_log_tile);
+        MatrixCoord threadblock_offset(threadblock_tile_idx.m() * Mma::Shape::kM, threadblock_tile_idx.n() * Mma::Shape::kN);
+
+        // re-compute the index of each threadblock
+        int block_idx = threadblock_tile_idx.m() + threadblock_tile_idx.n() * params.grid_tiled_shape.m();
+
+        // Construct the semaphore
+        Semaphore semaphore(params.semaphore + block_idx, thread_idx);
+        // If performing a reduction via split-K, fetch the initial synchronization
+        if (params.split_k_mode == SplitKMode::kSerial && params.grid_tiled_shape.k() > 1) {
+            // Fetch the synchronization lock initially but do not block.
+            semaphore.fetch();
+            // Indicate which position in a serial reduction the output operator is currently updating
+            output_op.set_k_partition(threadblock_tile_idx.k(), params.grid_tiled_shape.k());
+        }
+
+        // Tile iterator reading from source accumulator tensor
+        typename Epilogue::OutputTileIterator iterator_C(
+            params.iterator_C,
+            params.ptr_C,
+            ConvOutputIteratorParameter::extent(params.problem_size),
+            thread_idx,
+            threadblock_offset
+        );
+        // Tile iterator writing to destination tensor
+        typename Epilogue::OutputTileIterator iterator_D(
+            params.iterator_D,
+            params.ptr_D,
+            ConvOutputIteratorParameter::extent(params.problem_size),
+            thread_idx,
+            threadblock_offset
+        );
+
+        // Construct the epilogue
+        Epilogue epilogue(shared_storage.epilogue, thread_idx, warp_idx, lane_idx);
+
+        // Wait on the semaphore - this latency may have been covered by iterator construction
+        if (params.split_k_mode == SplitKMode::kSerial && params.grid_tiled_shape.k() > 1) {
+            // For subsequent threadblocks, the source matrix is held in the 'D' tensor.
+            if (threadblock_tile_idx.k()) {
+                iterator_C = iterator_D;
+            }
+            semaphore.wait(threadblock_tile_idx.k());
+        } else if (params.split_k_mode == SplitKMode::kParallel) {
+            // Each split-k-slice writes to a unique tensor location
+            iterator_D.add_pointer_offset(
+                threadblock_tile_idx.k() * cutlass::conv::implicit_gemm_tensor_c_size(ConvOperator, params.problem_size)
+            );
+        }
+
+        // Run efficient epilogue
+        epilogue(output_op, iterator_D, accumulators, iterator_C);
+
+        // Release the semaphore
+        if (params.split_k_mode == SplitKMode::kSerial && params.grid_tiled_shape.k() > 1) {
+            int lock = 0;
+            if (params.grid_tiled_shape.k() == threadblock_tile_idx.k() + 1) {
+                lock = 0;  // The final threadblock resets the semaphore for subsequent grids.
+            } else {
+                lock = threadblock_tile_idx.k() + 1;  // Otherwise, the semaphore is incremented
+            }
+            semaphore.release(lock);
+        }
+    }
+};
 ```
 
+## Threadblock Level
+
+在cutlass/conv/threadblock目录中，提供卷积操作在Threadblock线程块层级的实现，这些实现包括访存操作和计算操作。
+
+对于访存而言，将输入数据从设备全局内存加载到寄存器，这被抽象为conv::threadblock::Conv2dFpropActivationTileAccessIteratorOptimized模板类；将卷积核数据从设备全局内存加载到寄存器，这被抽象为conv::threadblock::Conv2dFpropFilterTileAccessIteratorOptimized模板类；以及，在尾处理操作阶段，将最终计算得到的输出数据写回到设备全局内存中，这被抽象为epilogue::threadblock::ConvOutputIteratorParameter模板类。
+
+对于计算而言，在Threadblock线程块层级执行卷积操作，这被抽象为conv::threadblock::ImplicitGemmMultistage模板类。

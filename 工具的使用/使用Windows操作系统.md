@@ -67,10 +67,52 @@ VS Code插件开发者可以通过在插件的\$HOME/.vscode/extensions/NAME/pac
 
 在Linux平台上，可以在用户家目录下的.bashrc配置文件中指定要在bash shell启动时执行的命令，在Windows平台上也可实现该需求。
 
-创建一个名称为auto_execute_command.bat的批处理文件，编辑文件内容如下所示，下述示例是将CMD的代码页切换到UTF-8字符集。
+创建一个名称为auto_execute_command.bat的批处理文件，编辑文件内容如下所示，下述示例是将CMD的代码页切换到UTF-8字符集，并通过重定位抛弃输出。
 
 ```cmd
-chcp 65001
+chcp 65001 > nul
 ```
 
 在注册表中，找到`计算机\HKEY_LOCAL_MACHINE\Software\Microsoft\Command Processor`或`计算机\HKEY_CURRENT_USER\Software\Microsoft\Command Processor`，右键>新建>字符串值，名称设为AutoRun，数值指定为批处理文件auto_execute_command.bat的完整路径，即可。
+
+# 使用Batch批处理创建7z压缩文件
+
+在Windows上安装7z.exe之后，可以使用Batch批处理脚本，结合7z.exe命令行语法，批量创建压缩文件。
+
+```bat
+@echo off
+:: 符号`::`用于一行注释，上述命令`@echo off`用于关闭命令回显（脚本运行时不显示命令本身）
+
+:: 临时转成UTF-8字符集
+:: chcp 65001 > nul
+
+:: #，表示第几个参数，例如，0表示第零个参数，即脚本自身，1表示第一个参数，依次类推
+:: d，表示一个驱动器，例如，C:
+:: p，表示一个父目录，例如，\path\to
+:: n，表示一个文件名，例如，myfile
+:: x，表示一个扩展名，例如，.txt
+:: %~dp0, %~dp1, %~dp2, ...，分别用于获取第零个参数、第一个参数、第二个参数、……所在的目录
+
+:: 使用7z.exe创建压缩文件，因为7z.exe软件本身在打印日志时，不支持UFT-8字符集，会乱码，但功能正常
+:: S:\7-Zip-Zstandard\7z.exe a -pAkame -sdel "%%~dpni.7z" "%%~dpnxi"
+
+:: 使用Bandizip.exe创建压缩文件
+:: S:\Bandizip\bz.exe c -p:Akame -fmt:7z "%%~dpni.7z" "%%~dpnxi"
+
+for %%i in (%*) do (
+    S:\Bandizip\bz.exe c -p:Akame -fmt:7z "%%~dpni.7z" "%%~dpnxi"
+    :: 在创建后删除原文件
+    if exist "%%~i\" (
+        echo 正在删除目录："%%~dpnxi"
+        rmdir /s /q "%%~dpnxi"
+    ) else (
+        echo 正在删除文件："%%~dpnxi"
+        del /f /q "%%~dpnxi"
+    )
+)
+
+echo Compress successfully!
+
+pause
+```
+
