@@ -72,7 +72,7 @@ $$
 
 ## Common Type
 
-在cutlass/conv/convolution.h头文件中，提供一些枚举类型的定义，用于标识卷积操作中的各种配置，以及提供用于标识卷积形状的模板类，如下所示。
+在cutlass/conv/convolution.h头文件中，提供一些枚举类型的定义，用于标识卷积操作中的各种配置，如下所示。
 
 ```c++
 /// Convolutional operator
@@ -119,7 +119,85 @@ enum class GroupMode {
     kMultipleGroup,  ///< One CTA calculates multiple groups
     kDepthwise       ///< One CTA calculates cta_n groups (problem_size.C == problem_size.K == problem_size.groups)
 };
+```
 
+### Tensor4DCoord
+
+在cutlass/tensor_coord.h头文件中，提供Tensor4DCoord和Tensor5DCoord的定义，用于表示张量元素的坐标，如下所示。
+
+```c++
+/// Defines a canonical 4D coordinate used by tensor operations.
+struct Tensor4DCoord : public Coord<4> {
+    using Base = Coord<4>;                       /// Base class
+    using Index = typename Base::Index;          /// Index type
+    using LongIndex = typename Base::LongIndex;  /// LongIndex type
+
+    /// coord = (n, h, w, c)
+    static int const kN = 0;  /// Batch dimension
+    static int const kH = 1;  /// Height dimension
+    static int const kW = 2;  /// Width dimension
+    static int const kC = 3;  /// Channels dimension
+
+    /// Default ctor
+    Tensor4DCoord() {}
+
+    /// Helper to construct from N, H, W, and C.
+    Tensor4DCoord(Index n, Index h, Index w, Index c) : Base(make_Coord(n, h, w, c)) {}
+
+    /// Returns the batch of the coordinate
+    Index & n() { return this->at(kN); }
+
+    /// Returns the row of the coordinate
+    Index & h() { return this->at(kH); }
+
+    /// Returns the column of the coordinate
+    Index & w() { return this->at(kW); }
+
+    /// Returns the channel of the coordinate
+    Index & c() { return this->at(kC); }
+};
+
+/// Defines a canonical 5D coordinate used by tensor operations.
+struct Tensor5DCoord : public Coord<5> {
+    using Base = Coord<5>;                       /// Base class
+    using Index = typename Base::Index;          /// Index type
+    using LongIndex = typename Base::LongIndex;  /// LongIndex type
+
+    /// coord = (n, d, h, w, c)
+    static int const kN = 0;  /// Batch dimension
+    static int const kD = 1;  /// Depth dimension
+    static int const kH = 2;  /// Height dimension
+    static int const kW = 3;  /// Width dimension
+    static int const kC = 4;  /// Channels dimension
+
+    /// Default ctor
+    Tensor5DCoord() {}
+
+    /// Helper to construct from N, D, H, W, and C.
+    Tensor5DCoord(Index n, Index d, Index h, Index w, Index c) : Base(make_Coord(n, d, h, w, c)) {}
+
+    /// Returns the batch of the coordinate
+    Index & n() { return this->at(kN); }
+
+    /// Returns the batch of the coordinate
+    Index & d() { return this->at(kD); }
+
+    /// Returns the row of the coordinate
+    Index & h() { return this->at(kH); }
+
+    /// Returns the column of the coordinate
+    Index & w() { return this->at(kW); }
+
+    /// Returns the channel of the coordinate
+    Index & c() { return this->at(kC); }
+};
+```
+
+### TensorNHWCShape
+
+在cutlass/conv/convolution.h头文件中，提供TensorNHWCShape的定义，用于表示张量的形状，以及Stride2D的定义，用于表示跨步间隔，如下所示。
+
+```c++
 /// Shape of a tensor
 template <int N = 1, int H = 1, int W = 1, int C = 1>
 struct TensorNHWCShape {
@@ -150,6 +228,72 @@ struct Stride2D {
     }
 };
 ```
+
+### TensorNHWC
+
+在cutlass/layout/tensor.h头文件中，提供layout::TensorNHWC的定义，用于表示一个多维张量的布局方式，如下所示。
+
+```c++
+/// Mapping function for 4-D NHWC tensors.
+class TensorNHWC {
+public:
+    static int const kRank = 4;        /// Logical rank of tensor
+    static int const kStrideRank = 3;  /// Rank of stride vector
+
+    using Index = int32_t;              /// Index type used for coordinates
+    using LongIndex = int64_t;          /// Long index type used for offsets
+    using TensorCoord = Tensor4DCoord;  /// Logical coordinate (n, h, w, c)
+    using Stride = Coord<kStrideRank>;  /// Stride vector (w, h, n). It's contiguous along `c` dimension.
+
+private:
+    Stride stride_;  /// Stride data member - [stride_w, stride_h, stride_n]
+
+public:
+    /// Constructor
+    TensorNHWC(Stride const &stride = Stride(0)) : stride_(stride) {}
+
+    /// Constructor
+    TensorNHWC(
+        typename Stride::Index stride_w,  ///< number of elements between adjacent W coordinates
+        typename Stride::Index stride_h,  ///< number of elements between adjacent H coordinates
+        typename Stride::Index stride_n   ///< number of elements between adjacent N coordinates
+    ) : stride_(make_Coord(stride_w, stride_h, stride_n)) {}
+
+    /// Helper returns a layout to a tightly packed NHWC tensor.
+    static TensorNHWC packed(TensorCoord const &extent) {
+        return TensorNHWC(make_Coord(extent.c(), extent.w() * extent.c(), extent.h() * extent.w() * extent.c()));
+    }
+
+    /// Returns the offset of a coordinate (n, h, w, c) in linear memory. 
+    LongIndex operator()(TensorCoord const &coord) const {
+        return coord.c() + LongIndex(stride_[0] * coord.w()) + LongIndex(stride_[1] * coord.h()) + LongIndex(stride_[2] * coord.n());
+    }
+
+    /// Returns the offset of a pitchlinear coordinate in linear memory. 
+    LongIndex operator()(PitchLinearCoord coord) const {
+        return coord.contiguous() + LongIndex(coord.strided() * stride_[2]);
+    }
+
+    /// Returns the logical coordinate (n, h, w, c) from a given offset in linear memory.
+    TensorCoord inverse(LongIndex index) const {
+        int n = 0, h = 0, w = 0, c = 0;
+        LongIndex residual = index % stride_[2];
+        n = int(index / stride_[2]);
+        h = int(residual / stride_[1]);
+        residual = (residual % stride_[1]);
+        w = int(residual / stride_[0]);
+        c = int(residual % stride_[0]);
+        return TensorCoord(n, h, w, c);
+    }
+
+    /// Returns the stride of the layout
+    Stride & stride() {
+        return stride_;
+    }
+};
+```
+
+### Conv2dProblemSize
 
 在cutlass/conv/conv2d_problem_size.h头文件中，提供二维卷积的问题配置，用于指定卷积的输入维数、卷积核维数、输出维度等信息，如下所示。
 
@@ -464,6 +608,8 @@ int64_t implicit_gemm_tensor_c_size(Operator conv_operator, Conv2dProblemSize co
 
 ## Device Level
 
+### ImplicitGemmConvolution
+
 在cutlass/conv/device/implicit_gemm_convolution.h头文件中，提供Device设备层级的隐式卷积实现，即conv::device::ImplicitGemmConvolution模板类。
 
 ```c++
@@ -609,6 +755,8 @@ public:
 
 ## Kernel Level
 
+### DefaultConv2dFprop
+
 在cutlass/conv/kernel/default_conv2d_fprop.h头文件中，提供Kernel内核函数层级的默认配置，即conv::kernel::DefaultConv2dFprop模板类。
 
 ```c++
@@ -674,6 +822,8 @@ struct DefaultConv2dFprop<
     using Kernel = cutlass::conv::kernel::ImplicitGemmConvolution<Mma, Epilogue, ThreadblockSwizzle, conv::Operator::kFprop>;
 };
 ```
+
+### ImplicitGemmConvolution
 
 在cutlass/conv/kernel/implicit_gemm_convolution.h头文件中，提供Kernel内核函数层级的隐式卷积实现，即conv::kernel::ImplicitGemmConvolution模板类。
 
@@ -765,9 +915,9 @@ struct ImplicitGemmConvolution {
         int swizzle_log_tile;
         int gemm_k_iterations;
         int gemm_k_iterations_per_channel;
-        typename Mma::IteratorA::Params iterator_A;
+        typename Mma::IteratorA::Params iterator_A;  // conv::threadblock::Conv2dFpropActivationIteratorOptimizedParams
         typename Mma::IteratorA::Element const *ptr_A;
-        typename Mma::IteratorB::Params iterator_B;
+        typename Mma::IteratorB::Params iterator_B;  // conv::threadblock::Conv2dFpropFilterIteratorOptimizedParams
         typename Mma::IteratorB::Element const *ptr_B;
         typename Epilogue::OutputTileIterator::Params iterator_C;
         typename Epilogue::OutputTileIterator::Element *ptr_C;
@@ -947,3 +1097,27 @@ struct ImplicitGemmConvolution {
 对于访存而言，将输入数据从设备全局内存加载到寄存器，这被抽象为conv::threadblock::Conv2dFpropActivationTileAccessIteratorOptimized模板类；将卷积核数据从设备全局内存加载到寄存器，这被抽象为conv::threadblock::Conv2dFpropFilterTileAccessIteratorOptimized模板类；以及，在尾处理操作阶段，将最终计算得到的输出数据写回到设备全局内存中，这被抽象为epilogue::threadblock::ConvOutputIteratorParameter模板类。
 
 对于计算而言，在Threadblock线程块层级执行卷积操作，这被抽象为conv::threadblock::ImplicitGemmMultistage模板类。
+
+### Conv2dFpropActivationIteratorOptimizedParams
+
+在cutlass/conv/threadblock/conv2d_params.h头文件中，提供一个表示参数的conv::threadblock::Conv2dFpropActivationIteratorOptimizedParams模板类，用于指定从设备全局内存中加载输入数据的整个迭代过程中的各种设置，以及提供一种快速计算商和余数的cutlass::FastDivmod方法，如下所示。
+
+```c++
+/// Parameters structure used for Conv2dFpropActivationTileIteratorOptimized
+template<typename Layout_ = layout::TensorNHWC>
+struct Conv2dFpropActivationIteratorOptimizedParams;
+```
+
+在cutlass/fast_math.h头文件中，提供快速计算商和余数的cutlass::FastDivmod方法，如下所示。
+
+```c++
+```
+
+### Conv2dFpropActivationTileAccessIteratorOptimized
+
+在cutlass/conv/threadblock/conv2d_fprop_activation_tile_access_iterator_optimized.h头文件中，提供将输入数据从设备全局内存加载到寄存器的实现代码，这被抽象为conv::threadblock::Conv2dFpropActivationTileAccessIteratorOptimized模板类。
+
+```c++
+
+```
+
