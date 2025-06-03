@@ -64,7 +64,7 @@ $$
 
 而在CUTLASS模板库中，对于一个卷积操作，假设输入的维数是[N, H, W, C]，卷积核的维数是[K, R, S, C]，输出的维数是[N, P, Q, K]。则对于输入图像而言，Im2Col模式会将其转换成一个[N×P×Q, R×S×C]形状的中间矩阵，同时卷积核会展开为[R×S×C, K]形状的中间矩阵，以将卷积操作转换为矩阵乘法操作，得到一个[N×P×Q, K]形状的输出矩阵，然后再将输出矩阵的数据存储到合适的内存位置。如下图所示，批量N取值为1时，Im2Col模式如下所示。
 
-<img src="Conv卷积操作.assets/Im2Col示意图.png" style="zoom:25%;" />
+![](Conv卷积操作.assets/Im2Col示意图.png)
 
 # CUTLASS的卷积实现
 
@@ -1106,11 +1106,135 @@ struct ImplicitGemmConvolution {
 /// Parameters structure used for Conv2dFpropActivationTileIteratorOptimized
 template<typename Layout_ = layout::TensorNHWC>
 struct Conv2dFpropActivationIteratorOptimizedParams;
+
+/// Parameters structure used for Conv2dFpropActivationTileIteratorOptimized
+template<>
+struct Conv2dFpropActivationIteratorOptimizedParams<layout::TensorNHWC> {
+    using Layout = layout::TensorNHWC;
+
+    Layout layout;
+    int64_t inc_next[3];   // { next_S, next_R, next_C }
+    int filter_c_delta;    // number of logical elements to add to filter_c_
+    int PQ;                // product of `P * Q`
+    FastDivmod pq_divmod;  // 快速计算商和余数，见cutlass::FastDivmod
+    FastDivmod q_divmod;   // 快速计算商和余数，见cutlass::FastDivmod
+
+    // Methods
+    Conv2dFpropActivationIteratorOptimizedParams() {}
+
+    Conv2dFpropActivationIteratorOptimizedParams(
+        Conv2dProblemSize const &problem_size,
+        Layout const &layout,           ///< layout::TensorNHWC
+        int element_size_bits,          ///< sizeof_bits<Element>::value
+        MatrixCoord threadblock_shape,  ///< MatrixShape<ThreadblockShape::kM, ThreadblockShape::kK>
+        int thread_count,               ///< ThreadMap::kThreads
+        int access_size,                ///< ThreadMap::kElementsPerAccess
+        layout::PitchLinearCoord threadmap_iterations,  ///< ThreadMap::Iterations::{ kContiguous, kStrided }
+        layout::PitchLinearCoord threadmap_delta        ///< ThreadMap::Delta::{ kContiguous, kStrided }
+    ) : layout(layout), PQ(problem_size.P * problem_size.Q), pq_divmod(PQ), q_divmod(problem_size.Q) {
+        // initialize
+        int conv_sign = (problem_size.mode == Mode::kConvolution ? -1 : 1);
+        // next_S
+        inc_next[0] = conv_sign * (int64_t(layout.stride()[0]) * problem_size.dilation_w) * element_size_bits / 8;
+        // next_R
+        inc_next[1] = conv_sign * (
+            int64_t(layout.stride()[1]) * problem_size.dilation_h - (problem_size.S - 1) * layout.stride()[0] * problem_size.dilation_w
+            ) * element_size_bits / 8;
+        // next_C
+        inc_next[2] = (threadblock_shape.column() * problem_size.split_k_slices
+            - conv_sign * int64_t(problem_size.R - 1) * layout.stride()[1] * problem_size.dilation_h
+            - conv_sign * int64_t(problem_size.S - 1) * layout.stride()[0] * problem_size.dilation_w
+            ) * element_size_bits / 8;
+
+        // logical offset added to internal channel counter - units are elements, not bytes
+        filter_c_delta = threadblock_shape.column() * problem_size.split_k_slices;
+    }
+};
+```
+
+在cutlass/fast_math.h头文件中，提供快速计算以2为底的对数的实现代码，如下所示。
+
+```c++
+// 计算对数log2(N)，并取结果的下界整数值，即floor{log2(N)}
+template <int N, int CurrentVal = N, int Count = 0>
+struct log2_down { enum { value = log2_down<N, (CurrentVal >> 1), Count + 1>::value }; };
+
+template <int N, int Count>
+struct log2_down<N, 1, Count> { enum { value = Count }; };
+
+// 计算对数log2(N)，并取结果的上界整数值，即ceil{log2(N)}
+template <int N, int CurrentVal = N, int Count = 0>
+struct log2_up { enum { value = log2_up<N, (CurrentVal >> 1), Count + 1>::value }; };
+
+template <int N, int Count>
+struct log2_up<N, 1, Count> { enum { value = ((1 << Count) < N) ? Count + 1 : Count }; };
+
+template <typename value_t>
+value_t clz(value_t x) {
+    for (int i = 31; i >= 0; --i) {
+        // 从最高位依次向低位判断，[31, 30, -->, 2, 1, 0]，寻找第一个非0的二进制位，该二进制的索引即是log2(N)
+        if ((1 << i) & x) return value_t(31 - i);
+    }
+    return value_t(32);
+}
+
+template <typename value_t>
+value_t find_log2(value_t x) {
+    int a = int(31 - clz(x));
+    a += (x & (x - 1)) != 0;  // 如果不是2的整数次幂，取log2(N)的上界整数值
+    return a;
+}
 ```
 
 在cutlass/fast_math.h头文件中，提供快速计算商和余数的cutlass::FastDivmod方法，如下所示。
 
 ```c++
+/* Object to encapsulate the fast division and fast modulus operation.
+    This object precomputes two values used to accelerate the computation and is best used when the divisor is a grid-invariant.
+    In this case, it may be computed in host code and marshalled along other kernel arguments using the 'Params' pattern.
+Example:
+    // 商，余数，被除数，除数
+    int quotient, remainder, dividend, divisor;
+    FastDivmod divmod(divisor);
+    divmod(quotient, remainder, dividend);
+*/
+struct FastDivmod {
+    using value_div_type = int;
+    using value_mod_type = int64_t;
+    int32_t divisor = 1;
+    uint32_t multiplier = 0u;
+    uint32_t shift_right = 0u;
+
+    constexpr FastDivmod() = default;
+
+    /// Construct the FastDivmod object, in host code ideally.
+    /// This precomputes some values based on the divisor and is computationally expensive.
+    FastDivmod(int divisor_) : divisor(divisor_) {
+        assert(divisor_ >= 0);
+        if (divisor != 1) {
+            unsigned int p = 31 + find_log2(divisor);
+            unsigned m = unsigned(((1ull << p) + unsigned(divisor) - 1) / unsigned(divisor));
+            multiplier = m;
+            shift_right = p - 32;
+        }
+    }
+
+    // Find quotient and remainder using device-side intrinsics
+    void fast_divmod(int& quotient, int& remainder, int dividend) const {
+    #if defined(__CUDA_ARCH__)
+        // Use IMUL.HI if divisor != 1, else simply copy the source.
+        quotient = (divisor != 1) ? __umulhi(dividend, multiplier) >> shift_right : dividend;
+    #else
+        quotient = (divisor != 1) ? int(((int64_t)dividend * multiplier) >> 32) >> shift_right : dividend;
+    #endif
+        remainder = dividend - (quotient * divisor);  // The remainder.
+    }
+
+    /// Computes integer division and modulus using precomputed values. This is computationally inexpensive.
+    void operator()(int &quotient, int &remainder, int dividend) const {
+        fast_divmod(quotient, remainder, dividend);
+    }
+};
 ```
 
 ### Conv2dFpropActivationTileAccessIteratorOptimized

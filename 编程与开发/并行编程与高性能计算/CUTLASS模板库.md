@@ -4483,9 +4483,9 @@ public:
         /// Number of stages
         static int const kStages = Stages;
 
-        /// 一个Stage流水线，处理一个Threadblock::Shape形状的矩阵乘加，需要若干次gmem->smem复制，以及若干次MMA计算。
+        /// 一个Stage流水线，处理一个ThreadblockShape形状的矩阵乘加，需要若干次gmem->smem复制，以及若干次MMA计算。
         /// 一个Stage中，从gmem中读取数据到smem中，每个Thread线程需要ThreadMap::Iterations次迭代，即AsyncCopyIterationsPerStage[A|B]；
-        /// 一个Stage中，计算Threadblock::Shape形状的矩阵乘加，每个Warp线程束需要Base::kWarpGemmIterations次迭代，即这些次数的MMA计算。
+        /// 一个Stage中，计算ThreadblockShape形状的矩阵乘加，每个Warp线程束需要Base::kWarpGemmIterations次迭代，即这些次数的MMA计算。
         /// 计算与加载重叠，指的是，将一个Stage中的，所有的gmem->smem复制，平均插入到所有的MMA计算过程之间，
         /// 那么，下面kAccessesPerGroup[A|B]的含义就是，一个MMA计算之后，应该进行的gmem->smem复制的次数，通常是1。
 
@@ -4831,6 +4831,15 @@ struct GemmIdentityThreadblockSwizzle {
             (problem_size.n() + tile_size.n() - 1) / tile_size.n(),
             split_k_slices
         );
+    }
+    
+    /// Returns the shape of the problem in units of logical tiles.
+    /// *ImplicitGemm* Conv2d problem size: conv_operator(NPQK, NHWC, KRSC)
+    static GemmCoord get_tiled_shape(
+        cutlass::conv::Operator conv_operator, cutlass::conv::Conv2dProblemSize const &problem_size, GemmCoord tile_size, int split_k_slices
+    ) {
+        gemm::GemmCoord implicit_gemm_problem_size = cutlass::conv::implicit_gemm_problem_size(conv_operator, problem_size);
+        return get_tiled_shape(implicit_gemm_problem_size, tile_size, split_k_slices);
     }
 
     /// Calculates optimal swizzle width
