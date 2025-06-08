@@ -4292,7 +4292,7 @@ public:
 
     /// GEMM prologue.
     /// The "last residual partial" kblock is loaded in the prologue.
-    /// Bootstrap the `global->shared` memory pipeline by fetching the global fragments
+    /// Bootstrap the `global-->shared` memory pipeline by fetching the global fragments
     /// needed by the first `kStages - 1` threadblock mainloop iterations.
     void prologue(
         IteratorA &iterator_A,  ///< [in|out] iterator over A operand in global memory
@@ -4480,14 +4480,13 @@ public:
 
     /// Internal structure exposed for introspection.
     struct Detail {
-        /// Number of stages
-        static int const kStages = Stages;
+        static int const kStages = Stages;  /// Number of stages
 
-        /// 一个Stage流水线，处理一个ThreadblockShape形状的矩阵乘加，需要若干次gmem->smem复制，以及若干次MMA计算。
+        /// 一个Stage流水线，处理一个ThreadblockShape形状的矩阵乘加，需要若干次gmem-->smem复制，以及若干次MMA计算。
         /// 一个Stage中，从gmem中读取数据到smem中，每个Thread线程需要ThreadMap::Iterations次迭代，即AsyncCopyIterationsPerStage[A|B]；
         /// 一个Stage中，计算ThreadblockShape形状的矩阵乘加，每个Warp线程束需要Base::kWarpGemmIterations次迭代，即这些次数的MMA计算。
-        /// 计算与加载重叠，指的是，将一个Stage中的，所有的gmem->smem复制，平均插入到所有的MMA计算过程之间，
-        /// 那么，下面kAccessesPerGroup[A|B]的含义就是，一个MMA计算之后，应该进行的gmem->smem复制的次数，通常是1。
+        /// 计算与加载重叠，指的是，将一个Stage中的，所有的gmem-->smem复制，平均插入到所有的MMA计算过程之间，
+        /// 那么，下面kAccessesPerGroup[A|B]的含义就是，一个MMA计算之后，应该进行的gmem-->smem复制的次数，通常是1。
 
         /// Number of cp.async instructions to load one stage of operand A
         static int const AsyncCopyIterationsPerStageA = IteratorA::ThreadMap::Iterations::kCount;
@@ -4568,7 +4567,7 @@ public:
     }
 
     /// GEMM prologue.
-    /// Bootstrap the `global->shared` memory pipeline by fetching the global fragments
+    /// Bootstrap the `global-->shared` memory pipeline by fetching the global fragments
     /// needed by the first `kStages-1` threadblock mainloop iterations
     void prologue(
         IteratorA &iterator_A,  ///< [in|out] iterator over A operand in global memory
@@ -4623,7 +4622,7 @@ public:
         __syncthreads();
     }
 
-    /// Perform the `global->shared` memory pipeline during kWarpGemmIterations MAC iters
+    /// Perform the `global-->shared` memory pipeline during kWarpGemmIterations MAC iters
     void copy_tiles_and_advance(IteratorA &iterator_A, IteratorB &iterator_B, int group_start_A = 0, int group_start_B = 0) {
         // Async Copy for operand A
         iterator_A.set_iteration_index(group_start_A * IteratorA::kAccessesPerVector);
@@ -4706,7 +4705,7 @@ public:
             // Execute the current warp-tile of MMA operations
             warp_mma_(accum, pipe_state.warp_transformed_frag_A_[warp_mma_k % 2], pipe_state.warp_transformed_frag_B_[warp_mma_k % 2], accum);
 
-            // Except for the last warp-tile, all warp-tiles issue their share of global->shared fragment copies
+            // Except for the last warp-tile, all warp-tiles issue their share of global-->shared fragment copies
             if (warp_mma_k < Base::kWarpGemmIterations - 1) {
                 int group_start_iteration_A = warp_mma_k * Detail::kAccessesPerGroupA;
                 int group_start_iteration_B = warp_mma_k * Detail::kAccessesPerGroupB;
@@ -4714,10 +4713,10 @@ public:
             }
 
             // The second-to-last warp-tile also:
-            // - performs the last warp-tile's share of global->shared fragment copies
+            // - performs the last warp-tile's share of global-->shared fragment copies
             // - moves to the next global fetch stage
             if (warp_mma_k == Base::kWarpGemmIterations - 2) {
-                // Performs the last warp-tile's share of global->shared fragment copies
+                // Performs the last warp-tile's share of global-->shared fragment copies
                 int group_start_iteration_A = (warp_mma_k + 1) * Detail::kAccessesPerGroupA;
                 int group_start_iteration_B = (warp_mma_k + 1) * Detail::kAccessesPerGroupB;
                 copy_tiles_and_advance(iterator_A, iterator_B, group_start_iteration_A, group_start_iteration_B);
@@ -4728,7 +4727,7 @@ public:
                 gmem_wait();
                 // Move to the next global fetch stage
                 advance_smem_write_stage(iterator_A, iterator_B);
-                // 开头的this->warp_tile_iterator_.load(warp_loaded_frag_[(warp_mma_k + 1) % 2])已完成最后一轮smem->frag加载
+                // 开头的this->warp_tile_iterator_.load(warp_loaded_frag_[(warp_mma_k + 1) % 2])已完成最后一轮smem-->frag加载
                 advance_smem_read_stage();
 
                 // Disable global fetching when done with global fetch iterations
@@ -7004,7 +7003,7 @@ public:
         if (the_predicates.iteration_contiguous_ < ThreadMap::Iterations::kContiguous) {
             return *this;
         }
-        // Enter here only if (iteration_contiguous_ == ThreadMap::Iteration::kContiguous)
+        // Enter here only if (iteration_contiguous_ == ThreadMap::Iterations::kContiguous)
         the_predicates.iteration_contiguous_ = 0;
         ++the_predicates.iteration_strided_;
         if (the_predicates.iteration_strided_ < ThreadMap::Iterations::kStrided) {
@@ -7013,7 +7012,7 @@ public:
             }
             return *this;
         }
-        // Enter here only if (iteration_stride_ == ThreadMap::Iteration::kStrided), which means we enter the next tile.
+        // Enter here only if (iteration_stride_ == ThreadMap::Iterations::kStrided), which means we enter the next tile.
         the_predicates.iteration_strided_ = 0;
         if (Gather == false && Permute == false) {
             // Advance to next tile.
@@ -7850,13 +7849,13 @@ public:
         if (iteration_contiguous_ < ThreadMap::Iterations::kContiguous) {
             return *this;
         }
-        // Enter here only if (iteration_contiguous_ == ThreadMap::Iteration::kContiguous)
+        // Enter here only if (iteration_contiguous_ == ThreadMap::Iterations::kContiguous)
         iteration_contiguous_ = 0;
         ++iteration_strided_;
         if (iteration_strided_ < ThreadMap::Iterations::kStrided) {
             return *this;
         }
-        // Enter here only if (iteration_stride_ == ThreadMap::Iteration::kStrided). which means we enter the next tile.
+        // Enter here only if (iteration_stride_ == ThreadMap::Iterations::kStrided). which means we enter the next tile.
         iteration_strided_ = 0;
         return *this;
     }
@@ -7954,13 +7953,13 @@ public:
         if (iteration_contiguous_ < ThreadMap::Iterations::kContiguous) {
             return *this;
         }
-        // Enter here only if (iteration_contiguous_ == ThreadMap::Iteration::kContiguous)
+        // Enter here only if (iteration_contiguous_ == ThreadMap::Iterations::kContiguous)
         iteration_contiguous_ = 0;
         ++iteration_strided_;
         if (iteration_strided_ < ThreadMap::Iterations::kStrided) {
             return *this;
         }
-        // Enter here only if (iteration_strided_ == ThreadMap::Iteration::kStrided). which means we enter the next tile.
+        // Enter here only if (iteration_strided_ == ThreadMap::Iterations::kStrided). which means we enter the next tile.
         iteration_strided_ = 0;
         return *this;
     }

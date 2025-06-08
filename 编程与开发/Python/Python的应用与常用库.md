@@ -1583,7 +1583,7 @@ resultStr = str.format('friend', 3000.275)
 print(resultStr)	# Hello, my ---friend---, good morning and give me 3e+03 dollars please!
 ```
 
-  当然，在format()的参数中，也可以传入列表、字典、对象等参数，则目标字符串也要做相应的改变。如：
+  当然，在format()的参数中，也可以传入列表、字典、对象等参数，则模式字符串也要做相应的改变。如：
 
 ```python
 myList = ['apple', 'banane', 'watermelon', 'orange']
