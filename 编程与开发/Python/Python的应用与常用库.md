@@ -23,6 +23,8 @@ Python支持直接判断一个数是否属于某个范围的语法糖，如C语�
 
 注意，Python内置的cmath模块中的sqrt()函数，返回结果总是一个复数，即使原来的数据不为复数。
 
+## 异常和错误处理
+
 Python的异常类型都派生自Exception基类，可以使用raise抛出一个异常类的实例对象，并使用except捕获该异常对象。
 
 ```python
@@ -47,7 +49,7 @@ class _NotImplementedType(Any):
 NotImplemented: _NotImplementedType
 ```
 
-## Python内置函数及工具函数
+## 内置函数及工具函数
 
 Python解释器内置许多函数和类型，它们在任何时间都可用，位于builtins.pyi文件中，参见https://docs.python.org/3.12/library/functions.html官方文档。
 
@@ -589,7 +591,7 @@ for pair in zip([1, 2, 3], ['A', 'B', 'C']):
 """
 ```
 
-## Python类的特性
+## 类的特性
 
 可以用装饰器来对Python类中方法的进行定义。
 
@@ -811,7 +813,7 @@ Anaconda是一个大而全的软件发行版，是一个预先建立和配置好
 
 在Anaconda的虚拟环境中主要用conda和pip下载和管理各种包，conda是一个跨平台的包和运行环境管理工具，其安装的包通常来自于Anaconda repository和Anaconda Cloud镜像网站。和pip安装的包不同的是，conda包是二进制格式的，因此无需预先安装编译器。
 
-可以使用如下命令创建一个Python虚拟环境。
+可以使用如下命令创建一个Python虚拟环境。需要注意的是，虚拟环境会存储在诸如/path/to/miniconda3/envs/env_name的目录下，而默认的base环境则存储在/path/to/miniconda3目录之下。
 
 ```shell
 conda create -n env_name python=3.9.12
@@ -2021,7 +2023,7 @@ print(args, epochs, batch)
 如果要定义如何解析命令行参数，可以调用ArgumentParser的`ArgumentParser.add_argument()`实例方法，给其对象parser添加程序的参数信息（本质上时一种“参数名-参数值”的键值对形式），用来指定parser如何获取命令行字符串并将其转换为参数对象，以供后续使用。如下所示。
 
 ```python
-add_argument(name or flags... [,action][,nargs][,const][,default][,type][,choices][,required][,help][,metavar][,dest])
+add_argument(name_or_flags... [,action][,nargs][,const][,default][,type][,choices][,required][,help][,metavar][,dest])
 ```
 
 ### 1. 各种类型的参数
@@ -2103,7 +2105,7 @@ group.add_argument('-v', '--verbose', action='store_true', help='打印详细信
 ### 2. add_argument()的其他选项
 
 ```python
-add_argument(name or flags... [,action][,nargs][,const][,default][,type][,choices][,required][,help][,metavar][,dest])
+add_argument(name_or_flags... [,action][,nargs][,const][,default][,type][,choices][,required][,help][,metavar][,dest])
 ```
 
 action选项，表示命令行遇到参数时的动作，它可以取值如下：
@@ -2158,17 +2160,19 @@ Python自带的`distutils`模块提供了在Python环境中构建和安装额外
 ```python
 # setup.py
 from distutils.core import setup
-setup(name='MyModel',
-      version='1.0',
-      description='This is my first python model',
-      author='Akame',
-      py_modules=['core.in_model', 'core.cal', 'ui.main'],	# 模块列表
-      packages=['core', 'ui'])								# 包列表
+setup(
+    name='MyModel',
+    version='1.0',
+    description='This is my first python model',
+    author='Akame',
+    py_modules=['core.in_model', 'core.cal', 'ui.main'],  # 模块列表
+    packages=['core', 'ui']                               # 包列表
+)
 ```
 
-- py_models，指定要安装的模块名，注意之前使用包名前缀。如果不指定该项，会默认使用packages所指定的包下的所有模块。
+其中，参数py_models用于指定要安装的模块名，注意之前使用包名前缀。如果不指定该项，会默认使用packages所指定的包下的所有模块。
 
-使用build进行构建。
+然后，使用build进行构建。
 
 ```shell
 python setup.py build
@@ -2176,7 +2180,7 @@ python setup.py build
 
 在setup.py目录中打开终端，输入命令，程序会在当前目录下自动创建build\lib\目录，然后按照setup.py脚本，将模块和相关联的其他文件复制到lib目录下，完成安装包的构建。实际上就是根据setup.py将相关的内容全部复制出来，形成一个单独的包。
 
-使用install进行安装。
+最后，使用install进行安装。
 
 ```
 python setup.py install
