@@ -305,7 +305,7 @@ dp_model = nn.DataParallel(model)  # 构建数据并行模型，其生成多个�
 # 在主线程中设置 autocast 自动精度转换上下文管理器
 with torch.amp.autocast(device_type='cuda'):
     # dp_model 的内部线程也会使用 autocast 自动精度转换
-	pred = dp_model(input)
+    pred = dp_model(input)
     loss = loss_fn(pred, target)
 ```
 

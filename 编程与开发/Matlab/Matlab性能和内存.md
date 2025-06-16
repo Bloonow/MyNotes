@@ -493,8 +493,8 @@ count_infs = sum(isinf(x));
 
 ```matlab
 function y = memUsed
-	usr = memory;
-	y = usr.MemUsedMATLAB/1e6;
+    usr = memory;
+    y = usr.MemUsedMATLAB/1e6;
 end
 ```
 
@@ -735,8 +735,8 @@ A = zeros(1e6, 1, 'single');
 
 ```matlab
 function myfun
-	function setrowval(row, value)
-    	A(row,:) = value;
+    function setrowval(row, value)
+        A(row,:) = value;
     end
     
     A = magic(500);
@@ -790,7 +790,7 @@ B = f1(A);
 
 ```matlab
 function Y = f1(X)
-	Y = X .* 1.5;  % X is a shared copy of A
+    Y = X .* 1.5;  % X is a shared copy of A
 end
 ```
 
@@ -805,8 +805,8 @@ B = f2(A);
 
 ```matlab
 function Y = f2(X)
-	X = X .* 1.5;  % X is an independent copy of A
-	Y = X;         % Y is a shared copy of X
+    X = X .* 1.5;  % X is an independent copy of A
+    Y = X;         % Y is a shared copy of X
 end
 ```
 
@@ -838,12 +838,12 @@ A = f2(A);
 
 ```matlab
 function canBeOptimized
-	A = rand(1e7, 1);
-	A = fLocal(A);
+    A = rand(1e7, 1);
+    A = fLocal(A);
 end
 
 function X = fLocal(X)
-	X = X .* 1.5;
+    X = X .* 1.5;
 end
 ```
 

@@ -208,12 +208,12 @@ select ColumnName, ... from TableName [where Clause] [limit f,t] [offset M];
 ### 5. 其他操作
 
 ```mysql
-use TableName;		# 使用/选择当前数据库
-show databases;		# 列出 MySQL 数据库管理系统的数据库列表
-show tables [from DatabaseName];	# 显示指定数据库的所有表
-show columns from TableName;		# 显示数据表属性列的信息
-show index from TableName;			# 显示数据表索引的信息
-show table status [from DatabaseName] [like 'regStr'] [\G];		# 显示数据库的信息
+use TableName;        # 使用/选择当前数据库
+show databases;        # 列出 MySQL 数据库管理系统的数据库列表
+show tables [from DatabaseName];    # 显示指定数据库的所有表
+show columns from TableName;        # 显示数据表属性列的信息
+show index from TableName;            # 显示数据表索引的信息
+show table status [from DatabaseName] [like 'regStr'] [\G];        # 显示数据库的信息
 ```
 
 ## （二）扩展性语句
@@ -354,9 +354,9 @@ create table NewTableName as (
 
 ```mysql
 create table NewTableName (
-	NewColumnName Type [constraints], ...
+    NewColumnName Type [constraints], ...
 ) as (
-	select xxx
+    select xxx
 );
 ```
 
@@ -422,7 +422,7 @@ alter table TableName add [unique] index IndexName(ColumnName, ...);
 
 ```mysql
 create table TablaName (ColumnList,
-	[unique] index IndexName (ColumnName), ...
+    [unique] index IndexName (ColumnName), ...
 );
 ```
 
@@ -539,7 +539,7 @@ MySQL临时表在需要保存一些临时数据时是非常有用的，他只在
 ```mysql
 create temporary table TmpTableName(...);
 create temporary table TmpTableName as (
-	select xxx from xxx [Conds]
+    select xxx from xxx [Conds]
 );
 ```
 
@@ -562,8 +562,8 @@ MySQL序列是一组整数如1,2,3,...，由于一张数据表只能有一个字
 ```mysql
 alter table TableName drop AIncrColumn;
 alter table TableName
-	add AIncrColumn int unsigned not null auto_increment first,
-	add primary key (AIncrColumn);
+    add AIncrColumn int unsigned not null auto_increment first,
+    add primary key (AIncrColumn);
 ```
 
 - 该操作要非常小心，如果在删除的同时又有新记录添加，有可能会出现数据混乱。

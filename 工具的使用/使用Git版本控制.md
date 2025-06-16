@@ -186,13 +186,13 @@ No commits yet
 
 Changes to be committed:
   (use "git rm --cached <file>..." to unstage)
-	new file:   a.c
-	new file:   b.cpp
+    new file:   a.c
+    new file:   b.cpp
 
 Untracked files:
   (use "git add <file>..." to include in what will be committed)
-	a.exe
-	b.exe
+    a.exe
+    b.exe
 ```
 
 ### git commit
@@ -216,8 +216,8 @@ git status
 On branch master
 Untracked files:
   (use "git add <file>..." to include in what will be committed)
-	a.exe
-	b.exe
+    a.exe
+    b.exe
 
 nothing added to commit but untracked files present (use "git add" to track)
 ```
@@ -240,7 +240,7 @@ git status
 On branch master
 Changes to be committed:
   (use "git restore --staged <file>..." to unstage)
-	new file:   c.py
+    new file:   c.py
 ```
 
 ```shell
@@ -252,7 +252,7 @@ git status
 On branch master
 Untracked files:
   (use "git add <file>..." to include in what will be committed)
-	c.py
+    c.py
 
 nothing added to commit but untracked files present (use "git add" to track)
 ```

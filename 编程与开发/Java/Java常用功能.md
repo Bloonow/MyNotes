@@ -39,8 +39,8 @@ default关键字除了可以用作访问修饰符、switch子句中。从JDK 8�
 ```xml
 <!-- book.xml -->
 <bookstore>
-	<book category="Classic">
-    	<title>Harry Potter</title>
+    <book category="Classic">
+        <title>Harry Potter</title>
         <author>JK. Rowling</author>
         <year>2005</year>
         <price>29.99$</price>
@@ -63,12 +63,12 @@ Document docu = dBuilder.parse(new File("book.xml"));
 
 // 获得所有<bookstore>元素节点的列表，因为此处就一个，故List长度为1
 NodeList bookstoreNodeList = docu.getElementsByTagName("bookstore");
-Node bookstoreNode = bookstoreNodeList.item(0);	// 取得第一个<bookstore>元素节点
+Node bookstoreNode = bookstoreNodeList.item(0);    // 取得第一个<bookstore>元素节点
 
 // 获得第一个<bookstore>元素节点所有孩子节点组成的列表，其中有<title>、<author>、<year>、<price>元素节点
 NodeList allChildsList = bookstoreNode.getChildNodes();
-Node titleNode = allChildsList.item(0);		// 获得<title>元素节点
-String value = titleNode.getNodeValue();	// 此处为 Harry Potter
+Node titleNode = allChildsList.item(0);        // 获得<title>元素节点
+String value = titleNode.getNodeValue();    // 此处为 Harry Potter
 ```
 
 - `Document.getElementsByTagName(String tag)`，返回所有以tag为名称的节点list，不分XML树结构。
@@ -431,13 +431,13 @@ format()方法需要一个格式化字符串，对于不同的格式对象（如
 Pattern对象是一个正则表达式的编译表示。
 
 ```java
-public static Pattern compile(String regex);	// class Pattern
+public static Pattern compile(String regex);    // class Pattern
 ```
 
 - Pattern类没有公共构造方法，要创建一个Pattern对象，需要使用Pattern的静态公共编译方法，它返回一个Pattern对象，第一个参数是一个正则表达式的字符串。
 
 ```java
-public static boolean matches(String regex, CharSequence input);	// class Pattern
+public static boolean matches(String regex, CharSequence input);    // class Pattern
 ```
 
 - 判断输入的字符串input是否匹配字符串regex表示的正则表达式。
@@ -445,7 +445,7 @@ public static boolean matches(String regex, CharSequence input);	// class Patter
 Matcher对象是对输入字符串进行解锁和匹配的引擎。
 
 ```java
-public Matcher matcher(CharSequence input);		// class Pattern
+public Matcher matcher(CharSequence input);        // class Pattern
 ```
 
 - Matcher类没有公共构造方法，要创建一个Matcher对象，需要调用Pattern对象的matcher()方法，返回一个Matcher对象。
@@ -524,9 +524,9 @@ public class DbUtil {
     private static String sDriverName = "com.microsoft.sqlserver.jdbc.SQLServerDriver";
     // localhost表示本机地址（127.0.0.1），DatabaseName后面用=引出要连接的数据库名字
     private static String sDbURL = "jdbc:sqlserver://localhost:1433;DatabaseName=School";
-    private static String sUserName = "sa";	 // 数据库账户名
-    private static String sUserPassword = "xxxxx";	// 账户密码
-    private static Connection sDbConnection = null;	// 数据库连接
+    private static String sUserName = "sa";     // 数据库账户名
+    private static String sUserPassword = "xxxxx";    // 账户密码
+    private static Connection sDbConnection = null;    // 数据库连接
     static {
         try {
             Class.forName(sDriverName);
@@ -536,10 +536,10 @@ public class DbUtil {
         }
     }
 
-    private DbUtil() {}	// 私有构造函数，不允许外部拥有实例
+    private DbUtil() {}    // 私有构造函数，不允许外部拥有实例
 
     public static Connection getConnection() {
-        return sDbConnection;	// 返回数据库连接
+        return sDbConnection;    // 返回数据库连接
     }
 }
 ```
@@ -550,15 +550,15 @@ public class DbUtil {
 // Main.java
 public class Main {
     public static void main(String []args) throws SQLException {
-        Connection dbConn = DbUtil.getConnection();	// 获得数据库连接
+        Connection dbConn = DbUtil.getConnection();    // 获得数据库连接
         
-        String sqlText = "SELECT * FROM STUDENTS WHERE grade = ?";	// 动态SQL语句，?是占位符，表示一个宿主语言的变量
-        PreparedStatement preparedStatement = dbConn.prepareStatement(sqlText);	// 预处理语句
-        preparedStatement.setInt(1, 2000);	// 为预处理语句设置参数
-        ResultSet resultSet = preparedStatement.executeQuery();	// 执行查询，获得ResultSet结果，元组的集合
+        String sqlText = "SELECT * FROM STUDENTS WHERE grade = ?";    // 动态SQL语句，?是占位符，表示一个宿主语言的变量
+        PreparedStatement preparedStatement = dbConn.prepareStatement(sqlText);    // 预处理语句
+        preparedStatement.setInt(1, 2000);    // 为预处理语句设置参数
+        ResultSet resultSet = preparedStatement.executeQuery();    // 执行查询，获得ResultSet结果，元组的集合
         
         String sqlText1 = "SELECT * FROM STUDENTS WHERE grade = 2001";
-        Statement statement = dbConn.createStatement();	// 也可以直接使用Statement语句
+        Statement statement = dbConn.createStatement();    // 也可以直接使用Statement语句
         ResultSet resultSet1 = statement.executeQuery(sqlText1);
         
         // ResultSet的next方法将游标向下移动一条，并返回是否到达EOF
@@ -622,8 +622,8 @@ Java程序打包成exe可执行文件，分为两大步骤：将Java程序导成
 
 ```shell
 # 在源代码.java文件目录下
-javac filename.java				# 递归import的类会被一起编译
-jar cvf target.jar *.class		# 将编译得的.class文件打包成target.jar文件
+javac filename.java                # 递归import的类会被一起编译
+jar cvf target.jar *.class        # 将编译得的.class文件打包成target.jar文件
 ```
 
 ## （二）使用exe4j工具生产exe可执行文件

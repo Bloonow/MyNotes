@@ -61,17 +61,17 @@ dllmain.cpp --> pch.h
 // dllmain.cpp : 定义 DLL 应用程序的入口点。
 #include "pch.h"
 
-BOOL APIENTRY DllMain( HMODULE hModule,				// 模块句柄
-                       DWORD  ul_reason_for_call,	 // 调用原因
-                       LPVOID lpReserved			// 保留参数
+BOOL APIENTRY DllMain( HMODULE hModule,            // 模块句柄
+                       DWORD  ul_reason_for_call,  // 调用原因
+                       LPVOID lpReserved           // 保留参数
                      )
 {
     switch (ul_reason_for_call)
     {
-    case DLL_PROCESS_ATTACH:		// DLL被某个进程加载
-    case DLL_THREAD_ATTACH:			// DLL被某个线程加载
-    case DLL_THREAD_DETACH:			// DLL被某个线程卸载
-    case DLL_PROCESS_DETACH:		// DLL被某个进程卸载
+    case DLL_PROCESS_ATTACH:  // DLL被某个进程加载
+    case DLL_THREAD_ATTACH:   // DLL被某个线程加载
+    case DLL_THREAD_DETACH:   // DLL被某个线程卸载
+    case DLL_PROCESS_DETACH:  // DLL被某个进程卸载
         break;
     }
     return TRUE;
@@ -121,8 +121,8 @@ BOOL APIENTRY DllMain( HMODULE hModule,				// 模块句柄
 // 导出的类
 class EXIM_API MyClass {
 public:
-	virtual int add(int a, int b) = 0;
-	virtual ~MyClass() {};
+    virtual int add(int a, int b) = 0;
+    virtual ~MyClass() {};
 };
 
 // 导出的函数，使用 extern "C" 向C兼容
@@ -130,8 +130,8 @@ public:
 extern "C" {
 #endif // __cplusplus
 
-	EXIM_API MyClass* createMyClass();
-	EXIM_API void destroyMyClass(MyClass* mc);
+    EXIM_API MyClass* createMyClass();
+    EXIM_API void destroyMyClass(MyClass* mc);
 
 #ifdef __cplusplus
 }
@@ -139,7 +139,7 @@ extern "C" {
 
 // 也可以用下列方法声明导出的函数和变量
 extern "C" EXIM_API int sub(int a, int b);
-extern "C" EXIM_API float PI;	// 导出的全局变量
+extern "C" EXIM_API float PI;  // 导出的全局变量
 ```
 
 ```c++
@@ -149,15 +149,15 @@ extern "C" EXIM_API float PI;	// 导出的全局变量
 #include "MyConcreteClass.h"
 
 EXIM_API MyClass * createMyClass() {
-	return new MyConcreteClass();
+    return new MyConcreteClass();
 }
 
 EXIM_API void destroyMyClass(MyClass * mc) {
-	delete mc;
+    delete mc;
 }
 
 EXIM_API int sub(int a, int b) {
-	return a - b;
+    return a - b;
 }
 
 EXIM_API float PI = 3.1415926f;
@@ -170,8 +170,8 @@ EXIM_API float PI = 3.1415926f;
 
 class MyConcreteClass : public MyClass {
 public:
-	virtual int add(int a, int b);
-	virtual ~MyConcreteClass() {};
+    virtual int add(int a, int b);
+    virtual ~MyConcreteClass() {};
 };
 ```
 
@@ -180,7 +180,7 @@ public:
 #include "MyConcreteClass.h"
 
 int MyConcreteClass::add(int a, int b) {
-	return a + b;
+    return a + b;
 }
 ```
 
@@ -202,12 +202,12 @@ int MyConcreteClass::add(int a, int b) {
 // 声明，类似前置类，仅仅是为了让编译器知道有这么一个类型；不需要定义，如果定义了则使用新定义的方法
 class MyClass {
 public:
-	virtual int add(int, int) = 0;
+    virtual int add(int, int) = 0;
 };
 
-/*	上述声明甚至可以使用结构体，其实和类一致
+/* 上述声明甚至可以使用结构体，其实和类一致
 struct MyClass {
-	virtual int add(int, int) = 0;
+    virtual int add(int, int) = 0;
 };
 */
 
@@ -217,36 +217,36 @@ typedef MyClass* (*CreateFunc)();
 typedef void(*DestroyFunc)(MyClass*);
 
 int main() {
-	HMODULE hModule;			// 模块句柄
-	hModule = ::LoadLibrary("MyDll.dll");		// 加载库文件
-	if (hModule == NULL) {
-		MessageBox(NULL, "DLL loads error", "Mark", MB_OK);		// 窗口
-	}
+    HMODULE hModule;  // 模块句柄
+    hModule = ::LoadLibrary("MyDll.dll");  // 加载库文件
+    if (hModule == NULL) {
+        MessageBox(NULL, "DLL loads error", "Mark", MB_OK);  // 窗口
+    }
 
-	// 获取相应DLL函数的入口地址
-	Func_1 sub = (Func_1)::GetProcAddress(hModule, "sub");
-	CreateFunc createMyClass = (CreateFunc)::GetProcAddress(hModule, "createMyClass");
-	DestroyFunc destroyMyClass = (DestroyFunc)::GetProcAddress(hModule, "destroyMyClass");
+    // 获取相应DLL函数的入口地址
+    Func_1 sub = (Func_1)::GetProcAddress(hModule, "sub");
+    CreateFunc createMyClass = (CreateFunc)::GetProcAddress(hModule, "createMyClass");
+    DestroyFunc destroyMyClass = (DestroyFunc)::GetProcAddress(hModule, "destroyMyClass");
 
-	// 调用相应函数
-	if (sub != NULL) {
-		std::cout << "sub(14, 7) = " << sub(14, 7) << std::endl;
-	}
-	if (createMyClass != NULL && destroyMyClass != NULL) {
-		MyClass* mcc = createMyClass();
-		std::cout << "MyClass->add(14, 60) = " << mcc->add(14, 60) << std::endl;
-		destroyMyClass(mcc);
-		mcc = NULL;
-	}
+    // 调用相应函数
+    if (sub != NULL) {
+        std::cout << "sub(14, 7) = " << sub(14, 7) << std::endl;
+    }
+    if (createMyClass != NULL && destroyMyClass != NULL) {
+        MyClass* mcc = createMyClass();
+        std::cout << "MyClass->add(14, 60) = " << mcc->add(14, 60) << std::endl;
+        destroyMyClass(mcc);
+        mcc = NULL;
+    }
 
-	// 调用相应变量
-	float* pi_ptr = (float*)::GetProcAddress(hModule, "PI");
-	if (pi_ptr != NULL) {
-		std::cout << "PI = " << *pi_ptr << std::endl;
-	}
+    // 调用相应变量
+    float* pi_ptr = (float*)::GetProcAddress(hModule, "PI");
+    if (pi_ptr != NULL) {
+        std::cout << "PI = " << *pi_ptr << std::endl;
+    }
 
-	FreeLibrary(hModule);		// 释放句柄，释放库文件
-	return 0;
+    FreeLibrary(hModule);  // 释放句柄，释放库文件
+    return 0;
 }
 ```
 
@@ -272,8 +272,8 @@ int main() {
 LIBRARY dll_filename
 DESCRIPITION "my sample dll"
 EXPORTS
-	function_name @1	; the first function exported using @1
-	variable_name DATA	; identify the var by using DATA
+    function_name @1    ; the first function exported using @1
+    variable_name DATA    ; identify the var by using DATA
 ```
 
 - 一个分号`;`后跟的是注释。
@@ -315,17 +315,17 @@ EXPORTS
 这里举一个使用共享数据段的例子，使用了#pragma data_seg，其中的变量必须在定义时初始化。
 
 ```c
-#pragma data_seg("Share_Data_Segment")		// 共享数据段开始
-int g_count = 0;		// 定义时初始化，否则将被放到 BSS 段
-#pragma data_seg()		// 共享数据段结束
-#pragma comment(linker, "/SECTION:Share_Data_Segment,RWS")		// 解释见下
+#pragma data_seg("Share_Data_Segment")  // 共享数据段开始
+int g_count = 0;    // 定义时初始化，否则将被放到 BSS 段
+#pragma data_seg()  // 共享数据段结束
+#pragma comment(linker, "/SECTION:Share_Data_Segment,RWS")  // 解释见下
 ```
 
 仅定义一个数据段的描述还不能达到共享数据的目的，还要告诉编译器/链接器该段的属性是共享的，这就是上述中#pragma comment指令的作用，其中RSW表示该段的属性是Read、Write、Shared。要实现这种效果，其实还有两种方法。可以在IDE的项目设置的链接选项中加入`/SECTION:Share_Data_Segment,RWS`（没找到）。也可以在.def文件中对该段进行描述，如下。
 
 ```
 SECTIONS
-	Share_Data_Segment READ WRITE SHARED
+    Share_Data_Segment READ WRITE SHARED
 ```
 
 一些值得注意的内容如下。不要在共享数据段中存放某个进程相关的信息，Win32中大多数的数据结构和值（比如HANDLE）只在特定的进程上下文中才是有效的。每个进程都有它自己的地址空间，因此不要在共享数据段中共享指针，指针指向的地址在不同的地址空间中是不一样的。DLL在每个进程中是被映射在不同的虚拟地址空间中的，因此函数指针也是不安全的。
@@ -367,7 +367,7 @@ extern "C" {
 
 JNIEXPORT jint JNICALL Java_mypack_mydll_Calculator_add(JNIEnv *, jclass, jint, jint);
 JNIEXPORT jint JNICALL Java_mypack_mydll_Calculator_abs(JNIEnv *, jclass, jint);
-		
+        
 JNIEXPORT void JNICALL Java_mypack_mydll_Calculator_setNumber(JNIEnv *, jclass, jint);
 JNIEXPORT jint JNICALL Java_mypack_mydll_Calculator_getNumber(JNIEnv *, jclass);
 
@@ -386,19 +386,19 @@ JNIEXPORT jint JNICALL Java_mypack_mydll_Calculator_getNumber(JNIEnv *, jclass);
 static int sNumber = 0;
 
 JNIEXPORT jint JNICALL Java_mypack_mydll_Calculator_add(JNIEnv *, jclass, jint a, jint b) {
-	return a + b;
+    return a + b;
 }
 
 JNIEXPORT jint JNICALL Java_mypack_mydll_Calculator_abs(JNIEnv *, jclass, jint a) {
-	return a < 0 ? -a : a;
+    return a < 0 ? -a : a;
 }
 
 JNIEXPORT void JNICALL Java_mypack_mydll_Calculator_setNumber(JNIEnv *, jclass, jint a) {
-	sNumber = a;
+    sNumber = a;
 }
 
 JNIEXPORT jint JNICALL Java_mypack_mydll_Calculator_getNumber(JNIEnv *, jclass) {
-	return sNumber;
+    return sNumber;
 }
 ```
 
@@ -471,20 +471,20 @@ JNIEXPORT jstring JNICALL Java_mypack_mydll_TmpStore_getString
 static char* sChars = NULL;
 
 JNIEXPORT void JNICALL Java_mypack_mydll_TmpStore_storeString(JNIEnv* env, jclass, jstring str) {
-	if (sChars != NULL) {
-		delete sChars;
-	}
-	// 分配内存空间存储字符串，最后要使用Release函数释放
-	const char* srcStr = env->GetStringUTFChars(str, NULL);
-	size_t len = strlen(srcStr);
-	sChars = new char[len + 1];
-	memset(sChars, '\0', (len + 1) * sizeof(char));
-	strcpy(sChars, srcStr);
-	env->ReleaseStringUTFChars(str, srcStr);	// 释放空间
+    if (sChars != NULL) {
+        delete sChars;
+    }
+    // 分配内存空间存储字符串，最后要使用Release函数释放
+    const char* srcStr = env->GetStringUTFChars(str, NULL);
+    size_t len = strlen(srcStr);
+    sChars = new char[len + 1];
+    memset(sChars, '\0', (len + 1) * sizeof(char));
+    strcpy(sChars, srcStr);
+    env->ReleaseStringUTFChars(str, srcStr);  // 释放空间
 }
 
 JNIEXPORT jstring JNICALL Java_mypack_mydll_TmpStore_getString(JNIEnv* env, jclass) {
-	return env->NewStringUTF(sChars);
+    return env->NewStringUTF(sChars);
 }
 ```
 
@@ -536,7 +536,7 @@ public static void main(String[] args) {
     TmpStore.storeString("这是一个加法算式：");
     int ret = new Calculator().add(3, 4);
     String outStr = TmpStore.getString() + "3 + 4 = " + ret;
-    System.out.println(outStr);		// 输出：这是一个加法算式：3 + 4 = 7
+    System.out.println(outStr);  // 输出：这是一个加法算式：3 + 4 = 7
 }
 ```
 
@@ -597,23 +597,23 @@ JNIEXPORT void JNICALL Java_mypack_mydll_DoubleCall_goJNI
 // mypack_mydll_DoubleCall.cpp
 #include "mypack_mydll_DoubleCall.h"
 JNIEXPORT void JNICALL Java_mypack_mydll_DoubleCall_goJNI(JNIEnv * env, jobject thiz) {
-	jclass clazz = env->FindClass("mypack/mydll/DoubleCall");
-	if (clazz == nullptr) {
-		printf("Find class mypack.mydll.DoubleCall error!");
-		return;
-	}
-	// 在这里使用了签名去找到一个方法的ID，以便根据方法的ID去调用方法
-	jmethodID aPrintId = env->GetMethodID(clazz, "aPrint", "(Ljava/lang/String;)V");
-	if (aPrintId != nullptr) {
-		jstring msg = env->NewStringUTF("msg send by JNI to aPrint");
-		env->CallVoidMethod(thiz, aPrintId, msg);
-	}
+    jclass clazz = env->FindClass("mypack/mydll/DoubleCall");
+    if (clazz == nullptr) {
+        printf("Find class mypack.mydll.DoubleCall error!");
+        return;
+    }
+    // 在这里使用了签名去找到一个方法的ID，以便根据方法的ID去调用方法
+    jmethodID aPrintId = env->GetMethodID(clazz, "aPrint", "(Ljava/lang/String;)V");
+    if (aPrintId != nullptr) {
+        jstring msg = env->NewStringUTF("msg send by JNI to aPrint");
+        env->CallVoidMethod(thiz, aPrintId, msg);
+    }
 
-	jmethodID aStaticPrintId = env->GetStaticMethodID(clazz, "aStaticPrint", "(Ljava/lang/String;)V");
-	if (aStaticPrintId != nullptr) {
-		jstring msg = env->NewStringUTF("msg send by JNI to aStaticPrint");
-		env->CallVoidMethod(clazz, aStaticPrintId, msg);
-	}
+    jmethodID aStaticPrintId = env->GetStaticMethodID(clazz, "aStaticPrint", "(Ljava/lang/String;)V");
+    if (aStaticPrintId != nullptr) {
+        jstring msg = env->NewStringUTF("msg send by JNI to aStaticPrint");
+        env->CallVoidMethod(clazz, aStaticPrintId, msg);
+    }
 }
 ```
 
@@ -873,7 +873,7 @@ __declspec(naked) int __fastcall  power(int i, int j) {
     {
         int ret = 1;
         while (j-- > 0) ret *= i;
-        __asm {	mov eax, ret };
+        __asm {    mov eax, ret };
     }
     // epilog
     __asm {

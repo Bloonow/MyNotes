@@ -61,9 +61,9 @@ JDBC是Java DataBase Connectivity，是一组Java版的应用程序接口API。�
 
 ```sql
 SET XACT_ABORT ON
-BEGIN TRANSACTION T1		-- BEGIN TRAN
-	INSERT / UPDATE / DELETE / SELECT / ELSE
-COMMIT TRANSACTION T1		-- COMMIT TRAN
+BEGIN TRANSACTION T1        -- BEGIN TRAN
+    INSERT / UPDATE / DELETE / SELECT / ELSE
+COMMIT TRANSACTION T1        -- COMMIT TRAN
 ```
 
 - `SET XACT_ABORT ON`，当它设为ON时，如果事务语句产生错误将会回滚；默认设为OFF时不会回滚而是继续进行处理，只回滚当前语句；编译错误（如语法错误）不受 XACT_ABORT 的影响。
@@ -149,9 +149,9 @@ CREATE USER 用户名;
 
 ```sql
 ALTER TABLE 表名
-[ADD {新列名 类型, ...}]; |	-- 增加新列
-[DROP [CONSTRAINT] | [COLUMN] {完整性约束名}]; |	-- 删除完整性约束，或列
-[ALTER COLUMN {列名 类型, ...}];	-- 修改列的定义
+[ADD {新列名 类型, ...}]; |    -- 增加新列
+[DROP [CONSTRAINT] | [COLUMN] {完整性约束名}]; |    -- 删除完整性约束，或列
+[ALTER COLUMN {列名 类型, ...}];    -- 修改列的定义
 ```
 
 2. **修改架构schema**
@@ -333,7 +333,7 @@ SELECT 列名, ... FROM 表名1, 表名2, ... WHERE 检索条件;
 2. **集合之间比较**
 
 ```sql
-表达式 θ SOME (子查询);	-- SOME 等价于 ANY，但意义上有歧义，不推荐使用
+表达式 θ SOME (子查询);    -- SOME 等价于 ANY，但意义上有歧义，不推荐使用
 表达式 θ ALL (子查询);
 ```
 
@@ -479,12 +479,12 @@ EXEC SQL DISCONNECT CURRENT;
 
 ```c
 [BEGIN TRANSACTION]
-	EXEC SQL ...;
-	/* xxx */
-	EXEC SQL COMMIT WORK;	// 提交
-	EXEC SQL COMMIT RELEASE;	// 提交并断开连接
-	EXEC SQL ROLLBACK WORK;	// 撤销
-	EXEC SQL ROLLBACK RELEASE;	// 撤销并断开连接
+    EXEC SQL ...;
+    /* xxx */
+    EXEC SQL COMMIT WORK;    // 提交
+    EXEC SQL COMMIT RELEASE;    // 提交并断开连接
+    EXEC SQL ROLLBACK WORK;    // 撤销
+    EXEC SQL ROLLBACK RELEASE;    // 撤销并断开连接
 [END TRANSACTION]
 ```
 
@@ -496,7 +496,7 @@ EXEC SQL DISCONNECT CURRENT;
 
 ```c
 EXEC SQL BEGIN DECLARE SECTION;
-	char vName[] = "张三";
+    char vName[] = "张三";
 EXEC SQL END DECLARE SECTION;
 ```
 
@@ -615,8 +615,8 @@ EXEC SQL EXECUTE IMMEDIATE :字符串名;
 Prepare预编译，编译后的SQL语句允许动态参数，Execute语句执行，用Using语句将动态参数传递给编译好的SQL语句。
 
 ```c
-EXEC SQL PREPARE sql_temp FROM :字符串变量名;		// 如，sql_text = "select * from :table_name"
-EXEC SQL EXECUTE sql_temp USING :变量名;	// 如，vTable = "Student";
+EXEC SQL PREPARE sql_temp FROM :字符串变量名;        // 如，sql_text = "select * from :table_name"
+EXEC SQL EXECUTE sql_temp USING :变量名;    // 如，vTable = "Student";
 // 上述相当于，EXEC SQL EXECUTE IMMEDIATE "select * from Student";
 ```
 
@@ -627,20 +627,20 @@ SQL 99标准支持过程和函数的概念，SQL可以使用程序设计语言�
 SQL Server的过程化SQL是指在 SQL Server Manager Studio 的交互页面进行操作的，它的基本形式和嵌入式SQL类似；而且在SQL中也提供了一些流程控制语句的支持，如：`declare @variable 类型`、`while`、`begin ... end`、`if`。其中使用一个`@`表示是一个变量，使用两个`@@`表示的引用全局变量。比如`@@fetch_status`是在游标查询后的状态，为0时表示 fetch 成功，有数据。
 
 ```sql
-declare @i int		-- 声明变量
-set @i=1			-- 赋初值
-declare c_sc cursor for		-- 声明一个游标
-	select * from sc order by grade desc	-- 按成绩降序
-open c_sc			-- 打开，即执行游标
-fetch c_sc			-- 获取当前游标的元组
+declare @i int        -- 声明变量
+set @i=1            -- 赋初值
+declare c_sc cursor for        -- 声明一个游标
+    select * from sc order by grade desc    -- 按成绩降序
+open c_sc            -- 打开，即执行游标
+fetch c_sc            -- 获取当前游标的元组
 while (@@fetch_status=0)
 begin
-	update sc set n=@i where current of c_sc	-- 更新排名
-	set @i=@i+1
-	fetch c_sc
+    update sc set n=@i where current of c_sc    -- 更新排名
+    set @i=@i+1
+    fetch c_sc
 end
-close c_sc			-- 关闭游标
-deallocate c_sc		-- 撤销分配的空间
+close c_sc            -- 关闭游标
+deallocate c_sc        -- 撤销分配的空间
 ```
 
 上述用法是在客户端编程，如果想要把它保存到服务器中，可以将它创建为过程，保存到服务器上。`CREATE PROCEDURE 存储过程名 AS BEGIN ... END;`，它保存在服务器的数据库中的存储过程中，可以由不同的用户使用。
@@ -687,9 +687,9 @@ END
 ```sql
 CREATE FUNCTION f_count(@sno char(8)) RETURN INT
 AS BEGIN
-	DECLARE @i INT;
-	SELECT @i=count(*) FROM SC WHERE Sno = @sno;
-	return @i;
+    DECLARE @i INT;
+    SELECT @i=count(*) FROM SC WHERE Sno = @sno;
+    return @i;
 END
 ```
 
@@ -820,9 +820,9 @@ CREATE TABLE 表名 (列名 类型 [DEFAULT {默认常量 | NULL}] 列约束, ..
 
 ```sql
 { NOT NULL | [CONSTRAINT 约束名] 
-	{ UNIQUE | PRIMARY KEY | CHECK(条件表达式) | 
-	REFERENCES 另一表名[(另一表主键)] [ON DELETE | ON UPDATE { CASCADE | SET NULL | NO ACTION }] 
-	}
+    { UNIQUE | PRIMARY KEY | CHECK(条件表达式) | 
+    REFERENCES 另一表名[(另一表主键)] [ON DELETE | ON UPDATE { CASCADE | SET NULL | NO ACTION }] 
+    }
 }
 ```
 
@@ -854,7 +854,7 @@ ALTER TABLE 表名 [ADD (列名 类型 可选默认 列约束)] [DROP { COLUMN �
 
 ```sql
 ALTER TABLE Orders ADD CONSTRAINT FK_Products
-	FOREIGN KEY (product_id) REFERENCES Products(prod_id) ON DELETE NO ACTION;
+    FOREIGN KEY (product_id) REFERENCES Products(prod_id) ON DELETE NO ACTION;
 ```
 
 ### 2. 用户自定义完整性
@@ -866,8 +866,8 @@ SQL中用于属于约束性方面的有`NOT NULL`、`CHECK`子句；而用于全
 一般地，域是一组具有相同数据类型的值的集合。SQL支持域的概念，并可以用`CREATE DOMAIN`语句创建一个域以及该域应该满足的完整性约束条件，然后就可以用这个自定义域来定义属性。优点是，数据库中不同的属性可以来自同一个域，当域上的完整性约束条件改变时，只需要修改域的定义，而不必一个一个地修改使用这个类型的每个表。
 
 ```sql
-CREATE DOMAIN 自定义域名 基本类型 约束;	-- Or
-exec sp_addtype TypeName 'aType';	-- a type like DECIMAL(10,2) and etc.
+CREATE DOMAIN 自定义域名 基本类型 约束;    -- Or
+exec sp_addtype TypeName 'aType';    -- a type like DECIMAL(10,2) and etc.
 ```
 
 - 自定义域的完整性约束，也可以使用DROP、UPDATE等语句修改等，自定义域名和基本数据类型的使用方法一样。
@@ -925,12 +925,12 @@ ON 表名 [REFERENCING 变量名, ...] [FOR EACH ROW | STATEMENT] [WHEN(检测�
 
 ```sql
 CREATE TRIGGER teacher_chgsal BEFORE UPDATE OF salary
-	ON Theacher
-	REFERENCING NEW x, OLD y
-	FOR EACH ROW WHEN (x.salary < y.salary)
-	BEGIN
-	raise_application_error(-20003, 'invalid salary on updata');
-	END;
+    ON Theacher
+    REFERENCING NEW x, OLD y
+    FOR EACH ROW WHEN (x.salary < y.salary)
+    BEGIN
+    raise_application_error(-20003, 'invalid salary on updata');
+    END;
 ```
 
 2. **在SQL Server中的创建语句**

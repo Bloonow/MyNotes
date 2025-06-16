@@ -2710,7 +2710,7 @@ namespace cg = ::cooperative_groups;  // use an alias to avoid polluting the nam
 class thread_group {
 public:
     void sync() const;                       // 栅障，同步组内的所有线程
-	unsigned long long size() const;         // 线程组中所有线程的数目
+    unsigned long long size() const;         // 线程组中所有线程的数目
     unsigned long long thread_rank() const;  // 当前线程在该线程组中的编号，取值于[0, size() - 1]范围
     unsigned long long num_threads() const;  // 一个tile片中线程的数目
 protected:
@@ -2720,7 +2720,7 @@ protected:
 
 template<unsigned int TyId>
 struct thread_group_base : public thread_group {
-    thread_group_base() : thread_group(TyId) {}	
+    thread_group_base() : thread_group(TyId) {}    
 };
 ```
 
@@ -2781,7 +2781,7 @@ thread_block_tile<4> g4 = tiled_partition<4>(g32);
 template <unsigned int Size>
 class thread_block_tile<Size, void> : public details::thread_block_tile_impl {
     unsigned int ballot(int predicate) const;
-	int any(int predicate) const;
+    int any(int predicate) const;
     int all(int predicate) const;
     TyRet shfl     (TyElem&& elem, int srcRank) const;
     TyRet shfl_down(TyElem&& elem, unsigned int delta) const;

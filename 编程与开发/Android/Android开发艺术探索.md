@@ -160,7 +160,7 @@ IPC不是Android中所独有的，任何一个操作系统都需要有相应的I
 <manifest>
     <application>
         <activity android:name="package.main.MainActivity">
-        	<intent-filter>
+            <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
@@ -937,13 +937,13 @@ ALDL中除基本数据类型外，其他类型的参数必须标上方向`in`、
 
 ```java
 public class BookManagerService extends Service {
-	private static final String TAG = "BookManagerService";
-    private List<Book> mBookList = new CopyOnWriteArrayList<>();	// 自动线程同步的List
+    private static final String TAG = "BookManagerService";
+    private List<Book> mBookList = new CopyOnWriteArrayList<>();    // 自动线程同步的List
 
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
-        return mBinder;		// 将服务端的Binder返回给客户端
+        return mBinder;        // 将服务端的Binder返回给客户端
     }
     
     // 用来调用服务端方法调用的Binder
@@ -975,8 +975,8 @@ public class BookManagerService extends Service {
 
 ```xml
 <service
-	android:name="com.study.myaidl.BookManagerService"
-	android:process=":myremote">
+    android:name="com.study.myaidl.BookManagerService"
+    android:process=":myremote">
 </service>
 ```
 
@@ -992,7 +992,7 @@ public class BookManagerActivity extends AppCompatActivity {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             mRemoteBookManager = IBookManager.Stub.asInterface(service);
-            interactToService();	// 在这里连接后就直接进行方法调用测试
+            interactToService();    // 在这里连接后就直接进行方法调用测试
         }
         @Override
         public void onServiceDisconnected(ComponentName name) { }
@@ -1085,20 +1085,20 @@ public class RemoteCallbackList<E extends IInterface> {}
 
 ```java
 public class BookManagerService extends Service {
-	/* xxx */
-    private AtomicBoolean mServiceDestroyed = new AtomicBoolean(false);	// 声明一个原子类型做标记
+    /* xxx */
+    private AtomicBoolean mServiceDestroyed = new AtomicBoolean(false);    // 声明一个原子类型做标记
     private RemoteCallbackList<IOnNewBookArrivedListener> mListenerList = new RemoteCallbackList<>();
     private Binder mBinder = new IBookManager.Stub() {
-		/* xxx */
+        /* xxx */
         // 实现IBookManager.aidl中新增的方法
         @Override
         public void registerListener(IOnNewBookArrivedListener listener) 
-            		throws RemoteException {
+                    throws RemoteException {
             mListenerList.register(listener);
         }
         @Override
         public void unregisterListener(IOnNewBookArrivedListener listener)
-            		throws RemoteException {
+                    throws RemoteException {
             mListenerList.unregister(listener);
         }
     };
@@ -1108,7 +1108,7 @@ public class BookManagerService extends Service {
         Log.i(TAG, "remote has bought a new book.");
         mBookList.add(newBook);
         // RemoteCallbackList不是List，遍历时必须使用特定的方式，如下
-        final int N = mListenerList.beginBroadcast();	// 该方法返回元素的个数
+        final int N = mListenerList.beginBroadcast();    // 该方法返回元素的个数
         for (int i = 0; i < N; ++i) {
             IOnNewBookArrivedListener listener = mListenerList.getBroadcastItem(i);
             if (listener != null) {
@@ -1120,7 +1120,7 @@ public class BookManagerService extends Service {
     
     @Override
     public void onCreate() {
-		/* xxx */
+        /* xxx */
         // 在另一个线程中模拟买书业务，调用buyNewBook，以唤醒监听器
         new Thread(new Runnable() {
             private int no = 0;
@@ -1155,13 +1155,13 @@ public class BookManagerService extends Service {
 
 ```java
 public class BookManagerActivity extends AppCompatActivity {
-	/* xxx */
+    /* xxx */
     private ServiceConnection mConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-			/* xxx */
+            /* xxx */
             try {
-                mRemoteBookManager.registerListener(mListener);	// 注册监听器
+                mRemoteBookManager.registerListener(mListener);    // 注册监听器
             } catch (RemoteException e) {
                 e.printStackTrace();
             }
@@ -1180,7 +1180,7 @@ public class BookManagerActivity extends AppCompatActivity {
     protected void onDestroy() {
         if (mRemoteBookManager != null && mRemoteBookManager.asBinder().isBinderAlive()) {
             try {
-                mRemoteBookManager.unregisterListener(mListener);	// 解除监听器的注册
+                mRemoteBookManager.unregisterListener(mListener);    // 解除监听器的注册
             } catch (RemoteException e) {
                 e.printStackTrace();
             }
@@ -1188,7 +1188,7 @@ public class BookManagerActivity extends AppCompatActivity {
         unbindService(mConnection);
         super.onDestroy();
     }
-}	
+}    
 ```
 
 运行程序，可以从log中可以看出，客户端的确收到了服务端每5s一次的新书推送，我们的功能也就实现了。到这里，AIDL的基本使用方法已经介绍完了，但是有几点还需要再次说明一下。
@@ -1290,7 +1290,7 @@ public class BookManagerService extends Service {
     private final Binder mBinder = new IBookManager.Stub() {
         @Override
         public boolean onTransact(int code, Parcel data, Parcel reply, int flags) 
-            		throws RemoteException {
+                    throws RemoteException {
             // 检验权限
             int check = checkCallingOrSelfPermission("com.study.permission.ACCESS_BOOK_SERVICE");
             if (check == PackageManager.PERMISSION_DENIED) {
@@ -1710,7 +1710,7 @@ View的位置参数有`top`、`left`、`right`、`bottom`是相对于父容器�
 MarginLayoutParams params = (MarginLayoutParams)mButton.getLayoutParams();
 params.width += 100;
 params.leftMargin += 100;
-mButton.requestLayout();	// 重设布局，也可以使用以下方法
+mButton.requestLayout();    // 重设布局，也可以使用以下方法
 mButton.setLayoutParams(params);
 ```
 
@@ -1810,7 +1810,7 @@ public class MyView extends View {
 // MainActivity.java
 public class MainActivity extends AppCompatActivity {
     /* xxx */
-	private Button mButton;
+    private Button mButton;
     public void method() {
         final int startX = 0;
         final int deltaX = 100;
@@ -2062,7 +2062,7 @@ public final View getDecorView() {
 
 ```java
 // 源码：ViewGroup#dispatchTouchEvent
-	/* xxx */
+    /* xxx */
     if (onFilterTouchEventForSecurity(ev)) {
         final int action = ev.getAction();
         final int actionMasked = action & MotionEvent.ACTION_MASK;
@@ -2115,14 +2115,14 @@ FLAG_DISALLOW_INTERCEPT这个标志的作用是让ViewGroup不再拦截事件，
 
 ```java
 // 源码：ViewGroup#dispatchTouchEvent
-	/* xxx */
+    /* xxx */
     final View[] children = mChildren;
     for (int i = childrenCount - 1; i >= 0; i--) {
         final int childIndex = getAndVerifyPreorderedIndex(
                 childrenCount, i, customOrder);
         final View child = getAndVerifyPreorderedView(
                 preorderedList, children, childIndex);
-		/* xxx */
+        /* xxx */
         if (!child.canReceivePointerEvents()
                 || !isTransformedTouchPointInView(x, y, child, null)) {
             ev.setTargetAccessibilityFocus(false);
@@ -2158,7 +2158,7 @@ FLAG_DISALLOW_INTERCEPT这个标志的作用是让ViewGroup不再拦截事件，
             alreadyDispatchedToNewTouchTarget = true;
             break;
         }
-		/* xxx */
+        /* xxx */
     }
 ```
 
@@ -2168,15 +2168,15 @@ FLAG_DISALLOW_INTERCEPT这个标志的作用是让ViewGroup不再拦截事件，
 
 ```java
 // 源码：ViewGroup#dispatchTransformedTouchEvent
-	/* xxx */
-	// Perform any necessary transformations and dispatch.
+    /* xxx */
+    // Perform any necessary transformations and dispatch.
     if (child == null) {
         handled = super.dispatchTouchEvent(transformedEvent);
     } else {
-		/* xxx */
+        /* xxx */
         handled = child.dispatchTouchEvent(transformedEvent);
     }
-	/* xxx */
+    /* xxx */
 ```
 
 而在上面的代码中child传递的不是null，因此它会直接调用子元素的dispatchTouchEvent方法，这样事件就交由子元素处理了，从而完成了一轮事件分发。
@@ -2185,9 +2185,9 @@ FLAG_DISALLOW_INTERCEPT这个标志的作用是让ViewGroup不再拦截事件，
 
 ```java
 // 源码：ViewGroup#dispatchTouchEvent
-	newTouchTarget = addTouchTarget(child, idBitsToAssign);
-	alreadyDispatchedToNewTouchTarget = true;
-	break;
+    newTouchTarget = addTouchTarget(child, idBitsToAssign);
+    alreadyDispatchedToNewTouchTarget = true;
+    break;
 ```
 
 这几行代码完成了mFirstTouchTarget的赋值并终止对子元素的遍历。其实mFirstTouchTarget真正的赋值过程是在addTouchTarget内部完成的，从下面的addTouchTarget方法的内部结构可以看出，mFirstTouchTarget其实是一种单链表结构。
@@ -2210,7 +2210,7 @@ mFirstTouchTarget是否被赋值，将直接影响到ViewGroup对事件的拦截
 
 ```java
 // 源码：ViewGroup#dispatchTouchEvent
-	// Dispatch to touch targets.
+    // Dispatch to touch targets.
     if (mFirstTouchTarget == null) {
         // No touch targets so treat this as an ordinary view.
         handled = dispatchTransformedTouchEvent(ev, canceled, null,
@@ -2232,11 +2232,11 @@ View对点击事件的处理过程稍微简单一些，这里所说的View不包
 ```java
 // 源码：View#dispatchTouchEvent
 public boolean dispatchTouchEvent(MotionEvent event) {
-	/* xxx */
+    /* xxx */
     boolean result = false;
-	/* xxx */
+    /* xxx */
     if (onFilterTouchEventForSecurity(event)) {
-		/* xxx */
+        /* xxx */
         //noinspection SimplifiableIfStatement
         ListenerInfo li = mListenerInfo;
         if (li != null && li.mOnTouchListener != null
@@ -2249,7 +2249,7 @@ public boolean dispatchTouchEvent(MotionEvent event) {
             result = true;
         }
     }
-	/* xxx */
+    /* xxx */
     return result;
 }
 ```
@@ -2262,7 +2262,7 @@ View对点击事件的处理过程就比较简单了，因为View（这里不包
 
 ```java
 // 源码：View#onTouchEvent
-	if ((viewFlags & ENABLED_MASK) == DISABLED) {
+    if ((viewFlags & ENABLED_MASK) == DISABLED) {
         if (action == MotionEvent.ACTION_UP && (mPrivateFlags & PFLAG_PRESSED) != 0) {
             setPressed(false);
         }
@@ -2271,9 +2271,9 @@ View对点击事件的处理过程就比较简单了，因为View（这里不包
         // events, it just doesn't respond to them.
         return clickable;
     }
-	if (mTouchDelegate != null) {
-		if (mTouchDelegate.onTouchEvent(event)) {
-			return true;
+    if (mTouchDelegate != null) {
+        if (mTouchDelegate.onTouchEvent(event)) {
+            return true;
         }
     }
 ```
@@ -2287,10 +2287,10 @@ View对点击事件的处理过程就比较简单了，因为View（这里不包
 if (clickable || (viewFlags & TOOLTIP) == TOOLTIP) {
     switch (action) {
         case MotionEvent.ACTION_UP:
-			/* xxx */
+            /* xxx */
             boolean prepressed = (mPrivateFlags & PFLAG_PREPRESSED) != 0;
             if ((mPrivateFlags & PFLAG_PRESSED) != 0 || prepressed) {
-				/* xxx */
+                /* xxx */
                 if (!mHasPerformedLongPress && !mIgnoreNextUpEvent) {
                     // This is a tap, so remove the longpress check
                     removeLongPressCallback();
@@ -2324,7 +2324,7 @@ if (clickable || (viewFlags & TOOLTIP) == TOOLTIP) {
 
 ```java
 // 源码：View#performClick
-	public boolean performClick() {
+    public boolean performClick() {
         /* xxx */
         final boolean result;
         final ListenerInfo li = mListenerInfo;
@@ -2336,7 +2336,7 @@ if (clickable || (viewFlags & TOOLTIP) == TOOLTIP) {
             result = false;
         }
         sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED);
-		/* xxx */
+        /* xxx */
         return result;
     }
 ```
@@ -2347,7 +2347,7 @@ View的LONG_CLICKABLE属性默认为false，而CLICKABLE属性是否为false和�
 
 ```java
 // 源码：View#
-	public void setOnClickListener(@Nullable OnClickListener l) {
+    public void setOnClickListener(@Nullable OnClickListener l) {
         if (!isClickable()) {
             setClickable(true);
         }
@@ -2422,7 +2422,7 @@ public boolean onInterceptTouchEvent(MotionEvent event) {
             intercepted = false;
             break;
         case MotionEvent.ACTION_MOVE:
-			int deltaX = x - mLastX;
+            int deltaX = x - mLastX;
             int deltaY = y - mLastY;
             if (父容器需要当前点击事件) {
                 intercepted = true;
@@ -2493,7 +2493,7 @@ public boolean dispatchTouchEvent(MotionEvent ev) {
 ```java
 @Override
 public boolean onInterceptTouchEvent(MotionEvent ev) {
-	return ev.getAction() != MotionEvent.ACTION_DOWN;
+    return ev.getAction() != MotionEvent.ACTION_DOWN;
 }
 ```
 
@@ -2894,7 +2894,7 @@ protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
 ```java
 // 源码：LinearLayout#measureVertical
 void measureVertical(int widthMeasureSpec, int heightMeasureSpec) {
-	/* xxx */
+    /* xxx */
     // See how tall everyone is. Also remember max width.
     for (int i = 0; i < count; ++i) {
         final View child = getVirtualChildAt(i);
@@ -2912,9 +2912,9 @@ void measureVertical(int widthMeasureSpec, int heightMeasureSpec) {
             final int totalLength = mTotalLength;
             mTotalLength = Math.max(totalLength, totalLength + childHeight + lp.topMargin + lp.bottomMargin + getNextLocationOffset(child));
         }
-    	/* xxx */
+        /* xxx */
     }
-	/* xxx */
+    /* xxx */
 }
 ```
 
@@ -2925,7 +2925,7 @@ void measureVertical(int widthMeasureSpec, int heightMeasureSpec) {
 ```java
 // 源码：LinearLayout#measureVertical
 void measureVertical(int widthMeasureSpec, int heightMeasureSpec) {
-	/* xxx */
+    /* xxx */
     // Add in our padding
     mTotalLength += mPaddingTop + mPaddingBottom;
     int heightSize = mTotalLength;
@@ -2936,7 +2936,7 @@ void measureVertical(int widthMeasureSpec, int heightMeasureSpec) {
     heightSize = heightSizeAndState & MEASURED_SIZE_MASK;
     /* xxx */
     setMeasuredDimension(resolveSizeAndState(maxWidth, widthMeasureSpec, childState), heightSizeAndState);
-	/* xxx */
+    /* xxx */
 }
 ```
 
@@ -3094,7 +3094,7 @@ public void layout(int l, int t, int r, int b) {
     boolean changed = isLayoutModeOptical(mParent) ? setOpticalFrame(l, t, r, b) : setFrame(l, t, r, b);
     if (changed || (mPrivateFlags & PFLAG_LAYOUT_REQUIRED) == PFLAG_LAYOUT_REQUIRED) {
         onLayout(changed, l, t, r, b);
-		/* xxx */
+        /* xxx */
         ListenerInfo li = mListenerInfo;
         if (li != null && li.mOnLayoutChangeListeners != null) {
             ArrayList<View.OnLayoutChangeListener> listenersCopy = (ArrayList<View.OnLayoutChangeListener>) li.mOnLayoutChangeListeners.clone();
@@ -3104,10 +3104,10 @@ public void layout(int l, int t, int r, int b) {
             }
         }
     }
-	/* xxx */
+    /* xxx */
     mPrivateFlags &= ~PFLAG_FORCE_LAYOUT;
     mPrivateFlags3 |= PFLAG3_IS_LAID_OUT;
-	/* xxx */
+    /* xxx */
 }
 ```
 
@@ -3147,9 +3147,9 @@ LinearLayout中onLayout的实现逻辑和onMeasure的实现逻辑类似，这里
 ```java
 // 源码：LinearLayout#layoutVertical
 void layoutVertical(int left, int top, int right, int bottom) {
-	/* xxx */
+    /* xxx */
     final int count = getVirtualChildCount();
-	/* xxx */
+    /* xxx */
     for (int i = 0; i < count; i++) {
         final View child = getVirtualChildAt(i);
         if (child == null) {
@@ -3160,7 +3160,7 @@ void layoutVertical(int left, int top, int right, int bottom) {
 
             final LinearLayout.LayoutParams lp =
                     (LinearLayout.LayoutParams) child.getLayoutParams();
-			/* xxx */
+            /* xxx */
             if (hasDividerBeforeChildAt(i)) {
                 childTop += mDividerHeight;
             }
@@ -3288,7 +3288,7 @@ public void draw(Canvas canvas) {
         // we're done...
         return;
     }
-	/* xxx */
+    /* xxx */
 }
 ```
 
@@ -3416,8 +3416,8 @@ public class MyCircleView extends View {
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        int width = 200;	// px
-        int height = 200;	// px
+        int width = 200;    // px
+        int height = 200;    // px
         int widthMode = MeasureSpec.getMode(widthMeasureSpec);
         int widthSize = MeasureSpec.getSize(widthMeasureSpec);
         int heightMode = MeasureSpec.getMode(heightMeasureSpec);
@@ -3474,7 +3474,7 @@ public MyCircleView(Context context, AttributeSet attrs, int defStyleAttr) {
 }
 
 public MyCircleView(Context context, AttributeSet attrs) {
-    this(context, attrs, 0);	// 该构造方法也要更改
+    this(context, attrs, 0);    // 该构造方法也要更改
 }
 ```
 
@@ -3560,7 +3560,7 @@ public class HorizontalScrollViewEx extends ViewGroup {
 public class HorizontalScrollViewEx extends ViewGroup {
     private int mChildrenCount;
     private int mChildWidth;
-	/* xxx */
+    /* xxx */
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         int childLeft = 0;
@@ -3770,7 +3770,7 @@ private void showNotification() {
 
 ```java
 private void showMyNotification() {
-	/* xxx */
+    /* xxx */
     RemoteViews remoteViews = new RemoteViews(getPackageName(), R.layout.my_notification_layout);
     remoteViews.setTextViewText(R.id.my_notification_text_view, "Yo, yo, yo! Check it now!");
     remoteViews.setOnClickPendingIntent(R.id.my_notification_text_view, pIntent);
@@ -4179,7 +4179,7 @@ private View inflateView(Context context, RemoteViews rv, ViewGroup parent, int 
     // are loaded without requiring cross user persmissions.
     final Context contextForResources = getContextForResources(context);
     Context inflationContext = new RemoteViewsContextWrapper(context, contextForResources);
-	/* xxx */
+    /* xxx */
     LayoutInflater inflater = (LayoutInflater)
             context.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
 
@@ -4247,7 +4247,7 @@ private void updateNotificationViews(NotificationData.Entry entry,
 ```java
 // 源码：AppWidgetHostView#updateAppWidget
 protected void applyRemoteViews(RemoteViews remoteViews, boolean useAsyncIfPossible) {
-	/* xxx */
+    /* xxx */
     if (remoteViews == null) {
         /* xxx */
     } else {
@@ -4514,7 +4514,7 @@ LayerDrawable对应的XML标签是`<layer-list>`，它表示一种层次化的Dr
         android:bottom="3px"
         android:left="3px"
         android:right="3px">
-    	<shape>xxx</shape>
+        <shape>xxx</shape>
     </item>
 </layer-list>
 ```
@@ -4547,7 +4547,7 @@ StateListDrawable对应于`<selector>`标签，它也是表示Drawable集合，�
         android:state_enabled="true"
         android:state_activated="true"
         android:state_window_focused="true">
-    	<shape>xxx</shape>
+        <shape>xxx</shape>
     </item>
 </selector>
 ```
@@ -4617,7 +4617,7 @@ TransitionDrawable对应于`<transition>`标签，它用于实现两个Drawable�
 
 ```xml
 <textView
-	android:background="@drawable/my_transition_drawable" />
+    android:background="@drawable/my_transition_drawable" />
 ```
 
 ```java
@@ -4726,7 +4726,7 @@ protected void onBoundsChange(Rect bounds) {
 
 ```xml
 <view
-	android:background="@drawable/my_scale_drawable" />
+    android:background="@drawable/my_scale_drawable" />
 ```
 
 ```java
@@ -4766,7 +4766,7 @@ adnroid:gravity比较复杂，需要和adnroid:clipOrientation一起才能发挥
 
 ```xml
 <imageView
-	android:src="@drawable/my_clip_drawable"/>
+    android:src="@drawable/my_clip_drawable"/>
 ```
 
 ```java
@@ -5141,7 +5141,7 @@ LayoutAnimation也是一个View动画，为了给ViewGroup的子元素加上出�
 
 ```xml
 <ListView
-	android:layoutAnimation="@anim/my_anim_layout"/>
+    android:layoutAnimation="@anim/my_anim_layout"/>
 ```
 
 除了在XML中指定LayoutAnimation外，还可以通过LayoutAnimationController来实现，具体代码如下所示。
@@ -5173,7 +5173,7 @@ overridePendingTransition(R.anim.my_enter_anim, R.anim.my_exit_anim);
 @Override
 public void finish() {
     super.finish();
-	overridePendingTransition(R.anim.my_enter_anim, R.anim.my_exit_anim);
+    overridePendingTransition(R.anim.my_enter_anim, R.anim.my_exit_anim);
 }
 ```
 
@@ -5215,7 +5215,7 @@ ObjectAnimator.ofFloat(myObject, "translationY", -myObject.getHeight()).start();
 
 ```java
 ValueAnimator colorAnim = ObjectAnimator.ofInt(aView, "backgroundColor",
-									/*red*/ 0xFFFF8080, /*blue*/ 0xFF8080FF);
+                                    /*red*/ 0xFFFF8080, /*blue*/ 0xFF8080FF);
 colorAnim.setDuration(3000);
 colorAnim.setEvaluator(new ArgbEvaluator());
 colorAnim.setRepeatCount(ValueAnimator.INFINITE);
@@ -5280,7 +5280,7 @@ animSet.setDuration(5000).start();
 
 ```java
 AnimatorSet aimaSet = (AnimatorSet) AnimatorInflater.loadAnimator(
-    										aContext, R.animator.my_animator);
+                                            aContext, R.animator.my_animator);
 aimaSet.setTarget(myButton);
 aimaSet.start();
 ```
@@ -5306,7 +5306,7 @@ TypeEvaluator的中文翻译为类型估值算法，也叫估值器，它的作�
 ```java
 // 源码：LinearInterpolator#getInterpolation
 public class LinearInterpolator extends BaseInterpolator
-    					implements NativeInterpolatorFactory {
+                        implements NativeInterpolatorFactory {
     public float getInterpolation(float input) {
         return input;
     }
@@ -5363,7 +5363,7 @@ public abstract class Animator implements Cloneable {
 ```java
 // 源码：ValueAnimator.AnimatorUpdateListener
 public class ValueAnimator extends Animator
-    			implements AnimationHandler.AnimationFrameCallback {
+                implements AnimationHandler.AnimationFrameCallback {
     public static interface AnimatorUpdateListener {
         void onAnimationUpdate(ValueAnimator animation);
     }
@@ -5447,7 +5447,7 @@ public class ViewWrapper {
         mTargetView = targetView;
     }
     public int getWidth() {
-		// return mTargetView.getLayoutParams().width;
+        // return mTargetView.getLayoutParams().width;
         return mTargetView.getWidth();
     }
     public void setWidth(int width) {
@@ -5464,7 +5464,7 @@ final Button myButton = findViewById(R.id.my_button);
 myButton.setOnClickListener(new View.OnClickListener() {
     @Override
     public void onClick(View v) {
-        ViewWrapper wrapper = new ViewWrapper(myButton);	// 包装原始对象
+        ViewWrapper wrapper = new ViewWrapper(myButton);    // 包装原始对象
         ObjectAnimator.ofInt(wrapper, "width", 500)
                 .setDuration(500)
                 .start();
@@ -5582,7 +5582,7 @@ private void start(boolean playBackwards) {
     if (Looper.myLooper() == null) {
         throw new AndroidRuntimeException("Animators may only be run on Looper threads");
     }
-	/* xxx */
+    /* xxx */
     if (mStartDelay == 0 || mSeekFraction >= 0 || mReversing) {
         startAnimation();
         if (mSeekFraction == -1) {
@@ -5775,7 +5775,7 @@ myFloatingButton.setOnTouchListener(new View.OnTouchListener() {
         int rawY = (int) event.getY();
         switch (event.getAction()) {
             case MotionEvent.ACTION_MOVE:
-                wmlp.x = rawX;	// WindowManager.LayoutParams
+                wmlp.x = rawX;    // WindowManager.LayoutParams
                 wmlp.y = rawY;
                 getWindowManager().updateViewLayout(myFloatingButton, wmlp);
                 break;
@@ -5991,11 +5991,11 @@ public int addToDisplay(IWindow window, int seq, WindowManager.LayoutParams attr
         int viewVisibility, int displayId, Rect outFrame, Rect outContentInsets,
         Rect outStableInsets, Rect outOutsets,
         DisplayCutout.ParcelableWrapper outDisplayCutout, 
-		InputChannel outInputChannel,
+        InputChannel outInputChannel,
         InsetsState outInsetsState) {
     return mService.addWindow(this, window, seq, attrs, viewVisibility, 
-				displayId, outFrame, outContentInsets, outStableInsets, outOutsets,
-				outDisplayCutout, outInputChannel, outInsetsState);
+                displayId, outFrame, outContentInsets, outStableInsets, outOutsets,
+                outDisplayCutout, outInputChannel, outInsetsState);
 }
 ```
 
@@ -6051,7 +6051,7 @@ private void removeViewLocked(int index, boolean immediate) {
 
     if (view != null) {
         InputMethodManager imm = view.getContext()
-            			.getSystemService(InputMethodManager.class);
+                        .getSystemService(InputMethodManager.class);
         if (imm != null) {
             imm.windowDismissed(mViews.get(index).getWindowToken());
         }
@@ -6220,12 +6220,12 @@ public void updateViewLayout(View view, ViewGroup.LayoutParams params) {
 // 源码：ViewRootImpl#setLayoutParams
 void setLayoutParams(WindowManager.LayoutParams attrs, boolean newView) {
     synchronized (this) {
-		/* xxx */
+        /* xxx */
         if (newView) {
             mSoftInputMode = attrs.softInputMode;
             requestLayout();
         }
-		/* xxx */
+        /* xxx */
         scheduleTraversals();
     }
 }
@@ -6253,7 +6253,7 @@ private void performTraversals() {
 // 源码：ViewRootImpl#relayoutWindow
 private int relayoutWindow(WindowManager.LayoutParams params, int viewVisibility,
         boolean insetsPending) throws RemoteException {
-	/* xxx */
+    /* xxx */
     int relayoutResult = mWindowSession.relayout(mWindow, mSeq, params,
             (int) (mView.getMeasuredWidth() * appScale + 0.5f),
             (int) (mView.getMeasuredHeight() * appScale + 0.5f), viewVisibility,
@@ -6273,7 +6273,7 @@ public int relayout(IWindow window, int seq, WindowManager.LayoutParams attrs,
         Rect outStableInsets, Rect outsets, Rect outBackdropFrame,
         DisplayCutout.ParcelableWrapper cutout, MergedConfiguration mergedConfiguration,
         SurfaceControl outSurfaceControl, InsetsState outInsetsState) {
-	/* xxx */
+    /* xxx */
     int res = mService.relayoutWindow(this, window, seq, attrs,
             requestedWidth, requestedHeight, viewFlags, flags, frameNumber,
             outFrame, outOverscanInsets, outContentInsets, outVisibleInsets,
@@ -6603,7 +6603,7 @@ public void show() {
         }
         return;
     }
-	/* xxx */
+    /* xxx */
     onStart();
     mDecor = mWindow.getDecorView();
 
@@ -6658,7 +6658,7 @@ void dismissDialog() {
 ```java
 TextView myTextView = new TextView(this);
 myTextView.setText("Hello! My friend.");
-Dialog myDialog = new Dialog(getApplicationContext());	// 采用Application的Context
+Dialog myDialog = new Dialog(getApplicationContext());    // 采用Application的Context
 myDialog.setContentView(myTextView);
 myDialog.show();
 ```
@@ -6878,7 +6878,7 @@ private void scheduleDurationReachedLocked(ToastRecord r) {
 private WorkerHandler mHandler;
 void init(/* xxx */) {
     /* xxx */
-	mHandler = new WorkerHandler(looper);
+    mHandler = new WorkerHandler(looper);
 }
 protected class WorkerHandler extends Handler {
     public void handleMessage(Message msg) {
@@ -6909,7 +6909,7 @@ void cancelToastLocked(int index) {
     try {
         record.callback.hide();
     }
-	/* xxx */
+    /* xxx */
     ToastRecord lastToast = mToastQueue.remove(index);
 
     mWindowManagerInternal.removeWindowToken(lastToast.token, false /* removeWindows */,
@@ -6988,7 +6988,7 @@ private static class TN extends ITransientNotification.Stub {
 ```java
 // 源码：Toast.TN#handleShow
 public void handleShow(IBinder windowToken) {
-	/* xxx */
+    /* xxx */
     if (mView != mNextView) {
         // remove the old view if necessary
         handleHide();
@@ -7390,7 +7390,7 @@ void startSpecificActivityLocked(ActivityRecord r, boolean andResume, boolean ch
         // restart the application.
         knownToBeDead = true;
     }
-	/* xxx */
+    /* xxx */
     try {
         final Message msg = PooledLambda.obtainMessage(ActivityManagerInternal::startProcess, mService.mAmInternal, r.processName, r.info.applicationInfo, knownToBeDead, "activity", r.intent.getComponent());
         mService.mH.sendMessage(msg);
@@ -7533,7 +7533,7 @@ public interface IApplicationThread extends IInterface {
     void scheduleInstallProvider(ProviderInfo provider) throws RemoteException;
 
     String descriptor = "android.app.IApplicationThread";
-	/* xxx */
+    /* xxx */
 }
 ```
 
@@ -7592,11 +7592,11 @@ class H extends Handler {
     public static final int DUMP_ACTIVITY           = 136;
     public static final int EXECUTE_TRANSACTION     = 159;
     public static final int RELAUNCH_ACTIVITY       = 160;
-	/* xxx */
+    /* xxx */
     public void handleMessage(Message msg) {
         if (DEBUG_MESSAGES) Slog.v(TAG, ">>> handling: " + codeToString(msg.what));
         switch (msg.what) {
-			/* xxx */
+            /* xxx */
             case EXECUTE_TRANSACTION:
                 final ClientTransaction transaction = (ClientTransaction) msg.obj;
                 mTransactionExecutor.execute(transaction);
@@ -7648,7 +7648,7 @@ public void execute(ClientTransactionHandler client, IBinder token,
 // 源码：ActivityThread#handleLaunchActivity
 public Activity handleLaunchActivity(ActivityClientRecord r,
         PendingTransactionActions pendingActions, Intent customIntent) {
-	/* xxx */
+    /* xxx */
     final Activity a = performLaunchActivity(r, customIntent);
 
     if (a != null) {
@@ -7660,7 +7660,7 @@ public Activity handleLaunchActivity(ActivityClientRecord r,
             pendingActions.setCallOnPostCreate(true);
         }
     }
-	/* xxx */
+    /* xxx */
     return a;
 }
 ```
@@ -7698,7 +7698,7 @@ private Activity performLaunchActivity(ActivityClientRecord r, Intent customInte
         component = new ComponentName(r.activityInfo.packageName,
                 r.activityInfo.targetActivity);
     }
-	/* xxx */
+    /* xxx */
 }
 ```
 
@@ -7710,7 +7710,7 @@ private Activity performLaunchActivity(ActivityClientRecord r, Intent customInte
 // 源码：ActivityThread#performLaunchActivity
 /**  Core implementation of activity launch. */
 private Activity performLaunchActivity(ActivityClientRecord r, Intent customIntent) {
-	/* xxx */
+    /* xxx */
     ContextImpl appContext = createBaseContextForActivity(r);
     Activity activity = null;
     try {
@@ -7761,7 +7761,7 @@ public Activity instantiateActivity(ClassLoader cl, String className, Intent int
 // 源码：ActivityThread#performLaunchActivity
 /**  Core implementation of activity launch. */
 private Activity performLaunchActivity(ActivityClientRecord r, Intent customIntent) {
-	/* xxx */
+    /* xxx */
     try {
         Application app = r.packageInfo.makeApplication(false, mInstrumentation);
         /* xxx */
@@ -7820,7 +7820,7 @@ public Application makeApplication(boolean forceDefaultAppClass, Instrumentation
             }
         }
     }
-	/* xxx */
+    /* xxx */
     return app;
 }
 ```
@@ -7841,7 +7841,7 @@ private Activity performLaunchActivity(ActivityClientRecord r, Intent customInte
     /* xxx */
     try {
         Application app = r.packageInfo.makeApplication(false, mInstrumentation);
-		/* xxx */
+        /* xxx */
         if (activity != null) {
             CharSequence title = r.activityInfo.loadLabel(appContext.getPackageManager());
             Configuration config = new Configuration(mCompatConfiguration);
@@ -7868,7 +7868,7 @@ ContextImpl是一个很重要的数据结构，它是Context的具体实现，Co
 // 源码：ActivityThread#performLaunchActivity
 /**  Core implementation of activity launch. */
 private Activity performLaunchActivity(ActivityClientRecord r, Intent customIntent) {
-	/* xxx */
+    /* xxx */
     try {
         if (activity != null) {
             /* xxx */
@@ -7930,7 +7930,7 @@ Service分为两种工作状态，一种是启动状态，主要用于执行后�
 
 ```java
 Intent intentService = new Intent(this, MyService.class);
-startService(intentService);	// or
+startService(intentService);    // or
 bindService(intentService, mServiceConnection, BIND_AUTO_CREATE);
 ```
 
@@ -8003,7 +8003,7 @@ public ComponentName startService(IApplicationThread caller, Intent service,
     if (service != null && service.hasFileDescriptors() == true) {
         throw new IllegalArgumentException("File descriptors passed in Intent");
     }
-	/* xxx */
+    /* xxx */
     synchronized(this) {
         final int callingPid = Binder.getCallingPid();
         final int callingUid = Binder.getCallingUid();
@@ -8032,7 +8032,7 @@ ComponentName startServiceInnerLocked(ServiceMap smap, Intent service, ServiceRe
     if (stracker != null) {
         stracker.setStarted(true, mAm.mProcessStats.getMemFactorLocked(), r.lastActivity);
     }
-	/* xxx */
+    /* xxx */
     synchronized (r.stats.getBatteryStats()) {
         r.stats.startRunningLocked();
     }
@@ -8070,7 +8070,7 @@ startServiceInnerLocked方法并没有完成具体的启动工作，而是把后
 // 源码：ActiveServices#realStartServiceLocked
 private final void realStartServiceLocked(ServiceRecord r,
         ProcessRecord app, boolean execInFg) throws RemoteException {
-	/* xxx */
+    /* xxx */
     boolean created = false;
     try {
         if (LOG_SERVICE_START_STOP) {
@@ -8080,7 +8080,7 @@ private final void realStartServiceLocked(ServiceRecord r,
                     : r.shortInstanceName;
             EventLogTags.writeAmCreateService(r.userId, System.identityHashCode(r), nameTerm, r.app.uid, r.app.pid);
         }
-		/* xxx */
+        /* xxx */
         synchronized (r.stats.getBatteryStats()) {
             r.stats.startLaunchedLocked();
         }
@@ -8112,7 +8112,7 @@ private final void realStartServiceLocked(ServiceRecord r,
             }
         }
     }
-	/* xxx */
+    /* xxx */
     requestServiceBindingsLocked(r, execInFg);
     updateServiceClientActivitiesLocked(app, null, true);
 
@@ -8127,7 +8127,7 @@ private final void realStartServiceLocked(ServiceRecord r,
         r.pendingStarts.add(new ServiceRecord.StartItem(r, false, r.makeNextStartId(), null, null, 0));
     }
     sendServiceArgsLocked(r, execInFg, true);
-	/* xxx */
+    /* xxx */
 }
 ```
 
@@ -8313,7 +8313,7 @@ private boolean bindServiceCommon(Intent service, ServiceConnection conn, int fl
         String instanceName, Handler handler, Executor executor, UserHandle user) {
     // Keep this in sync with DevicePolicyManager.bindDeviceAdminServiceAsUser.
     IServiceConnection sd;
-	if (conn == null) {
+    if (conn == null) {
         throw new IllegalArgumentException("connection is null");
     }
     if (handler != null && executor != null) {
@@ -8402,9 +8402,9 @@ private IServiceConnection getServiceDispatcherCommon(ServiceConnection c,
 static final class ServiceDispatcher {
     private final ServiceConnection mConnection;
     private final ServiceDispatcher.InnerConnection mIServiceConnection;
-	/* xxx */
+    /* xxx */
     private static class InnerConnection extends IServiceConnection.Stub {}
-	/* xxx */
+    /* xxx */
     IServiceConnection getIServiceConnection() {
         return mIServiceConnection;
     }
@@ -8416,7 +8416,7 @@ static final class ServiceDispatcher {
 ```java
 // 源码：LoadedApk#mServices
 private final ArrayMap<Context, 
-	ArrayMap<ServiceConnection, LoadedApk.ServiceDispatcher>> mServices
+    ArrayMap<ServiceConnection, LoadedApk.ServiceDispatcher>> mServices
         = new ArrayMap<>();
 ```
 
@@ -8435,7 +8435,7 @@ bindService方法调用的ContextImpl类的bindServiceCommon方法中所做的�
 // 源码：ContextImpl#bindServiceCommon
 private boolean bindServiceCommon(Intent service, ServiceConnection conn, int flags,
         String instanceName, Handler handler, Executor executor, UserHandle user) {
-	/* xxx */
+    /* xxx */
     try {
         IBinder token = getActivityToken();
         if (token == null && (flags&BIND_AUTO_CREATE) == 0 && mPackageInfo != null
@@ -8470,10 +8470,10 @@ public int bindIsolatedService(IApplicationThread caller, IBinder token, Intent 
     if (service != null && service.hasFileDescriptors() == true) {
         throw new IllegalArgumentException("File descriptors passed in Intent");
     }
-	/* xxx */
+    /* xxx */
     synchronized(this) {
         return mServices.bindServiceLocked(caller, token, service, resolvedType,
-				connection, flags, instanceName, callingPackage, userId);
+                connection, flags, instanceName, callingPackage, userId);
     }
 }
 ```
@@ -8492,9 +8492,9 @@ int bindServiceLocked(IApplicationThread caller, IBinder token, Intent service,
         String resolvedType, final IServiceConnection connection, int flags,
         String instanceName, String callingPackage, final int userId)
         throws TransactionTooLargeException {    
-	/* xxx */
+    /* xxx */
     try {
-		/* xxx */
+        /* xxx */
         if ((flags&Context.BIND_AUTO_CREATE) != 0) {
             s.lastActivity = SystemClock.uptimeMillis();
             if (bringUpServiceLocked(s, service.getFlags(), callerFg, false,
@@ -8502,9 +8502,9 @@ int bindServiceLocked(IApplicationThread caller, IBinder token, Intent service,
                 return 0;
             }
         }
-		/* xxx */
+        /* xxx */
         if (s.app != null && b.intent.received) {
-          	/* xxx */
+              /* xxx */
             if (b.intent.apps.size() == 1 && b.intent.doRebind) {
                 requestServiceBindingLocked(s, b.intent, callerFg, true);
             }
@@ -8529,7 +8529,7 @@ private final boolean requestServiceBindingLocked(ServiceRecord r, IntentBindRec
         // If service is not currently running, can't yet bind.
         return false;
     }
-	/* xxx */
+    /* xxx */
     if ((!i.requested || rebind) && i.apps.size() > 0) {
         try {
             bumpServiceExecutingLocked(r, execInFg, "bind");
@@ -8561,7 +8561,7 @@ public final void scheduleBindService(IBinder token, Intent intent,
     s.token = token;
     s.intent = intent;
     s.rebind = rebind;
-	/* xxx */
+    /* xxx */
     sendMessage(H.BIND_SERVICE, s);
 }
 ```
@@ -8671,14 +8671,14 @@ static final class ServiceDispatcher {
     private static class InnerConnection extends IServiceConnection.Stub {
         final WeakReference<LoadedApk.ServiceDispatcher> mDispatcher;
         public void connected(ComponentName name, IBinder service, boolean dead)
-            	throws RemoteException {
+                throws RemoteException {
             LoadedApk.ServiceDispatcher sd = mDispatcher.get();
             if (sd != null) {
                 sd.connected(name, service, dead);
             }
         }
     }
-	/* xxx */
+    /* xxx */
     IServiceConnection getIServiceConnection() {
         return mIServiceConnection;
     }
@@ -8716,7 +8716,7 @@ public void connected(ComponentName name, IBinder service, boolean dead) {
 ```java
 // 源码：LoadedApk.ServiceDispatcher.RunConnection
 private final class RunConnection implements Runnable {
-	/* xxx */
+    /* xxx */
     public void run() {
         if (mCommand == 0) {
             doConnected(mName, mService, mDead);
@@ -8739,7 +8739,7 @@ private final class RunConnection implements Runnable {
 public void doConnected(ComponentName name, IBinder service, boolean dead) {
     ServiceDispatcher.ConnectionInfo old;
     ServiceDispatcher.ConnectionInfo info;
-	/* xxx */
+    /* xxx */
     // If there was an old service, it is now disconnected.
     if (old != null) {
         mConnection.onServiceDisconnected(name);
@@ -8764,7 +8764,7 @@ public void doConnected(ComponentName name, IBinder service, boolean dead) {
 ```java
 // 源码：LoadedApk.ServiceDispatcher#doDeath
 public void doDeath(ComponentName name, IBinder service) {
-	/* xxx */
+    /* xxx */
     mConnection.onServiceDisconnected(name);
 }
 ```
@@ -8797,9 +8797,9 @@ public class MyReceiver extends BroadcastReceiver {
 ```xml
 <manifest>
     <application>
-    	<receiver android:name=".MyReceiver">
+        <receiver android:name=".MyReceiver">
             <intent-filter>
-				<action android:name="android.intent.action.XXXXX"/>
+                <action android:name="android.intent.action.XXXXX"/>
             </intent-filter>
         </receiver>
     </application>
@@ -9005,7 +9005,7 @@ public void sendBroadcast(Intent intent) {
         ActivityManager.getService().broadcastIntent(
                 mMainThread.getApplicationThread(), intent, resolvedType, null,
                 Activity.RESULT_OK, null, null, null, AppOpsManager.OP_NONE, null,
-            	false, false, getUserId());
+                false, false, getUserId());
     } catch (RemoteException e) {
         throw e.rethrowFromSystemServer();
     }
@@ -9054,7 +9054,7 @@ final int broadcastIntentLocked(ProcessRecord callerApp,
         int realCallingUid, int realCallingPid, int userId, 
         boolean allowBackgroundActivityStarts) {
     intent = new Intent(intent);
-	/* xxx */
+    /* xxx */
     // By default broadcasts do not go to stopped apps.
     intent.addFlags(Intent.FLAG_EXCLUDE_STOPPED_PACKAGES);
     /* xxx */
@@ -9089,7 +9089,7 @@ final int broadcastIntentLocked(/* xxx */) {
                 requiredPermissions, appOp, brOptions, receivers, resultTo, 
                 resultCode, resultData, resultExtras, ordered, sticky, false, userId,
                 allowBackgroundActivityStarts, timeoutExempt);
-		/* xxx */
+        /* xxx */
         final BroadcastRecord oldRecord =
                 replacePending ? queue.replaceOrderedBroadcastLocked(r) : null;
         if (oldRecord != null) {
@@ -9148,7 +9148,7 @@ private final class BroadcastHandler extends Handler {
     public void handleMessage(Message msg) {
         switch (msg.what) {
             case BROADCAST_INTENT_MSG: {
-				/* xxx */
+                /* xxx */
                 processNextBroadcast(true);
             } break;
             case BROADCAST_TIMEOUT_MSG: {
@@ -9172,13 +9172,13 @@ final void processNextBroadcast(boolean fromMsg) {
 }
 final void processNextBroadcastLocked(boolean fromMsg, boolean skipOomAdj) {
     BroadcastRecord r;
-	/* xxx */
+    /* xxx */
     // First, deliver any non-serialized broadcasts right away.
     while (mParallelBroadcasts.size() > 0) {
         r = mParallelBroadcasts.remove(0);
         r.dispatchTime = SystemClock.uptimeMillis();
         r.dispatchClockTime = System.currentTimeMillis();
-		/* xxx */
+        /* xxx */
         final int N = r.receivers.size();
         for (int i=0; i<N; i++) {
             Object target = r.receivers.get(i);
@@ -9299,7 +9299,7 @@ public void performReceive(Intent intent, int resultCode, String data,
         Bundle extras, boolean ordered, boolean sticky, int sendingUser) {
     final Args args = new Args(intent, resultCode, data, extras, ordered,
             sticky, sendingUser);
-	/* xxx */
+    /* xxx */
     if (intent == null || !mActivityThread.post(args.getRunnable())) {
         if (mRegistered && ordered) {
             IActivityManager mgr = ActivityManager.getService();
@@ -9374,11 +9374,11 @@ public ContentResolver getContentResolver() {
 }
 // 源码：ContextImpl#getContentResolver & ApplicationContentResolver
 class ContextImpl extends Context {
-	public ContentResolver getContentResolver() {
-    	return mContentResolver;
-	}
-	private final ApplicationContentResolver mContentResolver;
-	private static final class ApplicationContentResolver extends ContentResolver {}
+    public ContentResolver getContentResolver() {
+        return mContentResolver;
+    }
+    private final ApplicationContentResolver mContentResolver;
+    private static final class ApplicationContentResolver extends ContentResolver {}
     /* xxx */
 }
 ```
@@ -9415,7 +9415,7 @@ public final Cursor query(Uri uri, String[] projection, Bundle queryArgs,
         if (qCursor == null) {
             return null;
         }
-		/* xxx */
+        /* xxx */
         final CursorWrapperInner wrapper = new CursorWrapperInner(qCursor, provider);
         stableProvider = null;
         qCursor = null;
@@ -9463,9 +9463,9 @@ ActivityThread的acquireProvider源码的上半部分，如下所示。
 ```java
 // 源码：ActivityThread#acquireProvider
 public final IContentProvider acquireProvider( Context c, String auth, int userId,
-		boolean stable) {
+        boolean stable) {
     final IContentProvider provider = 
-        	acquireExistingProvider(c, auth, userId, stable);
+            acquireExistingProvider(c, auth, userId, stable);
     if (provider != null) {
         return provider;
     }
@@ -9535,7 +9535,7 @@ final class ProviderClientRecord {
 ```java
 // 源码：ActivityThread#acquireProvider
 public final IContentProvider acquireProvider( Context c, String auth, int userId,
-		boolean stable) {
+        boolean stable) {
     /* xxx */
     // There is a possible race here.  Another thread may try to acquire
     // the same provider at the same time.  When this happens, we want to ensure
@@ -9568,15 +9568,15 @@ public final IContentProvider acquireProvider( Context c, String auth, int userI
 ```java
 // 源码：ActivityManagerService#getContentProvider
 public final ContentProviderHolder getContentProvider(IApplicationThread caller,
-		String callingPackage, String name, int userId, boolean stable) {
-	/* xxx */
+        String callingPackage, String name, int userId, boolean stable) {
+    /* xxx */
     return getContentProviderImpl(caller, name, null, callingUid, callingPackage,
             null, stable, userId);
 }
 // 源码：ActivityManagerService#getContentProviderImpl
 private ContentProviderHolder getContentProviderImpl(IApplicationThread caller,
         String name, IBinder token, int callingUid, String callingPackage,
-		String callingTag, boolean stable, int userId) {
+        String callingTag, boolean stable, int userId) {
     ContentProviderRecord cpr;
     ContentProviderConnection conn = null;
     ProviderInfo cpi = null;
@@ -9602,7 +9602,7 @@ private ContentProviderHolder getContentProviderImpl(IApplicationThread caller,
                     ProcessRecord proc = getProcessRecordLocked(
                             cpi.processName, cpr.appInfo.uid, false);
                     if (proc != null && proc.thread != null && !proc.killed) {
-							/* xxx */
+                            /* xxx */
                             proc.pubProviders.put(cpi.name, cpr);
                             try {
                                 proc.thread.scheduleInstallProvider(cpi);
@@ -9625,10 +9625,10 @@ private ContentProviderHolder getContentProviderImpl(IApplicationThread caller,
                     Binder.restoreCallingIdentity(origId);
                 }
             }
-			/* xxx */
+            /* xxx */
         }
     }
-	/* xxx */
+    /* xxx */
     return cpr.newHolder(conn);
 }
 ```
@@ -9646,9 +9646,9 @@ final ProcessRecord startProcessLocked(String processName,
         HostingRecord hostingRecord, boolean allowWhileBooting,
         boolean isolated, boolean keepIfLarge) {
     return mProcessList.startProcessLocked(processName, info, knownToBeDead,
-		intentFlags, hostingRecord, allowWhileBooting, isolated, 
-		0 /* isolatedUid */, keepIfLarge, null /* ABI override */, 
-		null /* entryPoint */, null /* entryPointArgs */, null /* crashHandler */);
+        intentFlags, hostingRecord, allowWhileBooting, isolated, 
+        0 /* isolatedUid */, keepIfLarge, null /* ABI override */, 
+        null /* entryPoint */, null /* entryPointArgs */, null /* crashHandler */);
 }
 ```
 
@@ -9664,7 +9664,7 @@ boolean startProcessLocked(HostingRecord hostingRecord, String entryPoint,
     app.killedByAm = false;
     app.removed = false;
     app.killed = false;
-	/* xxx */
+    /* xxx */
     final long startSeq = app.startSeq = ++mProcStartSeqCounter;
     app.setStartParams(uid, hostingRecord, seInfo, startTime);
     app.setUsingWrapper(invokeWith != null
@@ -9676,7 +9676,7 @@ boolean startProcessLocked(HostingRecord hostingRecord, String entryPoint,
             try {
                 final Process.ProcessStartResult startResult = 
                     startProcess(app.hostingRecord, entryPoint, app, app.startUid,
-							gids, runtimeFlags, mountExternal, app.seInfo,
+                            gids, runtimeFlags, mountExternal, app.seInfo,
                             requiredAbi, instructionSet, invokeWith, app.startTime);
                 synchronized (mService) {
                     handleProcessStartedLocked(app, startResult, startSeq);
@@ -9689,7 +9689,7 @@ boolean startProcessLocked(HostingRecord hostingRecord, String entryPoint,
         try {
             final Process.ProcessStartResult startResult = startProcess(hostingRecord,
                     entryPoint, app, uid, gids, runtimeFlags, mountExternal, seInfo,
-					requiredAbi, instructionSet, invokeWith, startTime);
+                    requiredAbi, instructionSet, invokeWith, startTime);
             handleProcessStartedLocked(app, startResult.pid, startResult.usingWrapper,
                     startSeq, false);
         }
@@ -9704,7 +9704,7 @@ boolean startProcessLocked(HostingRecord hostingRecord, String entryPoint,
 ```java
 // 源码：ProcessList#startProcess
 private Process.ProcessStartResult startProcess(HostingRecord hostingRecord, 
-		String entryPoint,
+        String entryPoint,
         ProcessRecord app, int uid, int[] gids, int runtimeFlags, int mountExternal,
         String seInfo, String requiredAbi, String instructionSet, String invokeWith,
         long startTime) {
@@ -9850,7 +9850,7 @@ private final boolean attachApplicationLocked(IApplicationThread thread,
                                          app.isolatedEntryPointArgs);
         } /* xxx */ else {
             thread.bindApplication(processName, appInfo, providers, null, 
-				profilerInfo, null, null, null, testMode,
+                profilerInfo, null, null, null, testMode,
                 mBinderTransactionTrackingEnabled, enableTrackAllocation,
                 isRestrictedBackupMode || !normalMode, app.isPersistent(),
                 new Configuration(app.getWindowProcessController()
@@ -9987,9 +9987,9 @@ private void handleBindApplication(AppBindData data) {
     }
     
     // Do this after providers, since instrumentation tests generally start their
-   	// test thread at this point, and we don't want that racing.
+       // test thread at this point, and we don't want that racing.
     try {
-    	mInstrumentation.onCreate(data.instrumentationArgs);
+        mInstrumentation.onCreate(data.instrumentationArgs);
     }
     /* xxx */
 }
@@ -10058,7 +10058,7 @@ private ContentProviderHolder installProvider(Context context,
         /* xxx */
     }
     ContentProviderHolder retHolder;
-	/* xxx */
+    /* xxx */
     return retHolder;
 }
 ```
@@ -10068,7 +10068,7 @@ private ContentProviderHolder installProvider(Context context,
 ```java
 // 源码：ContentProvider#attachInfo
 private void attachInfo(Context context, ProviderInfo info, boolean testing) {
-	/* xxx */
+    /* xxx */
     /*
      * Only allow it to be set once, so after the content service gives
      * this to us clients can't change it.
@@ -10097,7 +10097,7 @@ public final void publishContentProviders(IApplicationThread caller,
         return;
     }
     synchronized (this) {
-		/* xxx */
+        /* xxx */
         final int N = providers.size();
         for (int i = 0; i < N; i++) {
             ContentProviderHolder src = providers.get(i);
@@ -10113,7 +10113,7 @@ public final void publishContentProviders(IApplicationThread caller,
                 for (int j = 0; j < names.length; j++) {
                     mProviderMap.putProviderByName(names[j], dst);
                 }
-				/* xxx */
+                /* xxx */
             }
         }
         Binder.restoreCallingIdentity(origId);
@@ -10214,7 +10214,7 @@ public Cursor query(String callingPkg, Uri uri, String[] projection,
 ```java
 // 源码：ContentProvider.Transport#mInterface
 class Transport extends ContentProviderNative {
-	volatile ContentInterface mInterface = ContentProvider.this;
+    volatile ContentInterface mInterface = ContentProvider.this;
 }
 ```
 
@@ -10257,7 +10257,7 @@ void checkThread() {
 final Thread mThread;
 public ViewRootImpl(Context context, Display display) {
     /* xxx */
-	mThread = Thread.currentThread();
+    mThread = Thread.currentThread();
 }
 ```
 
@@ -10457,9 +10457,9 @@ private void set(ThreadLocal<?> key, Object value) {
 
 ```java
 // 源码：ThreadLocal
-public class ThreadLocal<T> {	
-	private final int threadLocalHashCode = nextHashCode();
-	private static AtomicInteger nextHashCode = new AtomicInteger();
+public class ThreadLocal<T> {    
+    private final int threadLocalHashCode = nextHashCode();
+    private static AtomicInteger nextHashCode = new AtomicInteger();
     private static final int HASH_INCREMENT = 0x61c88647;
     private static int nextHashCode() {
         return nextHashCode.getAndAdd(HASH_INCREMENT);
@@ -10550,9 +10550,9 @@ boolean enqueueMessage(Message msg, long when) {
     if (msg.target == null) {
         throw new IllegalArgumentException("Message must have a target.");
     }
-	/* xxx */
+    /* xxx */
     synchronized (this) {
-		/* xxx */
+        /* xxx */
         msg.markInUse();
         msg.when = when;
         Message p = mMessages;
@@ -10596,7 +10596,7 @@ boolean enqueueMessage(Message msg, long when) {
 ```java
 // 源码：MessageQueue#next
 Message next() {
-	/* xxx */
+    /* xxx */
     int pendingIdleHandlerCount = -1; // -1 only during first iteration
     int nextPollTimeoutMillis = 0;
     for (;;) {
@@ -10646,7 +10646,7 @@ Message next() {
             }
             /* xxx */
         }
-		/* xxx */
+        /* xxx */
         // Reset the idle handler count to 0 so we do not run them again.
         pendingIdleHandlerCount = 0;
 
@@ -10711,7 +10711,7 @@ static final ThreadLocal<Looper> sThreadLocal = new ThreadLocal<Looper>();
 ```java
 // 源码：Handler#Handler
 public Handler(Callback callback, boolean async) {
-	/* xxx */
+    /* xxx */
     mLooper = Looper.myLooper();
     if (mLooper == null) {
         throw new RuntimeException(
@@ -10765,7 +10765,7 @@ public static void loop() {
     // and keep track of what that identity token actually is.
     Binder.clearCallingIdentity();
     final long ident = Binder.clearCallingIdentity();
-	/* xxx */
+    /* xxx */
     for (;;) {
         Message msg = queue.next(); // might block
         if (msg == null) {
@@ -10779,14 +10779,14 @@ public static void loop() {
                     msg.callback + ": " + msg.what);
         }
         final Observer observer = sObserver;
-		/* xxx */
+        /* xxx */
         try {
             msg.target.dispatchMessage(msg);
             if (observer != null) {
                 observer.messageDispatched(token, msg);
             }
         }
-		/* xxx */
+        /* xxx */
         // Make sure that during the course of dispatching the
         // identity of the thread wasn't corrupted.
         final long newIdent = Binder.clearCallingIdentity();
@@ -10932,7 +10932,7 @@ public class Handler {
 }
 // 源码：Message#callback
 public final class Message implements Parcelable {
-	Runnable callback;
+    Runnable callback;
     /* xxx */
     public static Message obtain() {
         synchronized (sPoolSync) {
@@ -11014,7 +11014,7 @@ public Handler() {
     this(null, false);
 }
 public Handler(Callback callback, boolean async) {
-	/* xxx */
+    /* xxx */
     mLooper = Looper.myLooper();
     if (mLooper == null) {
         throw new RuntimeException(
@@ -11035,16 +11035,16 @@ Android的主线程就是ActivityThread，主线程的入口方法为main，在m
 
 ```java
 public static void main(String[] args) {
-	/* xxx */
+    /* xxx */
     Process.setArgV0("<pre-initialized>");
     Looper.prepareMainLooper();
-	/* xxx */
+    /* xxx */
     ActivityThread thread = new ActivityThread();
     thread.attach(false, startSeq);
     if (sMainThreadHandler == null) {
         sMainThreadHandler = thread.getHandler();
     }
-	/* xxx */
+    /* xxx */
     Looper.loop();
     
     throw new RuntimeException("Main thread loop unexpectedly exited");
@@ -11081,8 +11081,8 @@ class H extends Handler {
     public static final int REMOVE_PROVIDER         = 131;
     public static final int DUMP_ACTIVITY           = 136;
     public static final int INSTALL_PROVIDER        = 145;
-    public static final int EXECUTE_TRANSACTION 	= 159;
-    public static final int RELAUNCH_ACTIVITY 		= 160;
+    public static final int EXECUTE_TRANSACTION     = 159;
+    public static final int RELAUNCH_ACTIVITY         = 160;
     /* xxx */
     public void handleMessage(Message msg) {
         switch (msg.what) {
@@ -11174,7 +11174,7 @@ class DownloadTask extends AsyncTask<URL, Integer, Long> {
         for (int i = 0; i < count; ++i) {
             totalSize += Downloader.download(urls[i]);
             publishProgress((int) ((float)i / count * 100));
-            if (isCancelled()) break;	// 判断下载任务是否被外界取消
+            if (isCancelled()) break;    // 判断下载任务是否被外界取消
         }
         return totalSize;
     }
@@ -11214,7 +11214,7 @@ public final AsyncTask<Params, Progress, Result> execute(Params... params) {
     return executeOnExecutor(sDefaultExecutor, params);
 }
 public final AsyncTask<Params, Progress, Result> executeOnExecutor(
-		Executor exec, Params... params) {
+        Executor exec, Params... params) {
     if (mStatus != Status.PENDING) {
         switch (mStatus) {
             case RUNNING:
@@ -11240,7 +11240,7 @@ public final AsyncTask<Params, Progress, Result> executeOnExecutor(
 // 源码：AsyncTask#mWorker & WorkerRunnable
 private final WorkerRunnable<Params, Result> mWorker;
 private static abstract class WorkerRunnable<Params, Result>
-    	implements Callable<Result> {
+        implements Callable<Result> {
     Params[] mParams;
 }
 ```
@@ -11319,7 +11319,7 @@ AsyncTask中有两个线程池（SerialExecutor、THREAD_POOL_EXECUTOR）和一�
 ```java
 // 源码：AsyncTask#AsyncTask
 public AsyncTask(Looper callbackLooper) {
-   	/* xxx */
+       /* xxx */
     mWorker = new WorkerRunnable<Params, Result>() {
         public Result call() throws Exception {
             mTaskInvoked.set(true);
@@ -11363,7 +11363,7 @@ private Handler getHandler() {
 }
 public AsyncTask(Looper callbackLooper) {
     mHandler = callbackLooper == null || callbackLooper == Looper.getMainLooper()
-        		? getMainHandler() : new Handler(callbackLooper);
+                ? getMainHandler() : new Handler(callbackLooper);
 }
 ```
 
@@ -11567,7 +11567,7 @@ public boolean stopServiceToken(ComponentName className, IBinder token, int star
 }
 // 源码：ActiveService#stopServiceTokenLocked
 boolean stopServiceTokenLocked(ComponentName className, IBinder token, int startId) {
-   	/* xxx */
+       /* xxx */
     if (r.getLastStartId() != startId) { return false; }
     /* xxx */
     bringDownServiceIfNeededLocked(r, false, false);
@@ -11943,7 +11943,7 @@ void init() throws IOException {
 
 public File getDiskCacheDir(Context context, String uniqueName) {
     boolean externalStorageAvailable = Environment.getExternalStorageState()
-            		.equals(Environment.MEDIA_MOUNTED);
+                    .equals(Environment.MEDIA_MOUNTED);
     final String cachePath;
     if (externalStorageAvailable) {
         cachePath = context.getExternalCacheDir().getPath();
@@ -12189,7 +12189,7 @@ public class ImageLoader {
     
     public File getDiskCacheDir(Context context, String uniqueName) {
         boolean externalStorageAvailable = Environment.getExternalStorageState()
-            		.equals(Environment.MEDIA_MOUNTED);
+                    .equals(Environment.MEDIA_MOUNTED);
         final String cachePath;
         if (externalStorageAvailable) {
             cachePath = context.getExternalCacheDir().getPath();
@@ -12215,7 +12215,7 @@ public class ImageLoader {
 
 ```java
 public class ImageLoader {
-	/* xxx */
+    /* xxx */
     private void addBitmapToMemoryCache(String key, Bitmap bitmap) {
         if (mMemoryCache.get(key) == null) {
             mMemoryCache.put(key, bitmap);
@@ -12232,7 +12232,7 @@ public class ImageLoader {
 
 ```java
 public class ImageLoader {
-	/* xxx */
+    /* xxx */
     private static final int DISK_CACHE_INDEX = 0;
 
     private ImageResizer mImageResizer = new ImageResizer();
@@ -12340,7 +12340,7 @@ public class ImageLoader {
 
 ```java
 public class ImageLoader {
-	/* xxx */
+    /* xxx */
     private static final int IO_BUFFER_SIZE = 8 * 1024;
 
     /**
@@ -12412,8 +12412,8 @@ public class ImageLoader {
 
 ```java
 public class ImageLoader {
-	/* xxx */
-    private static final int TAG_KEY_URI = R.id.imageloader_uri;	// can be a constant integer
+    /* xxx */
+    private static final int TAG_KEY_URI = R.id.imageloader_uri;    // can be a constant integer
     private static final int MESSAGE_POST_RESULT = 1;
 
     /**
@@ -13142,7 +13142,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-		// 注册CrashHandler
+        // 注册CrashHandler
         CrashHandler.getInstance().init(getApplication());
         Button b = findViewById(R.id.my_button);
         b.setOnClickListener(v -> {
@@ -13178,7 +13178,7 @@ android {
     }
 }
 dependencies {
-	implementation 'androidx.multidex:multidex:2.0.1'
+    implementation 'androidx.multidex:multidex:2.0.1'
 }
 ```
 
@@ -13304,9 +13304,9 @@ apktool同样有多个版本，这里同样只介绍Windows版和Linux版，apkt
 一个例子如下，假定apk的文件名为MyApp.apk，对它的二次打包和解包操作如下。
 
 ```shell
-apktool.bat d -f MyApp.apk MyAppDir		# 解包，参数d指定
-apktool.bat b MyAppDir FakeMyApp.apk	# 二次打包，参数b指定
-java -jar apksigner.jar sign --ks MyDemo.jks FakeMyApp.apk		# 签名
+apktool.bat d -f MyApp.apk MyAppDir        # 解包，参数d指定
+apktool.bat b MyAppDir FakeMyApp.apk    # 二次打包，参数b指定
+java -jar apksigner.jar sign --ks MyDemo.jks FakeMyApp.apk        # 签名
 ```
 
 - 上面第一个MyAppDir是解包的输出目录，如果不指定，则默认采用当前目录，文件名为当前apk名。

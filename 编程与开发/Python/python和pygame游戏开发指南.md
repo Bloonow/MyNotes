@@ -12,15 +12,15 @@
 import pygame, sys
 from pygame.locals import *
 
-pygame.init()	#初始化pygame模块
+pygame.init()    #初始化pygame模块
 DISPLADISYSURF = pygame.display.set_mode((400,300))
-pygame.display.set_caption('Hello World')	#显示窗口顶部标题文字
-while True:		#main game loop
-	for event in pygame.event.get():
-		if event.type == QUIT:
-			pygame.quit()
-			sys.exit()
-	pygame.display.update()
+pygame.display.set_caption('Hello World')    #显示窗口顶部标题文字
+while True:        #main game loop
+    for event in pygame.event.get():
+        if event.type == QUIT:
+            pygame.quit()
+            sys.exit()
+    pygame.display.update()
 ```
 
 导入pygame模块时，也会自动导入位于pygame模块之中的所有模块，如pygame.images和pygame.mixer.music等，不需要再用其他的import语句来导入这些位于该模块之中的模块。
@@ -77,7 +77,7 @@ Pygame中，使用3个整数的元组来表示颜色 (0~255, 0~255, 0~255)，额
 import pygame,sys
 from pygame.locals import *
 pygame.init()
-BackgroundColor = (0, 0, 0)	# 白色
+BackgroundColor = (0, 0, 0)    # 白色
 DIS = pygame.display.set_mode((200, 200))
 flashSurface = pygame.Surface((100, 100))
 flashSurface = flashSurface.convert_alpha() # 转化为透明Surface对象
@@ -162,12 +162,12 @@ Event对象有一个名为type的成员变量（member variable，也叫属性�
 
 ```python
 if event.type == MOUSEMOTION:
-    print(event.pos)	# 输出当前鼠标坐标
-    print(event.rel)	# 输出该次使用event.rel相对于上次使用所产生的相对位移
-    print(event.buttons)	# 输出一个三元组 (左键是否按下, 滚轮是否按下, 右键是否按下)，1为按下，0为未按，滚轮滚动不是按下
+    print(event.pos)    # 输出当前鼠标坐标
+    print(event.rel)    # 输出该次使用event.rel相对于上次使用所产生的相对位移
+    print(event.buttons)    # 输出一个三元组 (左键是否按下, 滚轮是否按下, 右键是否按下)，1为按下，0为未按，滚轮滚动不是按下
 if event.type == MOUSEBUTTONDOWN or event.type == MOUSEBUTTONUP:
-    print(event.pos)	# 同上，输出当前鼠标坐标
-    print(event.button)		# 输出类型，整数，1为左键，2为滚轮，3为右键，4为滚轮向上，5为滚轮向下
+    print(event.pos)    # 同上，输出当前鼠标坐标
+    print(event.button)        # 输出类型，整数，1为左键，2为滚轮，3为右键，4为滚轮向上，5为滚轮向下
 ```
 
 事件及返回属性如下表：

@@ -1662,7 +1662,7 @@ zero_grad()方法，将所有模型参数的梯度设置为零。
 
 ```python
 class Module:
-	def to(self, device, dtype, non_blocking)
+    def to(self, device, dtype, non_blocking)
     def type(self, dst_type)
 ```
 
@@ -2387,7 +2387,7 @@ scheduler1 = ExponentialLR(optimizer, gamma=0.9)
 scheduler2 = MultiStepLR(optimizer, milestones=[30,80], gamma=0.1)
 for epoch in range(20):
     for input, target in dataset:
-		pass
+        pass
     scheduler1.step()
     scheduler2.step()
 ```
@@ -2434,7 +2434,7 @@ lambda1 = lambda epoch: epoch // 30
 lambda2 = lambda epoch: 0.95 ** epoch
 scheduler = LambdaLR(optimizer, lr_lambda=[lambda1, lambda2])
 for epoch in range(100):
-	pass
+    pass
     scheduler.step()
 ```
 
@@ -2459,7 +2459,7 @@ class MultiStepLR(_LRScheduler):
 # lr = 0.0005   if 80 <= epoch
 scheduler = MultiStepLR(optimizer, milestones=[30,80], gamma=0.1)
 for epoch in range(100):
-	pass
+    pass
     scheduler.step()
 ```
 
@@ -2557,7 +2557,7 @@ swa_model.update_parameters(model)
 
 ```python
 class SWALR(_LRScheduler):
-	def __init__(self, optimizer, swa_lr, anneal_epochs=10, anneal_strategy='cos',
+    def __init__(self, optimizer, swa_lr, anneal_epochs=10, anneal_strategy='cos',
                  last_epoch=-1)
 ```
 

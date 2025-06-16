@@ -165,7 +165,7 @@ void* my_malloc(size_t size, int device, cudaStream_t stream) {
 }
 void my_free(void* ptr, size_t size, int device, cudaStream_t stream) {
     cudaFree(ptr);
-	std::cout << "free " << ptr << " " << stream << std::endl;
+    std::cout << "free " << ptr << " " << stream << std::endl;
 }
 }
 ```
@@ -365,7 +365,7 @@ class Event(torch._C._CudaEventBase):
 
 ```python
 class Event(torch._C._CudaEventBase):
-	def record(self, stream=None)
+    def record(self, stream=None)
     def wait(self, stream=None)
 ```
 

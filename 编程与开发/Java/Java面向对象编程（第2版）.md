@@ -203,7 +203,7 @@ public class MyClassLoader extends ClassLoader {
     }
 }
 
-// 一个测试调用如下	Client.java
+// 一个测试调用如下    Client.java
 MyClassLoader loader = new MyClassLoader("my loader");
 Class cla = loader.loadClass("MyClassLoader");
 String str = cla.toString();
@@ -576,7 +576,7 @@ FutureTask<Integer> aTask = new FutureTask<Integer>(myCallable);
 Thread th = new Thread(aTask);
 th.start();
 // somewhere, get the computed result.
-Integer i = aTask.get();	// 获得运算结果
+Integer i = aTask.get();    // 获得运算结果
 ```
 
 ### 3. 通过线程池来高效管理多个线程

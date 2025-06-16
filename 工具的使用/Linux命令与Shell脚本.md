@@ -484,8 +484,8 @@ mke2fs 1.46.5 (30-Dec-2021)
 创建含有 8388352 个块（每块 4k）和 2097152 个 inode 的文件系统
 文件系统 UUID：ff396198-33d3-4ef0-9701-78c10dd0536d
 超级块的备份存储于下列块： 
-	32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632, 2654208, 
-	4096000, 7962624
+    32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632, 2654208, 
+    4096000, 7962624
 
 正在分配组表： 完成                            
 正在写入 inode表： 完成                            
@@ -1909,11 +1909,11 @@ echo $?  # 99
 
 ```shell
 if cond_cmd; then
-	commands
+    commands
 elif cond_cmd; then
-	commands
+    commands
 else
-	commands
+    commands
 fi
 ```
 
@@ -1931,7 +1931,7 @@ test condition
 
 ```shell
 if test $myvar; then
-	echo "The $myvar return True"
+    echo "The $myvar return True"
 fi
 ```
 
@@ -1939,19 +1939,19 @@ bash shell提供使用`[]`方括号测试条件是否成立，其作用等价于
 
 ```shell
 if [ condition ]; then
-	commands
+    commands
 fi
 ```
 
 ```shell
 if [ condition1 ] && [condition2 ]; then
-	commands
+    commands
 fi
 ```
 
 ```shell
 if [ condition1 ] || [condition2 ]; then
-	commands
+    commands
 fi
 ```
 
@@ -1962,7 +1962,7 @@ fi
 ```shell
 #!/bin/bash
 if [ 100 -ge 99 ]; then
-	echo "100 >= 99"
+    echo "100 >= 99"
 fi
 ```
 
@@ -1979,11 +1979,11 @@ fi
 ```shell
 #!/bin/bash
 if [ "abc" \< "bcd" ]; then
-	echo "abc < bcd"
+    echo "abc < bcd"
 fi
 myvar=''
 if [ -z "$myvar" ]; then
-	echo "myvar's length is zero"
+    echo "myvar's length is zero"
 fi 
 ```
 
@@ -2012,7 +2012,7 @@ myvar's length is zero
 
 ```shell
 if [ -f "$HOME/.bashrc" ]; then
-	. "$HOME/.bashrc"
+    . "$HOME/.bashrc"
 fi
 ```
 
@@ -2057,11 +2057,11 @@ fi
 ```shell
 case $variable in
 pattern1 | pattern2)
-	commands ;;
+    commands ;;
 pattern3)
-	commands ;;
+    commands ;;
 *)
-	commands ;;
+    commands ;;
 esac
 ```
 
@@ -2086,7 +2086,7 @@ bash shell提供for命令，允许创建一个遍历列表的循环，每次迭�
 
 ```shell
 for var in list; do
-	commands
+    commands
 done
 ```
 
@@ -2115,7 +2115,7 @@ done
 ```shell
 #!/bin/bash
 for var in $(ls /home); do
-	echo $var
+    echo $var
 done
 ```
 
@@ -2147,7 +2147,7 @@ done
 
 ```shell
 for (( variables_assign; condition; interation_process )); do
-	commands
+    commands
 done
 ```
 
@@ -2164,7 +2164,7 @@ while命令某种意义上是if-then语句和for循环的混杂体，它允许�
 
 ```shell
 while test commands; do
-	commands
+    commands
 done
 ```
 
@@ -2174,7 +2174,7 @@ until命令与while命令的工作方式完全相反，它允许定义一个要�
 
 ```shell
 until test commands; do
-	commands
+    commands
 done
 ```
 
@@ -2450,7 +2450,7 @@ echo -n "At $OPTIND: "
 while getopts abc:d: opt_var; do
     case "$opt_var" in
     "a" | "b")
-    	 echo "Found -$opt_var option" ;;
+         echo "Found -$opt_var option" ;;
     "c") echo "Found -c option, with $OPTARG" ;;
     "d") echo "Found -d option, with $OPTARG" ;;
     *) ;;
@@ -2516,10 +2516,10 @@ You love Apple, Banana, and Cherry Lemon
 #!/bin/bash
 read -p "Do you want to continue [Y/N]? " -n 1 choose
 if [ $choose == "Y" ] || [ $choose == "y" ]; then
-	echo
+    echo
     echo "go on"
 elif [ $choose == "N" ] || [ $choose == "n" ]; then
-	echo
+    echo
     echo "exit"
 fi
 ```
@@ -2872,7 +2872,7 @@ at -f script.sh now
 可使用atq命令列出已提交的作业与作业号，并使用atrm根据作业号删除已提交的作业。
 
 ```shell
-4	Wed Apr  3 06:12:00 2024 a bln
+4    Wed Apr  3 06:12:00 2024 a bln
 ```
 
 at命令可以定时执行一次作业，而cron则可以定期执行某个作业。

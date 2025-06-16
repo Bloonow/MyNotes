@@ -12,7 +12,7 @@
 
 ```shell
 ps [-options]
-pstree				# 查看进程树
+pstree                # 查看进程树
 ```
 
 显示先行终端机下的程序。它有一系列可选参数。主要打印内容包括：PID进程号、TTY终端、STAT状态、TIME时间、COMMAND命令。
@@ -121,8 +121,8 @@ pid_t getppid(void);
 3. **获得进程组号PGID**
 
 ```c
-pid_t getpgid(pid_t pid);	// 参数为0时，表示获得当前进程的进程组号
-pid_t getgrp(void);		// 获取当前进程的进程组号
+pid_t getpgid(pid_t pid);    // 参数为0时，表示获得当前进程的进程组号
+pid_t getgrp(void);        // 获取当前进程的进程组号
 ```
 
 4. **会话session**
@@ -138,8 +138,8 @@ pid_t getsid(pid_t pid);
 一个进程可以与某个终端关联，建立与控制终端关联的这个会话首进程为控制进程。
 
 ```c
-pid_t tcgetpgrp(int fd);	// 返回打开终端相关联前台进程组的进程组号
-int tcsetpgrp(int fd, pid_t pgrp);	//设置某个进程组是前台进程组还是后台进程组
+pid_t tcgetpgrp(int fd);    // 返回打开终端相关联前台进程组的进程组号
+int tcsetpgrp(int fd, pid_t pgrp);    //设置某个进程组是前台进程组还是后台进程组
 ```
 
 6. **进程真实用户号RUID**
@@ -163,10 +163,10 @@ uid_t geteuid(void);
 在进程中执行命令。
 
 ```c
-int execl(const char* path, const char* arg, ...);	// 最后一个用 (char*)0 结束
-int execlp(const char* file, const char* arg, ...);	// 从$PATH环境变量所指的目录中查找文件名为file所指示的字符串
-int execle(const char* path, const char* arg, ..., char* const envp[]);	// 最后一个参数是环境变量的数组
-int execv(const char* path, char* const argv[]);	// 第二个参数是数组
+int execl(const char* path, const char* arg, ...);    // 最后一个用 (char*)0 结束
+int execlp(const char* file, const char* arg, ...);    // 从$PATH环境变量所指的目录中查找文件名为file所指示的字符串
+int execle(const char* path, const char* arg, ..., char* const envp[]);    // 最后一个参数是环境变量的数组
+int execv(const char* path, char* const argv[]);    // 第二个参数是数组
 int execvp(const char* file, char* const argv[]);
 int execvpe(const char* file, char* const argv[], char* const envp[]);
 ```
@@ -240,7 +240,7 @@ int atexit(void (*function)(void));
 ④ 回收内核空间资源
 
 ```c
-pid_t wait(int* status);	// status是子进程退出时的状态，返回当前结束进程的pid
+pid_t wait(int* status);    // status是子进程退出时的状态，返回当前结束进程的pid
 ```
 
 - 等待子进程的结束，回收该子进程的内核进程资源。
@@ -248,7 +248,7 @@ pid_t wait(int* status);	// status是子进程退出时的状态，返回当前�
 - 参数status是用来收集子进程退出时的状态的。但如果对这个子进程是如何死掉毫不在意，只想把这个进程消灭掉（事实上绝大多数情况下），就可以设定这个参数为`NULL`或`0`，如wait(0)。
 
 ```c
-pid_t waitpid(pid_t pid, int* status, int options);	// 等待指定进程结束
+pid_t waitpid(pid_t pid, int* status, int options);    // 等待指定进程结束
 ```
 
 - pid如果 < -1，PGID为pid的绝对值的进程；-1表示任意子进程；0表示与当前进程的进程组PGID一致的进程；> 0表示PID为pid的进程。
@@ -268,32 +268,32 @@ pid_t waitpid(pid_t pid, int* status, int options);	// 等待指定进程结束
 - 守候进程，又称为守护进程、Daemon、服务等。后台运行，脱离于终端。
 
 ```c
-signal(SIGTTOU, SIG_IGN);	// 屏蔽来自终端的信号
+signal(SIGTTOU, SIG_IGN);    // 屏蔽来自终端的信号
 // ...
 if (pid = fork()) {
-    exit(EXIT_SUCCESS);	// 父进程退出
+    exit(EXIT_SUCCESS);    // 父进程退出
 } else if (pid < 0) {
     perror("fork");
     exit(EXIT_FAILURE);
 }
 // ...
-setsid();	// 脱离控制终端和进程组，设置新会话组长、新进程组组长
+setsid();    // 脱离控制终端和进程组，设置新会话组长、新进程组组长
 // ...
 // 禁止进程重新打开控制终端
 if (pid = fork()) {
-    exit(EXIT_SUCCESS);	// 父进程（组长）退出，子进程不是组长，没有权限打开终端
+    exit(EXIT_SUCCESS);    // 父进程（组长）退出，子进程不是组长，没有权限打开终端
 } else if (pid < 0) {
     perror("fork");
     exit(EXIT_FAILURE);
 }
 // ...
-#define NOFILE 256	// 关闭父进程打开的文件描述符
+#define NOFILE 256    // 关闭父进程打开的文件描述符
 for (i = 0; i < NOFILE; ++i) close(i);
 // ...
-chdir("/tmp");	// 改变当前工作目录
-umask(0);	// 重设文件创建掩码，是的守护进程在创建文件时，权限不受影响
+chdir("/tmp");    // 改变当前工作目录
+umask(0);    // 重设文件创建掩码，是的守护进程在创建文件时，权限不受影响
 // ...
-signal(SIGCHLD, SIG_IGN);	// 处理SIGHILD（子进程退出）信号（忽略），由系统回收守护进程创建的子进程
+signal(SIGCHLD, SIG_IGN);    // 处理SIGHILD（子进程退出）信号（忽略），由系统回收守护进程创建的子进程
 ```
 
 #### (7) 文件相关补充
@@ -345,17 +345,17 @@ ipcrm [-options id]
 ### 1. 相关头文件补充
 
 ```c
-#include <fcntl.h>		// 文件控制
-#include <unistd.h>		// 进程
-#include <sys/types.h>	// 类型
-#include <sys/ipc.h>	// IPC通信机制
-#include <sys/wait.h>	// waitpid()等
-#include <sys/sem.h>	// 信号量
-#include <sys/shm.h>	// 共享内存
-#include <sys/msg.h>	// 消息队列
-#include <wait.h>		// 管道、等待信号
-#include <signal.h>		// 管道、唤醒信号
-#include <sys/stat.h>	// （信号）状态
+#include <fcntl.h>        // 文件控制
+#include <unistd.h>        // 进程
+#include <sys/types.h>    // 类型
+#include <sys/ipc.h>    // IPC通信机制
+#include <sys/wait.h>    // waitpid()等
+#include <sys/sem.h>    // 信号量
+#include <sys/shm.h>    // 共享内存
+#include <sys/msg.h>    // 消息队列
+#include <wait.h>        // 管道、等待信号
+#include <signal.h>        // 管道、唤醒信号
+#include <sys/stat.h>    // （信号）状态
 ```
 
 ## （二）信号量
@@ -388,10 +388,10 @@ int semctl(int semid, int semnum, int cmd, ...);
 
 ```c
 union semun {
-    int val;					/* Value for SETVAL */              
-    struct semid_ds* buf;		/* Buffer for IPC_STAT, IPC_SET */ 
-    unsigned short* array;		/* Array for GETALL, SETALL */  
-    struct seminfo* __buf;		/* Buffer for IPC_INFO */  
+    int val;                    /* Value for SETVAL */              
+    struct semid_ds* buf;        /* Buffer for IPC_STAT, IPC_SET */ 
+    unsigned short* array;        /* Array for GETALL, SETALL */  
+    struct seminfo* __buf;        /* Buffer for IPC_INFO */  
 };
 ```
 
@@ -519,9 +519,9 @@ int msgsnd(int msqid, const void* msgp, size_t msgsz, int msgflg);
 - msgp，指针所指向的缓冲区buffer中的内容就是要发送的消息。它所指的类型是用户半自定义的结构类型，即：
 
 ```c
-struct msgbuf {		// 用户自定义类型必须按照这个格式，所以叫做用户半自定义类型
-    long mytype;	// 自定义消息类型，用一个长整型表示，必须大于零 > 0
-    char mtext[1];	// 消息数据（message data）
+struct msgbuf {        // 用户自定义类型必须按照这个格式，所以叫做用户半自定义类型
+    long mytype;    // 自定义消息类型，用一个长整型表示，必须大于零 > 0
+    char mtext[1];    // 消息数据（message data）
 }
 ```
 
@@ -671,7 +671,7 @@ sig可为预定义常量，也可以为常量对应的整数。使用`kill -l`�
 ### 3. 异步信号系统调用
 
 ```c
-int kill(pid_t pid, int sig);		// 成功返回0，否则返回-1。
+int kill(pid_t pid, int sig);        // 成功返回0，否则返回-1。
 ```
 
 - 一个进程发送给另一个进程。
@@ -679,26 +679,26 @@ int kill(pid_t pid, int sig);		// 成功返回0，否则返回-1。
 - 如果pid > 0，指定目标进程的pid；= 0，和当前进程在同一组内的所有进程；= -1，系统内调用者可以发送信号的所有进程；< 0，进程组号PGID为pid的绝对值的所有进程。
 
 ```c
-int raise(int sig);			// 自举信号
+int raise(int sig);            // 自举信号
 ```
 
 - 一个进程发送个给自己一个信号，也称自举信号，等价于 kill(getpid(), sig)。
 
 ```c
-unsigned int alarm(unsigned int seconds);		// 定时信号
+unsigned int alarm(unsigned int seconds);        // 定时信号
 ```
 
 - 设置多少时间（秒）产生一个SIGALARM信号；在时间之后，当前进程会接收到信号，可以针对该信号注册响应的信号处理函数。
 - 如果seconds为0，代表的意义是取消之前发出的报警请求，即撤销当前设置的定时器。
 
 ```c
-useconds_t ualarm(useconds_t usecs, useconds_t interval);		// 周期信号
+useconds_t ualarm(useconds_t usecs, useconds_t interval);        // 周期信号
 ```
 
 - 在指定时间usecs（微秒）产生一个SIGALARM信号，并每隔interval时间（微秒），重复产生SIGALARM信号。
 
 ```c
-sighandler_t signal(int signum, sighandler_t handler);		// 安装信号处理
+sighandler_t signal(int signum, sighandler_t handler);        // 安装信号处理
 ```
 
 - signum为代表信号的常量，如之前所述。
@@ -765,13 +765,13 @@ void pthread_exit(void* retval);
 ## （二）获得线程信息
 
 ```c
-unsigned long int pthread_self();	// %lu
+unsigned long int pthread_self();    // %lu
 ```
 
 - 获得线程的tid，即pthread_t类型。
 
 ```c
-long long syscall(SYS_gettid);	// %ld	头文件 <sys/syscall.h>
+long long syscall(SYS_gettid);    // %ld    头文件 <sys/syscall.h>
 ```
 
 - 获得该线程在内核中的一个id，它就是这个用户级线程映射到内核级进程上的那个进程id。值得注意的是这个被映射到的进程的pid，与创建这个线程的线程所在进程的pid是不同的，但它们也仅仅是pid不同，其他部分完全相同，这也说明了线程是共享父进程资源的。
@@ -860,9 +860,9 @@ Windows下的Mutex和Critical Section默认是可递归的；Linux下的pthread_
 ```c
 pthread_mutexattr_t attr;
 pthread_mutexattr_init(&attr);
-pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);	// 设置可递归锁的属性
+pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);    // 设置可递归锁的属性
 pthread_mutex_t mutex;
-pthread_mutex_init(&mutex, &attr);	// 初始化可递归锁
+pthread_mutex_init(&mutex, &attr);    // 初始化可递归锁
 ```
 
 ### 4. 自旋锁
@@ -1030,8 +1030,8 @@ ln -d test.txt test.txt_lnk_hard
 
 ```c
 struct inode {
-    unsigned long 	i_ino;		// 索引结点值
-    umode_t			i_mode;		// 文件的类型以及访问权限，它是两个字节的结构，如下
+    unsigned long     i_ino;        // 索引结点值
+    umode_t            i_mode;        // 文件的类型以及访问权限，它是两个字节的结构，如下
 }
 ```
 

@@ -274,7 +274,7 @@ model_dp = torch.nn.DataParallel(model, device_ids=[0, 1, 2])
 optimizer = torch.optim.SGD(model_dp.parameters(), lr=cfg['lr'])
 for inputs in dataloader:
     # inputs can be on any device, including CPU
-	outputs = model_dp(inputs)
+    outputs = model_dp(inputs)
 ```
 
 # torch.nn.parallel.DistributedDataParallel
@@ -458,7 +458,7 @@ class DistributedDataParallel(Module, Joinable):
 
 ```python
 class DistributedDataParallel(Module, Joinable):
-	def register_comm_hook(self, state: object, hook: callable)
+    def register_comm_hook(self, state: object, hook: callable)
 """
 The callable hook function is defined like below:
 def hook_fn(state: object, bucket: dist.GradBucked) -> torch.futures.Future[torch.Tensor]
@@ -2047,7 +2047,7 @@ def main():
 def train():
     for batch in iter(dataset):
         train_step(batch)
-    	if should_checkpoint:
+        if should_checkpoint:
             save_checkpoint(checkpoint_path)
 ```
 

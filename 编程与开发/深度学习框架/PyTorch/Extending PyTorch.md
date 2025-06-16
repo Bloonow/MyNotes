@@ -386,7 +386,7 @@ TypeError: no implementation found for 'torch.mul' on types that implement __tor
 class ScalarTensor:
     HANDLED_FUNCTIONS = {}
     
-	@classmethod
+    @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs={}):
         if func not in cls.HANDLED_FUNCTIONS or not all(
             issubclass(t, (torch.Tensor, ScalarTensor)) for t in types
@@ -1488,9 +1488,9 @@ std::vector<torch::Tensor> lltm_forward_cuda(
 ```c++
 switch (tensor.type().scalarType()) {
     case torch::ScalarType::Double:
-    	return function<double>(tensor.data<double>());
+        return function<double>(tensor.data<double>());
     case torch::ScalarType::Float:
-    	return function<float>(tensor.data<float>());
+        return function<float>(tensor.data<float>());
     default:
         return error;
 }
@@ -1608,7 +1608,7 @@ std::vector<torch::Tensor> lltm_forward_cuda(
     torch::Tensor bias,
     torch::Tensor old_h,
     torch::Tensor old_cell) {
-	/* ... */
+    /* ... */
     AT_DISPATCH_FLOATING_TYPES(gates.type(), "lltm_forward_cuda", ([&] {
         lltm_forward_cuda_kernel<scalar_t><<<blocks, threads>>>(
             gates.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
@@ -1989,7 +1989,7 @@ torch.utils.cpp_extension.load_inline()函数，用于从字符串表示的源�
 import torch.utils.cpp_extension
 my_cpp_source = """
 at::Tensor sin_add(at::Tensor x, at::Tensor y) {
-	return x.sin() + y.sin();
+    return x.sin() + y.sin();
 }
 """
 my_ext_module = torch.utils.cpp_extension.load_inline(

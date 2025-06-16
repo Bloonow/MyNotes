@@ -466,13 +466,13 @@ int main() {
 ```c++
 struct A {
 protected:
-	virtual void Foo() {}
+    virtual void Foo() {}
 };
 
 // Neither trivial nor standard-layout
 struct B : A {
-	int a, b;
-	virtual void Foo() override {}  // Virtual function
+    int a, b;
+    virtual void Foo() override {}  // Virtual function
 };
 
 // Trivial but not standard-layout
@@ -483,25 +483,25 @@ private: int b;  // Different access control
 
 // Standard-layout but not trivial
 struct D {
-	int a, b;
-	D(int a, int b): a(a), b(b) {}  //User-defined constructor
+    int a, b;
+    D(int a, int b): a(a), b(b) {}  //User-defined constructor
 };
 
 struct POD {
-	int a, b;
+    int a, b;
 };
 
 int main() {
-	std::cout << std::is_trivial<B>() << std::endl;  // 0
-	std::cout << std::is_trivial<C>() << std::endl;  // 1
-	std::cout << std::is_trivial<D>() << std::endl;  // 0
-	std::cout << std::is_standard_layout<B>() << std::endl;  // 0
-	std::cout << std::is_standard_layout<C>() << std::endl;  // 0
-	std::cout << std::is_standard_layout<D>() << std::endl;  // 1
-	std::cout << std::is_trivial<POD>() << std::endl;          // 1
-	std::cout << std::is_standard_layout<POD>() << std::endl;  // 1
-	std::cout << std::is_pod<POD>() << std::endl;              // 1
-	return 0;
+    std::cout << std::is_trivial<B>() << std::endl;  // 0
+    std::cout << std::is_trivial<C>() << std::endl;  // 1
+    std::cout << std::is_trivial<D>() << std::endl;  // 0
+    std::cout << std::is_standard_layout<B>() << std::endl;  // 0
+    std::cout << std::is_standard_layout<C>() << std::endl;  // 0
+    std::cout << std::is_standard_layout<D>() << std::endl;  // 1
+    std::cout << std::is_trivial<POD>() << std::endl;          // 1
+    std::cout << std::is_standard_layout<POD>() << std::endl;  // 1
+    std::cout << std::is_pod<POD>() << std::endl;              // 1
+    return 0;
 }
 ```
 
@@ -630,7 +630,7 @@ int main() {
 
 > 需要注意的是，使用std::cout打印指针类型时，例如int\*指针、float\*指针等，会直接打印该指针的地址；而如果是char\*指针，使用std::cout打印时，会被解析为C风格字符串，从而打印出可能乱码的字符。想要使用std::cout打印char\*指针的地址，可以打印(void\*)pChar对象。
 
-## Windows数据类型	
+## Windows数据类型    
 
 在C和C++的经典Win32编程中，大多数函数使用Windows特定的typedef和#define宏来指定参数类型和返回值，它们在windef.h头文件中定义。这些Windows数据类型通常是为C/C++内置类型提供的特殊别名。其中一些typedef（例如HRESULT和LCID）很有用且具有描述性，而INT等其他类型没有特殊含义，只是基础C++类型的别名。
 
@@ -1234,15 +1234,15 @@ void DoSomething() {
 ```c++
 class MyClass {
 public:
-	void print() { std::cout << "MyClass::print()" << std::endl; }
+    void print() { std::cout << "MyClass::print()" << std::endl; }
 };
 
 int main() {
-	MyClass* mc = new MyClass[2];
-	mc[0].print();
-	mc[1].print();
-	delete[] mc;
-	return 0;
+    MyClass* mc = new MyClass[2];
+    mc[0].print();
+    mc[1].print();
+    delete[] mc;
+    return 0;
 }
 ```
 
@@ -1387,8 +1387,8 @@ int main(int argc, char *argv[]) {
 ```c
 int arr[10];
 int *p;
-printf("%d, %d \n", sizeof(arr), sizeof(arr) / sizeof(int));	// 40, 10
-printf("%d \n", sizeof(p));		// 4（32位机器）/ 8（64位机器）
+printf("%d, %d \n", sizeof(arr), sizeof(arr) / sizeof(int));    // 40, 10
+printf("%d \n", sizeof(p));        // 4（32位机器）/ 8（64位机器）
 ```
 
 最直接的体现就是传参退化现象。C语言只会以值拷贝（value copy）的方式传递参数，参数传递时，如果拷贝整个数组，效率会大大降低，并且在参数位于栈上时，太大的数组拷贝将会导致栈溢出。因此，C语言将数组的传参进行了退化。将整个数组拷贝一份传入函数时，将数组名看做常量指针，只传数组首元素的地址。
@@ -1508,23 +1508,23 @@ int main() {
 
 ```c++
 struct Song {
-	string m_name;
-	float m_duration;
-	Song(const string &name, const float &duration) : m_name(name), m_duration(duration) {}
-	~Song() { std::cout << "Delete Song: " << m_name << std::endl; }
-	void print() { std::cout << "Song: " << m_name << ", " << m_duration << std::endl; }
+    string m_name;
+    float m_duration;
+    Song(const string &name, const float &duration) : m_name(name), m_duration(duration) {}
+    ~Song() { std::cout << "Delete Song: " << m_name << std::endl; }
+    void print() { std::cout << "Song: " << m_name << ", " << m_duration << std::endl; }
 };
 
 int main(int argc, char* argv[]) {
-	// using a raw pointer
-	Song* pSong1 = new Song("See You Again", 230.f);
-	pSong1->print();
-	delete pSong1;  // don't forget to delete
+    // using a raw pointer
+    Song* pSong1 = new Song("See You Again", 230.f);
+    pSong1->print();
+    delete pSong1;  // don't forget to delete
 
-	// declare a smart pointer on stack, and it will delete automatically
-	std::unique_ptr<Song> pSong2 = std::unique_ptr<Song>(new Song("Dream It Possible", 204.f));
-	pSong2->print();
-	return 0;
+    // declare a smart pointer on stack, and it will delete automatically
+    std::unique_ptr<Song> pSong2 = std::unique_ptr<Song>(new Song("Dream It Possible", 204.f));
+    pSong2->print();
+    return 0;
 }
 ```
 
@@ -1538,11 +1538,11 @@ int main(int argc, char* argv[]) {
 
 ```c++
 int main(int argc, char* argv[]) {
-	std::unique_ptr<Song> pSong = std::unique_ptr<Song>(new Song("Dream It Possible", 204.f));
-	Song *pRaw = pSong.get();
-	pRaw->print();
-	pSong.reset();
-	return 0;
+    std::unique_ptr<Song> pSong = std::unique_ptr<Song>(new Song("Dream It Possible", 204.f));
+    Song *pRaw = pSong.get();
+    pRaw->print();
+    pSong.reset();
+    return 0;
 }
 ```
 
@@ -1560,20 +1560,20 @@ unique_ptr不共享它所持有的原始指针，只允许原始指针存在一�
 
 ```c++
 std::unique_ptr<Song> SongFactory(const string &name, const float duration) {
-	// Implicit move operation into the variable that stores the result.
-	return std::make_unique<Song>(name, duration);
+    // Implicit move operation into the variable that stores the result.
+    return std::make_unique<Song>(name, duration);
 }
 
 void display_song(const std::unique_ptr<Song> &song) {
-	song->print();
+    song->print();
 }
 
 int main(int argc, char* argv[]) {
-	std::unique_ptr<Song> pSong1 = SongFactory("Dream It Possible", 204.f);
-	// std::unique_ptr<Song> pSong2 = pSong1;  // Error
-	std::unique_ptr<Song> pSong2 = std::move(pSong1);
-	display_song(pSong2);
-	return 0;
+    std::unique_ptr<Song> pSong1 = SongFactory("Dream It Possible", 204.f);
+    // std::unique_ptr<Song> pSong2 = pSong1;  // Error
+    std::unique_ptr<Song> pSong2 = std::move(pSong1);
+    display_song(pSong2);
+    return 0;
 }
 ```
 
@@ -1581,12 +1581,12 @@ int main(int argc, char* argv[]) {
 
 ```c++
 int main(int argc, char* argv[]) {
-	std::unique_ptr<int[]> p = std::make_unique<int[]>(16);
-	for (int i = 0; i < 16; p[i++] = i);
-	for (int i = 0; i < 16; i++) {
-		std::cout << p[i] << " ";
-	}
-	return 0;
+    std::unique_ptr<int[]> p = std::make_unique<int[]>(16);
+    for (int i = 0; i < 16; p[i++] = i);
+    for (int i = 0; i < 16; i++) {
+        std::cout << p[i] << " ";
+    }
+    return 0;
 }
 ```
 
@@ -1604,17 +1604,17 @@ shared_ptr是采用引用计数（reference-counted）的智能指针，它的�
 
 ```c++
 int main(int argc, char* argv[]) {
-	std::shared_ptr<Song> pSong1 = std::make_shared<Song>("See You Again", 230.f);
-	std::shared_ptr<Song> pSong2 = std::shared_ptr<Song>(new Song("See You Again", 230.f));
-	auto pSong3(pSong1);
-	auto pSong4 = pSong2;
-	pSong3->print();
-	pSong4->print();
-	// unrelated shared_ptrs are never equal.          // 0, 0
-	std::cout << (pSong1 == pSong2) << ", " << (pSong3 == pSong4) << std::endl;
-	// related shared_ptr instances are always equal.  // 1, 1
-	std::cout << (pSong1 == pSong3) << ", " << (pSong2 == pSong4) << std::endl;
-	return 0;
+    std::shared_ptr<Song> pSong1 = std::make_shared<Song>("See You Again", 230.f);
+    std::shared_ptr<Song> pSong2 = std::shared_ptr<Song>(new Song("See You Again", 230.f));
+    auto pSong3(pSong1);
+    auto pSong4 = pSong2;
+    pSong3->print();
+    pSong4->print();
+    // unrelated shared_ptrs are never equal.          // 0, 0
+    std::cout << (pSong1 == pSong2) << ", " << (pSong3 == pSong4) << std::endl;
+    // related shared_ptr instances are always equal.  // 1, 1
+    std::cout << (pSong1 == pSong3) << ", " << (pSong2 == pSong4) << std::endl;
+    return 0;
 }
 ```
 
@@ -1626,37 +1626,37 @@ struct MediaAsset {
 };
 
 struct Song : public MediaAsset {
-	string m_name;
-	float m_duration;
-	Song(const string &name, const float &duration) : m_name(name), m_duration(duration) {}
-	~Song() { std::cout << "Delete Song: " << m_name << std::endl; }
-	void print() { std::cout << "Song: " << m_name << ", " << m_duration << std::endl; }
+    string m_name;
+    float m_duration;
+    Song(const string &name, const float &duration) : m_name(name), m_duration(duration) {}
+    ~Song() { std::cout << "Delete Song: " << m_name << std::endl; }
+    void print() { std::cout << "Song: " << m_name << ", " << m_duration << std::endl; }
 };
 
 struct Photo : public MediaAsset {
-	int m_width, m_height;
+    int m_width, m_height;
     Photo(const int &width, const int &height): m_width(width), m_height(height) {}
-	~Photo() { std::cout << "Delete Photo" << std::endl; }
-	void print() { std::cout << "Photo: " << m_width << ", " << m_height << std::endl; }
+    ~Photo() { std::cout << "Delete Photo" << std::endl; }
+    void print() { std::cout << "Photo: " << m_width << ", " << m_height << std::endl; }
 };
 
 int main(int argc, char* argv[]) {
-	std::vector<std::shared_ptr<MediaAsset>> assets = {
-		std::make_shared<Song>("See You Again", 230.f),
-		std::make_shared<Photo>(1920, 1080),
-		std::make_shared<Photo>(800, 600)
-	};
-	std::vector<std::shared_ptr<MediaAsset>> photos;
-	std::copy_if(assets.begin(), assets.end(), std::back_inserter(photos), [](std::shared_ptr<MediaAsset> p) -> bool {
-		// Use dynamic_pointer_cast to test whether element is a shared_ptr<Photo>.
-		std::shared_ptr<Photo> tmp = std::dynamic_pointer_cast<Photo>(p);
-		return tmp.get() != nullptr;
-	});
-	for (const auto &p : photos) {
-		// We know that the photos vector contains only shared_ptr<Photo> objects, so use static_cast.
-		std::static_pointer_cast<Photo>(p)->print();
-	}
-	return 0;
+    std::vector<std::shared_ptr<MediaAsset>> assets = {
+        std::make_shared<Song>("See You Again", 230.f),
+        std::make_shared<Photo>(1920, 1080),
+        std::make_shared<Photo>(800, 600)
+    };
+    std::vector<std::shared_ptr<MediaAsset>> photos;
+    std::copy_if(assets.begin(), assets.end(), std::back_inserter(photos), [](std::shared_ptr<MediaAsset> p) -> bool {
+        // Use dynamic_pointer_cast to test whether element is a shared_ptr<Photo>.
+        std::shared_ptr<Photo> tmp = std::dynamic_pointer_cast<Photo>(p);
+        return tmp.get() != nullptr;
+    });
+    for (const auto &p : photos) {
+        // We know that the photos vector contains only shared_ptr<Photo> objects, so use static_cast.
+        std::static_pointer_cast<Photo>(p)->print();
+    }
+    return 0;
 }
 ```
 
@@ -1678,20 +1678,20 @@ void use_raw_pointer(int *p) { std::cout << *p << std::endl; }
 void use_reference(int &r) { std::cout << r << std::endl; }
 
 int main(int argc, char* argv[]) {
-	std::shared_ptr<int> sp = std::make_shared<int>(1024);
-	std::cout << sp.use_count() << std::endl;  // 1
-	use_shared_ptr_by_value(sp);               // 2
-	std::cout << sp.use_count() << std::endl;  // 1
-	use_shared_ptr_by_reference(sp);           // 1
-	std::cout << sp.use_count() << std::endl;  // 1
-	use_shared_ptr_by_const_reference(sp);     // 1
-	std::cout << sp.use_count() << std::endl;  // 1
-	use_raw_pointer(sp.get());  // 1024
-	use_reference(*sp);         // 1024
-	// std::move() invokes move constructor, doesn't increment reference count, but transfers ownership to callee.
-	use_shared_ptr_by_value(std::move(sp));    // 1
-	std::cout << sp.use_count() << std::endl;  // 0
-	return 0;
+    std::shared_ptr<int> sp = std::make_shared<int>(1024);
+    std::cout << sp.use_count() << std::endl;  // 1
+    use_shared_ptr_by_value(sp);               // 2
+    std::cout << sp.use_count() << std::endl;  // 1
+    use_shared_ptr_by_reference(sp);           // 1
+    std::cout << sp.use_count() << std::endl;  // 1
+    use_shared_ptr_by_const_reference(sp);     // 1
+    std::cout << sp.use_count() << std::endl;  // 1
+    use_raw_pointer(sp.get());  // 1024
+    use_reference(*sp);         // 1024
+    // std::move() invokes move constructor, doesn't increment reference count, but transfers ownership to callee.
+    use_shared_ptr_by_value(std::move(sp));    // 1
+    std::cout << sp.use_count() << std::endl;  // 0
+    return 0;
 }
 ```
 
@@ -1704,50 +1704,50 @@ int main(int argc, char* argv[]) {
 ```c++
 class Controller {
 public:
-	int number;
-	string status;
-	std::vector<std::weak_ptr<Controller>> others;
-	explicit Controller(int no): number(no), status("On") { std::cout << "Creating Controller" << no << std::endl; }
-	~Controller() { std::cout << "Destroying Controller" << number << std::endl; }
-	void check_status() {
-		// Test whether the pointed-to memory still exists or not.
-		std::for_each(others.begin(), others.end(), [](std::weak_ptr<Controller> wp) {
-			auto p = wp.lock();  // convert to shared_ptr
-			if (p != nullptr) {
-				std::cout << "Controller" << p->number << " is On" << std::endl;
-			} else {
-				std::cout << "Null Object" << std::endl;
-			}
-		});
-	}
+    int number;
+    string status;
+    std::vector<std::weak_ptr<Controller>> others;
+    explicit Controller(int no): number(no), status("On") { std::cout << "Creating Controller" << no << std::endl; }
+    ~Controller() { std::cout << "Destroying Controller" << number << std::endl; }
+    void check_status() {
+        // Test whether the pointed-to memory still exists or not.
+        std::for_each(others.begin(), others.end(), [](std::weak_ptr<Controller> wp) {
+            auto p = wp.lock();  // convert to shared_ptr
+            if (p != nullptr) {
+                std::cout << "Controller" << p->number << " is On" << std::endl;
+            } else {
+                std::cout << "Null Object" << std::endl;
+            }
+        });
+    }
 };
 
 void run() {
-	std::vector<std::shared_ptr<Controller>> vec{
-		std::make_shared<Controller>(0),
-		std::make_shared<Controller>(1),
-		std::make_shared<Controller>(2),
-		std::make_shared<Controller>(3)
-	};
-	// Each controller depends on all others not being deleted.
-	for (size_t i = 0; i < vec.size(); ++i) {
-		std::for_each(vec.begin(), vec.end(), [&vec, i](std::shared_ptr<Controller> p) {
-			if (p->number != i) {
-				vec[i]->others.push_back(std::weak_ptr<Controller>(p));
-				std::cout << "push_back to vec[" << i << "]: " << p->number << std::endl;
-			}
-		});
-	}
-	std::for_each(vec.begin(), vec.end(), [](std::shared_ptr<Controller> &p) {
-		std::cout << "use_count = " << p.use_count() << std::endl;  // 1
-		p->check_status();  // all ohter controllers are On
-	});
+    std::vector<std::shared_ptr<Controller>> vec{
+        std::make_shared<Controller>(0),
+        std::make_shared<Controller>(1),
+        std::make_shared<Controller>(2),
+        std::make_shared<Controller>(3)
+    };
+    // Each controller depends on all others not being deleted.
+    for (size_t i = 0; i < vec.size(); ++i) {
+        std::for_each(vec.begin(), vec.end(), [&vec, i](std::shared_ptr<Controller> p) {
+            if (p->number != i) {
+                vec[i]->others.push_back(std::weak_ptr<Controller>(p));
+                std::cout << "push_back to vec[" << i << "]: " << p->number << std::endl;
+            }
+        });
+    }
+    std::for_each(vec.begin(), vec.end(), [](std::shared_ptr<Controller> &p) {
+        std::cout << "use_count = " << p.use_count() << std::endl;  // 1
+        p->check_status();  // all ohter controllers are On
+    });
 }
 
 int main(int argc, char* argv[]) {
-	run();
-	// Destroying Controller 0, 1, 2, 3
-	return 0;
+    run();
+    // Destroying Controller 0, 1, 2, 3
+    return 0;
 }
 ```
 
@@ -1773,17 +1773,17 @@ int main(int argc, char* argv[]) {
 
 ```c++
 struct MyStruct {
-	int age;
+    int age;
 };
 
 int main(int argc, char* argv[]) {
-	MyStruct s;
-	MyStruct &ref = s;
-	s.age = 12;
-	std::cout << s.age << ", " << ref.age << std::endl;  // 12, 12
-	ref.age = 18;
-	std::cout << s.age << ", " << ref.age << std::endl;  // 18, 18
-	return 0;
+    MyStruct s;
+    MyStruct &ref = s;
+    s.age = 12;
+    std::cout << s.age << ", " << ref.age << std::endl;  // 12, 12
+    ref.age = 18;
+    std::cout << s.age << ", " << ref.age << std::endl;  // 18, 18
+    return 0;
 }
 ```
 
@@ -1894,7 +1894,7 @@ public:
 
 ```c++
 class MemoryBlock {
-	// Move Constructor.
+    // Move Constructor.
     MemoryBlock(MemoryBlock &&other) noexcept : bytes(0), buffer(nullptr) {
         *this = std::move(other);
     }
@@ -1935,17 +1935,17 @@ struct St4 { St4(const int& a, const int& b) { std::cout << "St4" << std::endl; 
 
 template <typename Ty, typename TA, typename TB>
 Ty* factory(TA&& a, TB&& b) {
-	return new Ty(std::forward<TA>(a), std::forward<TB>(b));
+    return new Ty(std::forward<TA>(a), std::forward<TB>(b));
 }
 
 int main(int argc, char* argv[]) {
-	int a = 3, b = 4;
-	St1* p1 = factory<St1>(a, b);  // St1
-	St2* p2 = factory<St2>(3, b);  // St2
-	St3* p3 = factory<St3>(a, 4);  // St3
-	St4* p4 = factory<St4>(3, 4);  // St4
-	delete p1, p2, p3, p4;
-	return 0;
+    int a = 3, b = 4;
+    St1* p1 = factory<St1>(a, b);  // St1
+    St2* p2 = factory<St2>(3, b);  // St2
+    St3* p3 = factory<St3>(a, 4);  // St3
+    St4* p4 = factory<St4>(3, 4);  // St4
+    delete p1, p2, p3, p4;
+    return 0;
 }
 ```
 
@@ -1959,18 +1959,18 @@ int main(int argc, char* argv[]) {
 class MemoryBlock {};
 
 void foo(const MemoryBlock &mb) {
-	std::cout << "foo(const MemoryBlock &)" << std::endl;
+    std::cout << "foo(const MemoryBlock &)" << std::endl;
 }
 
 void foo(MemoryBlock &&mb) {
-	std::cout << "foo(MemoryBlock &&)" << std::endl;
+    std::cout << "foo(MemoryBlock &&)" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
-	MemoryBlock mb;
-	foo(mb);             // foo(const MemoryBlock &)
+    MemoryBlock mb;
+    foo(mb);             // foo(const MemoryBlock &)
     foo(MemoryBlock());  // foo(MemoryBlock &&)
-	return 0;
+    return 0;
 }
 ```
 
@@ -1982,16 +1982,16 @@ int main(int argc, char* argv[]) {
 
 ```c++
 MemoryBlock&& bar(MemoryBlock &&mb) {
-	// In bar's body, named parameter 'mb' is taken as a lvalue.
-	foo(mb);
-	return std::move(mb);
+    // In bar's body, named parameter 'mb' is taken as a lvalue.
+    foo(mb);
+    return std::move(mb);
 }
 
 int main(int argc, char* argv[]) {
-	foo(bar(MemoryBlock()));
-	// foo(const MemoryBlock &)
-	// foo(MemoryBlock&&)
-	return 0;
+    foo(bar(MemoryBlock()));
+    // foo(const MemoryBlock &)
+    // foo(MemoryBlock&&)
+    return 0;
 }
 ```
 
@@ -2001,11 +2001,11 @@ C++标准库std::move()函数可以将某个对象转换为对该对象的rvalue
 
 ```c++
 int main(int argc, char* argv[]) {
-	MemoryBlock mb;
-	foo(mb);                              // foo(const MemoryBlock &)
-	foo(std::move(mb));                   // foo(MemoryBlock &&)
-	foo(static_cast<MemoryBlock&&>(mb));  // foo(MemoryBlock &&)
-	return 0;
+    MemoryBlock mb;
+    foo(mb);                              // foo(const MemoryBlock &)
+    foo(std::move(mb));                   // foo(MemoryBlock &&)
+    foo(static_cast<MemoryBlock&&>(mb));  // foo(MemoryBlock &&)
+    return 0;
 }
 ```
 
@@ -2103,13 +2103,13 @@ int main() {
 
 ```c++
 void print_ints(int length, ...) {
-	va_list args;                     // 用于表示可变参数列表
-	va_start(args, length);           // 初始化可变参数列表的起始位置，其中 length 是可变参数列表的前一个参数
-	for (int i = 0; i < length; ++i) {
+    va_list args;                     // 用于表示可变参数列表
+    va_start(args, length);           // 初始化可变参数列表的起始位置，其中 length 是可变参数列表的前一个参数
+    for (int i = 0; i < length; ++i) {
         int val = va_arg(args, int);  // 从可变参数列表中获取一个 int 类型的数据，并移动堆栈指针
-		std::cout << val << " ";
-	}
-	va_end(args);                     //释放内存，确保函数结束后，堆栈处于稳定状态
+        std::cout << val << " ";
+    }
+    va_end(args);                     //释放内存，确保函数结束后，堆栈处于稳定状态
     std::cout << std::endl;
 }
 
@@ -2412,7 +2412,7 @@ private:
 };
 
 void foo(MyClz& mc) {
-	std::cout << mc.variable << std::endl;
+    std::cout << mc.variable << std::endl;
 }
 ```
 
@@ -3687,8 +3687,8 @@ void print(Ty value) {
 // 模板参数的递归函数
 template<typename Ty, typename... Types>
 void print(Ty value, Types... args) {
-	std::cout << typeid(value).name() << " : " << value << std::endl;
-	print(args...);
+    std::cout << typeid(value).name() << " : " << value << std::endl;
+    print(args...);
 }
 
 int main(int argc, char* argv[]) {
@@ -3829,7 +3829,7 @@ void term_func() {
 
 int main(int argc, char *argv[]) {
     std::terminate_handler old_term_func = std::set_terminate(term_func);  // set new terminate_handler
-	// code occurs terminate
+    // code occurs terminate
     std::set_terminate(old_term_func);  // recover old terminate_handler
     return 0;
 }
@@ -3909,11 +3909,11 @@ void analyze_string(const char* str) {
 
 ```c++
 #if (constant_expression)
-	// something
+    // something
 #elif (constant_expression)
-	// something
+    // something
 #else
-	// something
+    // something
 #endif
 ```
 
@@ -3923,13 +3923,13 @@ void analyze_string(const char* str) {
 
 ```c++
 #if defined(identifier)
-	// something
+    // something
 #endif
 ```
 
 ```c++
 #if !defined(identifier)
-	// something
+    // something
 #endif
 ```
 
@@ -3937,13 +3937,13 @@ void analyze_string(const char* str) {
 
 ```c++
 #ifdef identifier
-	// something
+    // something
 #endif
 ```
 
 ```c++
 #ifndef identifier
-	// something
+    // something
 #endif
 ```
 

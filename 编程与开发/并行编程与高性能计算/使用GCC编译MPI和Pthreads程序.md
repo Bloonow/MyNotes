@@ -20,18 +20,18 @@
 #define MAX_STRING 100
 
 int main(int argc, char *argv[]) {
-	int my_rank;    // My process rank
+    int my_rank;    // My process rank
     int comm_size;  // Num of processes
     int name_len;   // Length of processor name
     char processor_name[MPI_MAX_PROCESSOR_NAME];
     char message[MAX_STRING];
 
-	MPI_Init(&argc, &argv);     // Init and start MPI
+    MPI_Init(&argc, &argv);     // Init and start MPI
     MPI_Comm_size(MPI_COMM_WORLD, &comm_size);  // Get number of processes
-	MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);    // Get current process rank
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);    // Get current process rank
     MPI_Get_processor_name(processor_name, &name_len);
 
-	if (my_rank == 0) {
+    if (my_rank == 0) {
         printf("Number of processes: %d\n", comm_size);
         printf("I am process %d, and my task is printing the messages from other processes.\n", my_rank);
         int idx;
@@ -44,8 +44,8 @@ int main(int argc, char *argv[]) {
         MPI_Send(message, strlen(message) + 1, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
     }
 
-	MPI_Finalize();     // Finalize MPI
-	return 0;
+    MPI_Finalize();     // Finalize MPI
+    return 0;
 }
 ```
 

@@ -18,7 +18,7 @@ XML文件设计：
 
 ```xml
 <some.widget>
-	xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     <some.widget/>
@@ -46,10 +46,10 @@ Android SDK版本（API）：SDK最低版本、SDK目标版本、SDK编译版本
 ```java
 mButton = findViewById(R.id.id_ma_button);
 mButton.setOnClickListener(new View.OnClickListener() {
-	@Override
-	public void onClick(View v) {
-		Toast.makeText(MainActivity.this, "Hello", Toast.LENGTH_SHORT).show();	// 创建Toast提示消息
-	}
+    @Override
+    public void onClick(View v) {
+        Toast.makeText(MainActivity.this, "Hello", Toast.LENGTH_SHORT).show();    // 创建Toast提示消息
+    }
 });
 ```
 
@@ -60,7 +60,7 @@ mButton.setOnClickListener(new View.OnClickListener() {
 ```java
 mEditText = findViewById(R.id.id_ma_edit_text);
 mEditText.addTextChangedListener(new TextWatcher() {
-	@Override
+    @Override
     public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
     @Override
     public void onTextChanged(CharSequence s, int start, int before, int count) { }
@@ -70,8 +70,8 @@ mEditText.addTextChangedListener(new TextWatcher() {
 
 mCheckBox = findViewById(R.id.id_ma_check_box);
 mCheckBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-	@Override
-	public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) { }
+    @Override
+    public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) { }
 });
 ```
 
@@ -81,7 +81,7 @@ mCheckBox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener(
 // MainActivity.java
 Intent intent = new Intent(MainActivity.this, SecondActivity.class);
 intent.putExtra("key", "Hello");    // 可对Intent添加额外附加信息
-startActivity(intent);	// 启动新activity
+startActivity(intent);    // 启动新activity
 // 或者
 startActivityForResult(intent, Request_Code);    // 可以通过intent从所启动的新activity中获取结果（如果有）
 ```
@@ -92,7 +92,7 @@ startActivityForResult(intent, Request_Code);    // 可以通过intent从所启�
 // SecondActivity.java
 String extraValue = getIntent().getStringExtra("key");  // 可以获得附加信息
 
-Intent data = new Intent();	// 通过一个结果Intent向启动者activity返回结果
+Intent data = new Intent();    // 通过一个结果Intent向启动者activity返回结果
 data.putExtra("result", "Yeah");
 setResult(Result_Code, data);
 ```
@@ -119,7 +119,7 @@ setResult(Result_Code, data);
 
 ```java
 <activity android:name=".SecondActivity" 
-		android:parentActivityName=".MainActivity"/>
+        android:parentActivityName=".MainActivity"/>
 ```
 
 若当前显示在子activity中，按后退键向上导航回到父activity中，会重建父级activity，可以在子activity中使用`getParentActivityIntent()`方法获得Intent，用附带extra的Intent重建父级Activity。
@@ -147,7 +147,7 @@ setResult(Result_Code, data);
 
 ```java
 PackageManager pm = getActivity().getPackageManager();
-List<ResolveInfo> resolvesInfo = pm.queryIntentActivities(aIntent, 0);	// 获取能匹配aIntent的所有Activity的解析信息
+List<ResolveInfo> resolvesInfo = pm.queryIntentActivities(aIntent, 0);    // 获取能匹配aIntent的所有Activity的解析信息
 ```
 
 在PacakgeManager返回的ResolveInfo对象中，可以获得Activity的标签信息，如`loadLabel()`通常是包名、`loadIcon()`是图标；`ResolveInfo.activityInfo`得到它所对应的Activity信息，可获得其类所在的包名、类名等，如`activityInfo.applicationInfo.packageName`、`activityInfo.name`等一些其他元数据。
@@ -185,7 +185,7 @@ fragment需要一个容器，容器视图的xml文件（通常是activity或父f
 
 ```xml
 <!-- activity_main.xml -->
-	<FrameLayout
+    <FrameLayout
         android:id="@+id/id_ma_frame_layout"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -270,11 +270,11 @@ String str = getArguments().getString("key");
 
 ```java
 // OldFragment.java
-public static final int Request_Code = 0x1;	// 请求代码
+public static final int Request_Code = 0x1;    // 请求代码
 
 NewFragment nf = NewFragment.newInstance("data");
 nf.setTargetFragment(OF.this, Request_Code);
-nf.show(fragmentManager, 键字符串);	// 显示新fragment
+nf.show(fragmentManager, 键字符串);    // 显示新fragment
 ```
 
 之后再覆盖OF的`onActivityResult()`方法，以方便在NF中需要传回结果的时候回调。
@@ -309,7 +309,7 @@ getTargetFragment().onActivityResult(getTargetRequest(), Result_Code, data);
 
 ```java
 // MainFragment.java @ onCreateView()
-mRecyclerView = view.findViewById(R.id.id_mf_recycler_view);	// 在之前设置的 fragment_main.xml 文件中定义
+mRecyclerView = view.findViewById(R.id.id_mf_recycler_view);    // 在之前设置的 fragment_main.xml 文件中定义
 mRecyclerView.setLayoutManager(new LinearLayoutManager(getActivity()));
 ```
 
@@ -328,7 +328,7 @@ RecyclerView上列表的每一项是一个`ViewHolder`（它引用着itemView）
 
 ```java
 // MainFragment.java @ MainFragment
-	private class ItemHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
+    private class ItemHolder extends RecyclerView.ViewHolder implements View.OnClickListener {
         private Button mItemButton;
         public ItemHolder(LayoutInflater inflater, ViewGroup parent) {
             super(inflater.inflate(R.layout.holder_item, parent, false));
@@ -340,7 +340,7 @@ RecyclerView上列表的每一项是一个`ViewHolder`（它引用着itemView）
         }
         @Override
         public void onClick(View v) {
-			// handle the click event.
+            // handle the click event.
         }
     }
 ```
@@ -349,7 +349,7 @@ Adapter是一个控制器对象，它从模型层获取数据（存储数据）�
 
 ```java
 // MainFragment.java @ MainFragment
-	private class RecyclerAdapter extends RecyclerView.Adapter {
+    private class RecyclerAdapter extends RecyclerView.Adapter {
         private List<String> mNameList;
         public RecyclerAdapter(List<String> list) {
             mNameList = list;
@@ -362,7 +362,7 @@ Adapter是一个控制器对象，它从模型层获取数据（存储数据）�
             return new ItemHolder(layoutInflater, parent);
         }
         @Override
-		public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
             if (holder instanceof ItemHolder) {
                 ((ItemHolder)holder).bind(mNameList.get(position));
             }
@@ -447,7 +447,7 @@ public class MainFragment {
 
 ```java
 public class ThirdActivity extends AppCompatActivity {
-	/* xxx */
+    /* xxx */
     private RecyclerView mRecyclerView;
     private LinearLayoutManager mLinearLayoutManager;
 
@@ -459,7 +459,7 @@ public class ThirdActivity extends AppCompatActivity {
         mRecyclerView.setLayoutManager(mLinearLayoutManager);
 
         mRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
-            @Override	// 该回调方法在滚动完成后调用
+            @Override    // 该回调方法在滚动完成后调用
             public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
                 super.onScrolled(recyclerView, dx, dy);
                 // 判断是否到达底部，在滚动完成后显示
@@ -498,9 +498,9 @@ public class ThirdActivity extends AppCompatActivity {
 
 ```java
 // MainFragment.java @ MainFragment
-	private class RecyclerAdapter extends RecyclerView.Adapter {
-        private static final int NORMAL_TYPE = 0;	// 普通ViewHolder
-        private static final int BOTTOM_TYPE = 1;	// 最后一个ViewHolder
+    private class RecyclerAdapter extends RecyclerView.Adapter {
+        private static final int NORMAL_TYPE = 0;    // 普通ViewHolder
+        private static final int BOTTOM_TYPE = 1;    // 最后一个ViewHolder
         /* xxx */
         
         @Override
@@ -511,27 +511,27 @@ public class ThirdActivity extends AppCompatActivity {
         }
         
         @NonNull
-        @Override	// 根据不同的Type返回不同的ViewHolder
+        @Override    // 根据不同的Type返回不同的ViewHolder
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             if (viewType == NORMAL_TYPE) return xxx;
             else if (viewType == BOTTOM_TYPE) return xxx;
         }
         @Override
-		public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
             if (holder instanceof NormalItemHolder) { }
             else if (holder instanceof BottomViewHolder) {
-                holder.setVisible(View.VISIVLE);	// 显示
+                holder.setVisible(View.VISIVLE);    // 显示
                 /* xxx */
                 new Handler.postDelayed(new Runnable() {
                    public void run() {
                        holder.setVisible(View.GONE);
                    } 
-                }, 1000);	// 1s后设置消失
+                }, 1000);    // 1s后设置消失
             }
         }
         @Override
         public int getItemCount() {
-            return mNameList.size() + 1;	// 注意加1
+            return mNameList.size() + 1;    // 注意加1
         }
     }
 ```
@@ -545,10 +545,10 @@ public class ThirdActivity extends AppCompatActivity {
 ```java
 GridLayoutManager gridLayoutManager = new GridLayoutManager(this, 3);
 gridLayoutManager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
-	@Override
-	public int getSpanSize(int position) {
-		return position % 3;    // 根据position返回所占列数
-	}
+    @Override
+    public int getSpanSize(int position) {
+        return position % 3;    // 根据position返回所占列数
+    }
 });
 mRecyclerView.setLayoutManager(gridLayoutManager);
 ```
@@ -558,15 +558,15 @@ mRecyclerView.setLayoutManager(gridLayoutManager);
 ```java
 ViewTreeObserver recyclerViewObserver = mRecyclerView.getViewTreeObserver();
 recyclerViewObserver.addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
-	@Override
-	public void onGlobalLayout() {
-		float scale = getResources().getDisplayMetrics().density;
-		int widthPx = mRecyclerView.getWidth();		// 返回的单位是px
-		int widthDp = (int)(widthPx / scale + 0.5f);	// 转化成dp，因为视图指定的宽度是dp，当然也可以更改视图的单位
-		int spanCount = Math.round(widthDp / 120);  // 一行多少个
-        mRecyclerView.setLayoutManager(new GridLayoutManager(this, spanCount));		// 设置网格布局管理
-        mRecyclerView.getViewTreeObserver().removeOnGlogalLayoutListener(this);		// 设置完成后，移除这个全局监听
-	}
+    @Override
+    public void onGlobalLayout() {
+        float scale = getResources().getDisplayMetrics().density;
+        int widthPx = mRecyclerView.getWidth();        // 返回的单位是px
+        int widthDp = (int)(widthPx / scale + 0.5f);    // 转化成dp，因为视图指定的宽度是dp，当然也可以更改视图的单位
+        int spanCount = Math.round(widthDp / 120);  // 一行多少个
+        mRecyclerView.setLayoutManager(new GridLayoutManager(this, spanCount));        // 设置网格布局管理
+        mRecyclerView.getViewTreeObserver().removeOnGlogalLayoutListener(this);        // 设置完成后，移除这个全局监听
+    }
 });
 ```
 
@@ -590,7 +590,7 @@ public class SecondDialog extends DialogFragment {
     public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
         View view = LayoutInflater.from(getActivity()).inflate(R.layout.fragment_second_dialog, null);
         return new AlertDialog.Builder(getActivity())
-                .setView(view)	// 这个view是显示在dialog中的view，可以没有
+                .setView(view)    // 这个view是显示在dialog中的view，可以没有
                 .setTitle("AlertDialog")
                 .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
                     @Override
@@ -634,15 +634,15 @@ new SecondDialog().show(getSupportFragmentManager(), "Dialog");
 // MainActivity.java
 @Override
 public boolean onCreateOptionsMenu(Menu menu) {
-	getMenuInflater().inflate(R.menu.menu_main, menu);
-	return true;
+    getMenuInflater().inflate(R.menu.menu_main, menu);
+    return true;
 }
 
 // MainFragment.java
 @Override
 public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
     super.onCreateOptionsMenu(menu, inflater);
-    inflater.inflate(R.menu.menu_main, menu);	
+    inflater.inflate(R.menu.menu_main, menu);    
 }
 ```
 
@@ -652,7 +652,7 @@ public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
 
 ```java
 // MainActivity.java 或 MainFragment.java    
-	@Override
+    @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         switch (item.getItemId()) {
             case R.id.id_mm_add:
@@ -668,11 +668,11 @@ public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
 
 ```java
 // MainFragmet.java
-((AppCompatActivity)getActivity()).getSupportActionBar().setSubtitle("subTitle");	// 设置工具栏的子标题
+((AppCompatActivity)getActivity()).getSupportActionBar().setSubtitle("subTitle");    // 设置工具栏的子标题
 
 @Override
 public boolean onOptionsItemSelected(MenuItem item) {
-	item.setTitle("Hello");	// 设置item项的标题
+    item.setTitle("Hello");    // 设置item项的标题
     /* xxx */
 }
 
@@ -687,7 +687,7 @@ getActivity().invalidateOptionsMenu();
 ```xml
 <!-- refs.xml -->
 <resource>
-	<item name="activity_main_ref" type="layout">@layout/activity_main</item>
+    <item name="activity_main_ref" type="layout">@layout/activity_main</item>
 </resource>
 ```
 
@@ -696,7 +696,7 @@ getActivity().invalidateOptionsMenu();
 ```xml
 <!-- refs-600dp.xml -->
 <resource>
-	<item name="activity_main_ref" type="layout">@layout/activity_main_twopane</item>
+    <item name="activity_main_ref" type="layout">@layout/activity_main_twopane</item>
 </resource>
 ```
 
@@ -734,7 +734,7 @@ getActivity().invalidateOptionsMenu();
 
 ```xml
 <!-- styles.xml -->
-	<style name="MyAppTheme" parent="Theme.AppCompat">
+    <style name="MyAppTheme" parent="Theme.AppCompat">
         <item name="colorPrimary">@color/red</item>
         <item name="colorPrimaryDark">@color/dark_red</item>
         <item name="colorAccent">@color/dark_blue</item>
@@ -748,7 +748,7 @@ getActivity().invalidateOptionsMenu();
 
 ```xml
 <!-- styles.xml -->
-	<style name="MyButton" parent="Widget.AppCompat.Button">
+    <style name="MyButton" parent="Widget.AppCompat.Button">
         <item name="android:background">?attr/colorAccent</item>
     </style>
 
@@ -809,7 +809,7 @@ getActivity().invalidateOptionsMenu();
 
 ```xml
 <!-- styles.xml -->   
-	<style name="MyButton" parent="Widget.AppCompat.Button">
+    <style name="MyButton" parent="Widget.AppCompat.Button">
         <item name="android:background">@drawable/my_button</item>
     </style>
 ```
@@ -839,7 +839,7 @@ getActivity().invalidateOptionsMenu();
 
 ```java
 // FourthActivity.java
-	@Override
+    @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.menu_fourth_activity, menu);
         SearchView searchView = (SearchView) menu.findItem(R.id.id_fam_search_view).getActionView();
@@ -901,7 +901,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        PermissionCenter.requestPermissionHelper(this);	// 申请外部存储权限
+        PermissionCenter.requestPermissionHelper(this);    // 申请外部存储权限
 
         mMusicPath =  Environment.getExternalStorageDirectory().getAbsolutePath() + mMusicPath;
         mSeekBar = findViewById(R.id.id_ma_seekBar);
@@ -1031,7 +1031,7 @@ public class BookDatabase {
     private static BookDatabase mBase;  // 单例
 
     private Context mContext;
-    private SQLiteDatabase mSQLiteDatabase;	// SQL数据库对象
+    private SQLiteDatabase mSQLiteDatabase;    // SQL数据库对象
 
     private BookDatabase(Context context) {
         mContext = context;
@@ -1065,18 +1065,18 @@ public class BookDatabase {
         return contentValues;
     }
     
-	public void addBook(Book book) {
+    public void addBook(Book book) {
         ContentValues contentValues = getContentValues(book);
         mSQLiteDatabase.insert(Table.NAME, null, contentValues);
     }
 
     public void updateBookPrice(Book book) {
         String uuidString = book.getUUID().toString();
-        ContentValues contentValues = getContentValues(book);	// 新的数据
+        ContentValues contentValues = getContentValues(book);    // 新的数据
         mSQLiteDatabase.update(Table.NAME, contentValues,
-                Table.Cols.UUID + " = ?",	// 更新哪个字段
+                Table.Cols.UUID + " = ?",    // 更新哪个字段
                 new String[] { uuidString } // 值
-                );	
+                );    
     }
     
     public void deleteBook(Book book) {
@@ -1125,8 +1125,8 @@ public class BookCursorWrapper extends CursorWrapper {
 // BookDatabase.java
 public class BookDatabase {
     /* xxx */
-	private BookCursorWrapper queryForWrapper(String whereClause, String[] whereArgs) {
-		Cursor cursor = mSQLiteDatabase.query(
+    private BookCursorWrapper queryForWrapper(String whereClause, String[] whereArgs) {
+        Cursor cursor = mSQLiteDatabase.query(
                 Table.NAME,
                 null,
                 whereClause,
@@ -1139,7 +1139,7 @@ public class BookDatabase {
     }
     
     // 返回数据库所有数据
-	public List<Book> getBooks() {
+    public List<Book> getBooks() {
         List<Book> books = new ArrayList<>();
         BookCursorWrapper cursorWrapper = queryForWrapper(null, null);
         try {
@@ -1154,7 +1154,7 @@ public class BookDatabase {
         return books;
     }
     
-	// 举例，用 uuid 查询数据
+    // 举例，用 uuid 查询数据
     public Book getBook(UUID id) {
         String uuidString = id.toString();
         BookCursorWrapper cursorWrapper = queryForWrapper(
@@ -1209,10 +1209,10 @@ public class BookDatabase {
 @Override
 protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
-	ActivityMainBinding binding = DataBindingUtil.inflate(LayoutInflater.from(this), R.layout.activity_main, null, false);
-    binding.idMaTextView.setText("HelloTextView");	// 用id引用资源，该例中idMaTextView是编译器根据xml里面的TextView组件的id属性值自动生成的
-	binding.idMaButton.setText("HelloButton");
-	setContentView(binding.getRoot());	// getRoot() 返回整个布局 View
+    ActivityMainBinding binding = DataBindingUtil.inflate(LayoutInflater.from(this), R.layout.activity_main, null, false);
+    binding.idMaTextView.setText("HelloTextView");    // 用id引用资源，该例中idMaTextView是编译器根据xml里面的TextView组件的id属性值自动生成的
+    binding.idMaButton.setText("HelloButton");
+    setContentView(binding.getRoot());    // getRoot() 返回整个布局 View
 }
 ```
 
@@ -1277,9 +1277,9 @@ public class MainActivityViewModel extends BaseObservable {
 // MainActivity.java @with 布局文件 activity_main.xml
 @Override
 protected void onCreate(Bundle savedInstanceState) {
-	/* xxx */
+    /* xxx */
     binding.setViewModel(new MainActivityViewModel());
-	setContentView(binding.getRoot());	// getRoot() 返回整个布局 View
+    setContentView(binding.getRoot());    // getRoot() 返回整个布局 View
 }
 
 // 在其他位置更新视图，可以调用数据模型类的一系列方法，如
@@ -1311,7 +1311,7 @@ public class BitmapCache {
     }
 
     public void clearCache() {
-        mCache.evictAll();	// 清除缓存
+        mCache.evictAll();    // 清除缓存
     }
 
     public Bitmap getBitmapFromMemoryCache(String key) {
@@ -1445,13 +1445,13 @@ public class SoundPlayer {
 ```java
 // MainActivity.java
 public class MainActivity extends AppCompatActivity {
-	/* xxx */
+    /* xxx */
     private Button mButton;
     private SoundPlayer mSoundPlayer;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-		/* xxx */
+        /* xxx */
         mSoundPlayer = new SoundPlayer(this);
         mButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -1490,8 +1490,8 @@ Intent sendIntent = new Intent(Intent.ACTION_SEND);
 sendIntent.setType("text/plain");
 sendIntent.putExtra(Intent.EXTRA_TEXT, "Hello, my lover!");
 sendIntent.putExtra(Intent.EXTRA_SUBJECT, "message");
-sendIntent = Intent.createChooser(sendIntent, "Choose one you want.");	// 使用activity选择器
-startActivity(sendIntent);	// 或其他操作
+sendIntent = Intent.createChooser(sendIntent, "Choose one you want.");    // 使用activity选择器
+startActivity(sendIntent);    // 或其他操作
 ```
 
 还可以查询联系人信息，Android操作系统有一个存储联系人的数据库。示例：
@@ -1567,18 +1567,18 @@ assert captureIntent.resolveActivity(packageManager) != null : "No activity";
 
 ```java
 // MainActivity.java
-public static final int Capture_Request_Code = 0x1;	// 请求代码
+public static final int Capture_Request_Code = 0x1;    // 请求代码
 
-File targetFile = new File(getFilesDir(), "filename");	// 要暴露的目标文件
-Uri localUri = FileProvider.getUriForFile(this, "com.example.test.fileprovider", targetFile);	// 第二个参数是标识provider的android:authorities属性指定的字符串
+File targetFile = new File(getFilesDir(), "filename");    // 要暴露的目标文件
+Uri localUri = FileProvider.getUriForFile(this, "com.example.test.fileprovider", targetFile);    // 第二个参数是标识provider的android:authorities属性指定的字符串
 captureIntent.putExtra(MediaStore.EXTRA_OUTPUT, localUri);
 
 // 获得所有匹配captureIntent的可拍照的应用的activity的解析信息
 List<ResolveInfo> cameraActivities = packageManager.queryIntentActivities(captureIntent, PackageManager.MATCH_DEFAULT_ONLY);
 for (ResolveInfo rInfo : cameraActivities) {
-	grantUriPermission(rInfo.activityInfo.packageName, localUri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION);	// 给所匹配到的相机应用赋予权限
+    grantUriPermission(rInfo.activityInfo.packageName, localUri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION);    // 给所匹配到的相机应用赋予权限
 }
-startActivityForResult(captureIntent, Capture_Request_Code);	// 启动这个应用
+startActivityForResult(captureIntent, Capture_Request_Code);    // 启动这个应用
 ```
 
 ### 2. 显示所拍图片
@@ -1709,7 +1709,7 @@ Android系统禁止任何主线程（即UI线程）的网络连接行为，需�
 private class FetchItemTask extends AsyncTask<Void, Void, List<UserItem>> {
     @Override
     protected List<GalleryItem> doInBackground(Void... parms) { 
-    	return new UserFetcher.fetchItems();
+        return new UserFetcher.fetchItems();
     }
 }
 ```
@@ -1738,7 +1738,7 @@ private class ProgressTask extends AsyncTask<Void, Integer, Void> {
     protected Void doInBackground(Void... voids) {
         while (mPlayer.isPlaying()) {
             Integer x = mPlayer.getCurrentPosition();
-            publishProgress(x);		// 给onProgressUpdate()方法传递参数，并调用之
+            publishProgress(x);        // 给onProgressUpdate()方法传递参数，并调用之
         }
         return null;
     }
@@ -1746,7 +1746,7 @@ private class ProgressTask extends AsyncTask<Void, Integer, Void> {
     @Override
     protected void onProgressUpdate(Integer... values) {
         Integer x = values[0];
-        mSeekBar.setProgress(x);	// 该onProgressUpdate()可以更新UI线程
+        mSeekBar.setProgress(x);    // 该onProgressUpdate()可以更新UI线程
     }
 }
 ```
@@ -1879,13 +1879,13 @@ public class MyDownloader<T> extends HandlerThread {
 ```java
 // SecondActivity.java
 public class SecondActivity extends AppCompatActivity {
-	/* xxx */
+    /* xxx */
     private String mTempUrl = "https://i0.hdslb.com/bfs/face/374156e29fce7d87ac3d169f0ab5fedbb08ff708.jpg@150w_150h.jpg";
     private MyDownloader<ImageView> mDownloader;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-		/* xxx */
+        /* xxx */
         
         // 在UI线程创建的Handler，默认关联getMainLooper()，不需要额外处理Looper
         Handler responseHandler = new Handler();
@@ -2015,11 +2015,11 @@ public class PollService extends IntentService {
 @RequiresApi(api = Build.VERSION_CODES.O)
 @Override
 protected void onHandleIntent(@Nullable Intent intent) {
-	/* some operations. */
-	Intent intentActivity = MainActivity.newIntent(this);
+    /* some operations. */
+    Intent intentActivity = MainActivity.newIntent(this);
     PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intentActivity, 0);
     String channelId = "channel_1";
-	String channelName = "ReportChannel";
+    String channelName = "ReportChannel";
     Notification notification = new NotificationCompat.Builder(this)
             .setChannelId(channelId)
             .setTicker("You have a new message")
@@ -2067,9 +2067,9 @@ PollService.setServiceAlarm(this, true);
 ```java
 // PollService.java at class PollService
 public static boolean isServiceAlarmOn(Context context) {
-	Intent intent = PollService.newIntent(context);
-	PendingIntent pendingIntent = PendingIntent.getService(context, 0, intent, PendingIntent.FLAG_NO_CREATE);
-	return pendingIntent != null;
+    Intent intent = PollService.newIntent(context);
+    PendingIntent pendingIntent = PendingIntent.getService(context, 0, intent, PendingIntent.FLAG_NO_CREATE);
+    return pendingIntent != null;
 }
 ```
 
@@ -2077,10 +2077,10 @@ public static boolean isServiceAlarmOn(Context context) {
 
 ```java
 case R.id.menu_item_toggle_polling:
-	boolean shouldStartAlarm = !PollService.isServiceAlarmOn(getActivity());
-	PollService.setServiceAlarm(getActivity(), shouldStartAlarm);
-	getActivity().invalidateOptionsMenu();	// 销毁工具栏以重建刷新之
-	return true;
+    boolean shouldStartAlarm = !PollService.isServiceAlarmOn(getActivity());
+    PollService.setServiceAlarm(getActivity(), shouldStartAlarm);
+    getActivity().invalidateOptionsMenu();    // 销毁工具栏以重建刷新之
+    return true;
 ```
 
 在onCreateOPtionsMenu()中加上：
@@ -2130,11 +2130,11 @@ public class StartupReceiver extends BroadcastReceiver {
 
 ```xml
 <manifest>
-	<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <application>
-    	<receiver android:name=".StartupReceiver">
+        <receiver android:name=".StartupReceiver">
             <intent-filter>
-				<action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
             </intent-filter>
         </receiver>
     </application>
@@ -2150,7 +2150,7 @@ public class StartupReceiver extends BroadcastReceiver {
 ```java
 // PollService.java
 public class PollService extends IntentService {
-	public static final String ACTION_SHOW_NOTIFICATION = "com.bloonow.android.SHOW_NOTIFICATION";
+    public static final String ACTION_SHOW_NOTIFICATION = "com.bloonow.android.SHOW_NOTIFICATION";
 }
 ```
 
@@ -2158,7 +2158,7 @@ public class PollService extends IntentService {
 
 ```xml
 <manifest>
-	<permission android:name="com.bloonow.android.PRIVATE"
+    <permission android:name="com.bloonow.android.PRIVATE"
                 android:protectionLevel="signature"/>
     <uses-permission android:name="com.bloonow.android.PRIVATE"/>
 </manifest>
@@ -2173,7 +2173,7 @@ public class PollService extends IntentService {
     @Override
     protected void onHandleIntent(@Nullable Intent intent) {
         /* xxx */
-        sendBroadcast(new Intent(ACTION_SHOW_NOTIFICATION), PERM_PRIVATE);	// 发送
+        sendBroadcast(new Intent(ACTION_SHOW_NOTIFICATION), PERM_PRIVATE);    // 发送
     }
 }
 ```
@@ -2223,7 +2223,7 @@ public abstract class VisibleFragment extends Fragment {
 // PollService.java
 public class PollService extends IntentService {
     public static final String REQUEST_CODE = "REQUEST_CODE";
-	public static final String NOTIFICATION = "NOTIFICATION";
+    public static final String NOTIFICATION = "NOTIFICATION";
     
     private void showBackgroundNotification(int requestCode,Notification nification) {
         Intent intent = new Intent(ACTION_SHOW_NOTIFICATION);
@@ -2234,13 +2234,13 @@ public class PollService extends IntentService {
     }
 
     @Override
-	protected void onHandleIntent(@Nullable Intent intent) {
-		/* some operations. */
-		Intent intentActivity = MainActivity.newIntent(this);
-    	PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intentActivity, 0);
-    	String channelId = "channel_1";
-		String channelName = "ReportChannel";
-    	Notification notification = new NotificationCompat.Builder(this)
+    protected void onHandleIntent(@Nullable Intent intent) {
+        /* some operations. */
+        Intent intentActivity = MainActivity.newIntent(this);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intentActivity, 0);
+        String channelId = "channel_1";
+        String channelName = "ReportChannel";
+        Notification notification = new NotificationCompat.Builder(this)
             .setChannelId(channelId)
             .setTicker("You have a new message")
             .setSmallIcon(android.R.drawable.ic_menu_report_image)
@@ -2248,8 +2248,8 @@ public class PollService extends IntentService {
             .setContentText("There is a new thing")
             .setContentIntent(pendingIntent)
             .build();
-        showBackgroundNotification(0, notification);	// 发送推送的有序broadcast
-	}
+        showBackgroundNotification(0, notification);    // 发送推送的有序broadcast
+    }
 }
 ```
 
@@ -2269,7 +2269,7 @@ public class NotificationReceiver extends BroadcastReceiver {
         Notification n = (Notification)i.getParcelableExtra(PollService.NOTIFICATION);
         NotificationManagerCompat nm = NotificationManagerCompat.from(c);
         String channelId = "channel_1";
-		String channelName = "ReportChannel";
+        String channelName = "ReportChannel";
         NotificationChannel channel = new NotificationChannel(channelId, channelName, NotificationManagerCompat.IMPORTANCE_LOW);
         nm.createNotificationChannel(channel);
         nm.notify(requestCode, n);
@@ -2281,11 +2281,11 @@ public class NotificationReceiver extends BroadcastReceiver {
 
 ```xml
 <manifest>
-	<application>
-    	<receiver android:name=".NotificationReceiver"
+    <application>
+        <receiver android:name=".NotificationReceiver"
                   android:exported="false">
-        	<intent-filter android:priority="-999">
-            	<action android:name="com.bloonow.android.SHOW_NOTIFICATION"/>
+            <intent-filter android:priority="-999">
+                <action android:name="com.bloonow.android.SHOW_NOTIFICATION"/>
             </intent-filter>
         </receiver>
     </application>

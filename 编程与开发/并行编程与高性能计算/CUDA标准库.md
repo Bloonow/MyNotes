@@ -355,8 +355,8 @@ typedef enum cudaDataType_t {
     CUDA_C_32F  =  4,  // complex as a pair of float numbers
     CUDA_R_64F  =  1,  // real as a double
     CUDA_C_64F  =  5,  // complex as a pair of double numbers
-	/* CUDA_R_4I, CUDA_C_4I, CUDA_R_8I, CUDA_C_8I, CUDA_R_16I, CUDA_C_16I */
-	/* CUDA_R_4U, CUDA_C_4U, CUDA_R_8U, CUDA_C_8U, CUDA_R_16U, CUDA_C_16U */
+    /* CUDA_R_4I, CUDA_C_4I, CUDA_R_8I, CUDA_C_8I, CUDA_R_16I, CUDA_C_16I */
+    /* CUDA_R_4U, CUDA_C_4U, CUDA_R_8U, CUDA_C_8U, CUDA_R_16U, CUDA_C_16U */
     /* CUDA_R_32U, CUDA_C_32U, CUDA_R_64U, CUDA_C_64U */
     CUDA_R_32I  = 10,     // real as a signed 32-bit int
     CUDA_C_32I  = 11,     // complex as a pair of signed 32-bit int numbers
@@ -2065,7 +2065,7 @@ typedef void (*cufftCallbackStoreZ)(void *dataOut, size_t offset, cufftDoubleCom
 
 ```c++
 __device__ cufftReal callback_function(void *dataIn, size_t offset, void *callerInfo, void *sharedPtr) {
-	cufftReal val = *(reinterpret_cast<cufftReal*>(dataIn) + offset);
+    cufftReal val = *(reinterpret_cast<cufftReal*>(dataIn) + offset);
     return val > 0 ? val : 0;  // 对数据的操作
 }
 __device__ cufftCallbackLoadR gpu_callback_ptr = callback_function;  // 设备指针，持有设备函数的设备内存地址

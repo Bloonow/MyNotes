@@ -45,7 +45,7 @@ class Resize(torch.nn.Module):
 
 ```python
 class RandomCrop(torch.nn.Module):
-	def __init__(self, size, padding, pad_if_needed, fill, padding_mode) -> None
+    def __init__(self, size, padding, pad_if_needed, fill, padding_mode) -> None
 ```
 
 在随机位置裁剪给定的图像。如果图像是torch.Tensor，它应该具有[...,H,W]形状，其中...表示任意数量的前缀维度。但如果使用了非常量填充（non-constant padding），则输入应最多具有2个前缀维度。

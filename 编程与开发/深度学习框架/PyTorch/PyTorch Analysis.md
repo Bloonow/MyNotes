@@ -349,7 +349,7 @@ compare.print()
 
 ```python
 with open('timeuse.txt', encoding='utf-8', mode='w+') as f:
-	f.write(str(compare))
+    f.write(str(compare))
 ```
 
 ## 6. Saving and Loading benchmark results
@@ -436,7 +436,7 @@ Self CPU time total: 463.193ms
 prof = torch.profiler.profile(with_stack=True, profile_memory=True)
 prof.start()
 for _ in range(10):
-	out, idx = model(input, mask)
+    out, idx = model(input, mask)
     prof.step()
 prof.stop()
 ```
@@ -497,7 +497,7 @@ class _KinetoProfile:
 
 ```python
 class _KinetoProfile:
-	def key_averages(group_by_input_shape=False, group_by_stack_n=0) -> torch.autograd.profiler.EventList: ...
+    def key_averages(group_by_input_shape=False, group_by_stack_n=0) -> torch.autograd.profiler.EventList: ...
 ```
 
 对键上的所有函数事件求平均值，可根据操作符名称、输入形状、堆栈跟踪信息、对它们进行分组。若group_by_input_shape参数为True，则根据(event_name, input_shapes)进行分组而不仅仅是根据event_name进行分组。group_by_stack_n参数，指定按前n个堆栈跟踪条目分组。
@@ -532,7 +532,7 @@ class profile(_KinetoProfile):
         record_shapes=False, profile_memory=False, with_stack=False, with_flops=False, with_modules=False,
         experimental_config: Optional[_ExperimentalConfig] = None,
         use_cuda: Optional[bool] = None  # deprecated
-	): ...
+    ): ...
 ```
 
 用作上下文管理器的分析器torch.profiler.profile类。其中一些参数与其父类用法一致，注意use_cuda参数已弃用，使用activities参数代替。

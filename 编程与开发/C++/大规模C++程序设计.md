@@ -291,7 +291,7 @@
 
 过程接口，通常面向对象的大型商业系统（如数据库、框架）有必要为客户提供可编程访向其功能子集的接口（如一种高层次的语言解释器SQL或Scheme等，也经常会提供一个独立的接口，允许用C++式标准C来操纵）。通常包括以下内容：
 
-1. ​	接口必须提供必要的功能来操纵底层系统；
+1. 接口必须提供必要的功能来操纵底层系统；
 2. 接口一定不能暴露专属的实现细节；
 3. 底层组织的变化必须与客户端程序相隔离；
 4. 与该接口相关的开销一定不能过大。
@@ -366,18 +366,18 @@
 ```mermaid
 graph TD
 system[system] --> develop[develop]
-	develop --> packi_0[package ...]
-	develop --> packi[packageXXX]
-		packi --> dependencies[dependencies]
-			dependencies --> dep_[.h ...]
-		packi --> source[source]
-			source --> source_[.h /.c/ .t.c]
-		packi -->exported[exported]
-			exported --> expo_[.h]
+    develop --> packi_0[package ...]
+    develop --> packi[packageXXX]
+        packi --> dependencies[dependencies]
+            dependencies --> dep_[.h ...]
+        packi --> source[source]
+            source --> source_[.h /.c/ .t.c]
+        packi -->exported[exported]
+            exported --> expo_[.h]
 system --> include[include]
-	include --> inc_[.h]
+    include --> inc_[.h]
 system --> lib[lib]
-	lib --> lib_[.a]
+    lib --> lib_[.a]
 ```
 
 ### 1. 包的依赖
@@ -445,27 +445,27 @@ system --> lib[lib]
 ```mermaid
 graph TD
 subSystem --> Group[groupXXX]
-	Group --> Version_Content_List[version ...]
-	Group --> Version[versionXXX]
-		Version --> G_dependencies[dependencies - 1]
-		Version --> G_exported[exported - 2]
-			G_exported --> G_E_HeadFile[.h]
-		Version --> G_include[include - 3]
-			G_include --> G_I_Local[local]
-				G_I_Local --> G_I_L_HeadFile[.h]
-			G_include --> G_I_HeadFile[.h]
-		Version --> G_lib[lib - 4]
-			G_lib --> G_L_local[local]
-				G_L_local --> G_L_L_HeadFile[.h]
-			G_lib --> G_L_LibarayFile[.a]
-		Version --> G_source[source]
-			G_source --> packageXXX
-				packageXXX --> P_dependencies[dependencies]
-				packageXXX --> P_exported[exported - 5]
-					P_exported --> P_E_HeadFile[.h]
-				packageXXX --> P_source[source]
-					P_source --> P_S_File[.h.c.t.c]
-			G_source --> Package_Content_List[package ...]
+    Group --> Version_Content_List[version ...]
+    Group --> Version[versionXXX]
+        Version --> G_dependencies[dependencies - 1]
+        Version --> G_exported[exported - 2]
+            G_exported --> G_E_HeadFile[.h]
+        Version --> G_include[include - 3]
+            G_include --> G_I_Local[local]
+                G_I_Local --> G_I_L_HeadFile[.h]
+            G_include --> G_I_HeadFile[.h]
+        Version --> G_lib[lib - 4]
+            G_lib --> G_L_local[local]
+                G_L_local --> G_L_L_HeadFile[.h]
+            G_lib --> G_L_LibarayFile[.a]
+        Version --> G_source[source]
+            G_source --> packageXXX
+                packageXXX --> P_dependencies[dependencies]
+                packageXXX --> P_exported[exported - 5]
+                    P_exported --> P_E_HeadFile[.h]
+                packageXXX --> P_source[source]
+                    P_source --> P_S_File[.h.c.t.c]
+            G_source --> Package_Content_List[package ...]
 subSystem --> Group_Content_List[group ...]
 ```
 
@@ -624,23 +624,23 @@ ques1[辅助类是否需要直接独立测试]
 ques1 --> ques2[内联是否需要访问辅助类]
 ques2 --> ques3[组件是否被广泛使用]
 n{no} --> nn{no}
-	nn --> nnn{no}
-		nnn --> nnn_D[D]
+    nn --> nnn{no}
+        nnn --> nnn_D[D]
 n --> ny{yes}
-	ny --> nyn{no}
-		nyn --> nyn_A{A}
-	ny --> nyy{yes}
-		nyy --> nyy_C_E[C E]
+    ny --> nyn{no}
+        nyn --> nyn_A{A}
+    ny --> nyy{yes}
+        nyy --> nyy_C_E[C E]
 y{yes} --> yn{no}
-	yn --> ynn{no}
-		ynn --> ynn_A[A]
-	yn --> yny{yes}
-		yny --> yny_B[B]
+    yn --> ynn{no}
+        ynn --> ynn_A[A]
+    yn --> yny{yes}
+        yny --> yny_B[B]
 y --> yy{yes}
-	yy --> yyn{no}
-		yyn --> yyn_A[A]
-	yy --> yyy{yes}
-		yyy --> yy_B[B*]
+    yy --> yyn{no}
+        yyn --> yyn_A[A]
+    yy --> yyy{yes}
+        yyy --> yy_B[B*]
 ```
 
 注：上树状图中一个B*为：辅助类的头文件被包含在主要直接.h文件而不是.c文件中。

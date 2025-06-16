@@ -62,15 +62,15 @@ C++中支持两种类型的字符串，一种是从C沿袭而来，有C中字符
 
 ```c++
 int a = 5, b = 10, c = 15, d = 20;
-const int * p1 = &a;	// 指向常量的指针，或 int const * p1 = &a;
-//*p1 = 0;	// error
-p1 = &b;	// ok
-int * const p2 = &b;	// 常型指针
-*p2 = 0;	// ok
-//p2 = &a;	// error
-const int * const p3 = &c;	// 指向常量的常型指针，或 int const * const p3 = &c;
-//*p3 = 0;	//error
-//p3 = &d;	//error
+const int * p1 = &a;    // 指向常量的指针，或 int const * p1 = &a;
+//*p1 = 0;    // error
+p1 = &b;    // ok
+int * const p2 = &b;    // 常型指针
+*p2 = 0;    // ok
+//p2 = &a;    // error
+const int * const p3 = &c;    // 指向常量的常型指针，或 int const * const p3 = &c;
+//*p3 = 0;    //error
+//p3 = &d;    //error
 ```
 
 ### 3. const修饰函数参数
@@ -95,9 +95,9 @@ delete释放已分配的内存空间，`delete 指针变量;`，`delete[] 指针
 
 ```c++
 class 类名 {
-    public:		公有数据和函数成员;
-    private:	私有数据和函数成员;
-    protected:	保护数据和函数成员;
+    public:        公有数据和函数成员;
+    private:    私有数据和函数成员;
+    protected:    保护数据和函数成员;
 }
 ```
 
@@ -391,12 +391,12 @@ fstream::fstream(const char* filename, int mode = ios::out | ios::in, int prot =
 随机读写文件，对C++的文件进行读写时使用文件指针表示数据的位置，文件指针分为读指针和写指针。文件打开时，读写指针都指向文件的起始位置。C++流类中定义了操作文件指针的函数，如下：
 
 ```c++
-ifstream& ifstream::seekg(long pos);	// 读指针从流的起始位置向后移动pos字节（byte）
-ifstream& ifstream::seekg(long off, ios::seek_dir);	// 读指针从dir位置移动off字节
-ifstream& ifstream::tellg();	// 返回读指针当前所指位置
-ofstream& ofstream::seekp(long pos);	// 写指针从流的起始位置向后移动pos字节（byte）
-ofstream& ofstream::seekp(long off, ios::seek_dir);	// 写指针从dir位置移动off字节
-ofstream& ofstream::tellp();	// 返回写指针当前所指位置
+ifstream& ifstream::seekg(long pos);    // 读指针从流的起始位置向后移动pos字节（byte）
+ifstream& ifstream::seekg(long off, ios::seek_dir);    // 读指针从dir位置移动off字节
+ifstream& ifstream::tellg();    // 返回读指针当前所指位置
+ofstream& ofstream::seekp(long pos);    // 写指针从流的起始位置向后移动pos字节（byte）
+ofstream& ofstream::seekp(long off, ios::seek_dir);    // 写指针从dir位置移动off字节
+ofstream& ofstream::tellp();    // 返回写指针当前所指位置
 ```
 
 其中，文件的指针位置和移动守节都是整型值，seek_dir位置表示参照位置，有三个枚举常量表示：`ios::beg`开始位置、`ios::cur`当前位置、`ios::end`结束位置。注：seekg()与seekp()函数的第二个参数seek_dir可以省略，此6时默认为ios::beg。

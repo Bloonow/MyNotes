@@ -510,13 +510,13 @@ Samples:  Installed in /storage/bln/.B/cuda113/Samples/, but missing recommended
 Please make sure that
  -   PATH includes /storage/bln/.B/cuda113/bin
  -   LD_LIBRARY_PATH includes /storage/bln/.B/cuda113/lib64, 
- 					  or, add /storage/bln/.B/cuda113/lib64 to /etc/ld.so.conf and run ldconfig as root
+                       or, add /storage/bln/.B/cuda113/lib64 to /etc/ld.so.conf and run ldconfig as root
 
 To uninstall the CUDA Toolkit, run cuda-uninstaller in /storage/bln/.B/cuda113/bin
 ***WARNING: Incomplete installation! This installation did not install the CUDA Driver. 
-			A driver of version at least 465.00 is required for CUDA 11.3 functionality to work.
+            A driver of version at least 465.00 is required for CUDA 11.3 functionality to work.
 To install the driver using this installer, 
-			run the following command, replacing <CudaInstaller> with the name of this run file:
+            run the following command, replacing <CudaInstaller> with the name of this run file:
     sudo <CudaInstaller>.run --silent --driver
 
 Logfile is /tmp/cuda-installer.log
@@ -750,7 +750,7 @@ make install
 ```shell
 cd $HOME/.B/python39/bin
 ln -s python3.9 python
-ln -s pip3 pip	
+ln -s pip3 pip    
 ```
 
 在用户的.bashrc文件中添加以下代码，以在每次启动shell时执行，配置bash的环境变量。需要注意的，如果源码安装多个版本的Python，则需要先将下述环境变量撤销，以免执行configure配置时导入错误版本的头文件，从而导致编译错误。

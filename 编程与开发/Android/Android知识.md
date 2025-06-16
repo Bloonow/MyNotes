@@ -153,7 +153,7 @@ public class MainFragment extends Fragment implements FragmentBackHandler {
             List<Fragment> fragmentList = getActivity().getSupportFragmentManager().getFragments();
             for (Fragment f : fragmentList) {
                 if (f == this) {
-                    ft.hide(f);		// 隐藏当前Fragment
+                    ft.hide(f);        // 隐藏当前Fragment
                 }
             }
             ft.commit();

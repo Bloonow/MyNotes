@@ -51,7 +51,7 @@ ID选择器（ID selector，IS）：使用#标识selector，语法格式：`#S{.
 <style>
 .myCenter
 {
-	text-align:center;
+    text-align:center;
 }
 </style>
 </head>
@@ -68,7 +68,7 @@ ID选择器（ID selector，IS）：使用#标识selector，语法格式：`#S{.
 <style>
 p.myCenter
 {
-	text-align:center;
+    text-align:center;
 }
 </style>
 </head>
@@ -85,7 +85,7 @@ p.myCenter
 ```html
 <head>
 <style>
-h1 { color:red; }	/* 适用于所有h1的一级标题 */
+h1 { color:red; }    /* 适用于所有h1的一级标题 */
 </style>
 </head>
 <body>

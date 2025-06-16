@@ -17,12 +17,12 @@ C#源代码文件的后缀名是.cs。
 `using`关键字的用法主要有如下四种。
 
 ```c#
-using NameSpace.SubNameSpace;	// 引入命名空间
+using NameSpace.SubNameSpace;    // 引入命名空间
 
 using static System.Math;
-double pi = PI;		// 指定无需指定类型名称即可访问其静态成员的类型
+double pi = PI;        // 指定无需指定类型名称即可访问其静态成员的类型
 
-using Project = PC.MyCompany.Project;	// 起别名
+using Project = PC.MyCompany.Project;    // 起别名
 
 using (Font fontA = new Font(/*xxx*/), fontB = new Font(/*xxx*/))
 {
@@ -171,7 +171,7 @@ object obj = a ?? b;
 
 ```c#
 Point p = new Point(3, 4);
-Console.WriteLine(p?.X.GetType() == typeof(int?));	// true
+Console.WriteLine(p?.X.GetType() == typeof(int?));    // true
 ```
 
 ## （三）特性
@@ -312,7 +312,7 @@ C#提供了下列内置的类型转换方法，它们都是Convert工具类的�
 
 ```c#
 void func(ref int x) { x = 10; }
-int a = 50;		// 一定要初始化分配空间，否则引用出错
+int a = 50;        // 一定要初始化分配空间，否则引用出错
 func(ref a);
 ```
 
@@ -320,7 +320,7 @@ func(ref a);
 
 ```c#
 void foo(out int x) { x = 15; }
-int b;		// 提供给输出参数的变量不需要赋值，但在函数中一定要赋值初始化
+int b;        // 提供给输出参数的变量不需要赋值，但在函数中一定要赋值初始化
 foo(out b);
 ```
 
@@ -382,8 +382,8 @@ C#参数数组通常用于传递未知数量的参数给函数，定位可以类
 ```c#
 void func(params Type[] arr);
 Type[] ay = new Type[] { /* xxx */ };
-func(ay);	// 可以直接使用数组作为实参
-func(t1, t2, t3);	// 也可以使用可变数量的参数作为实参
+func(ay);    // 可以直接使用数组作为实参
+func(t1, t2, t3);    // 也可以使用可变数量的参数作为实参
 ```
 
 - 带params关键字的参数类型必须是一维数组，不能使用在多维数组上。
@@ -739,19 +739,19 @@ char[] chs2 = Path.GetInvalidPathChars();
 StreamReader类继承自抽象基类TextReader，表示读取器读取一系列字符，下面列出StreamReader类中一些常用的方法。如需查看完整的方法列表，请访问微软的C#文档。
 
 ```c#
-public override int Read();	// 从输入流中读取下一个字符，并把字符位置往前移一个字符
-public override string ReadLine();	// 从当前流中读取一行字符并将数据作为字符串返回
-public override int Peek();	// 返回下一个可用的字符，但不使用它
-public override void Close();	// 关闭StreamReader对象和基础流，并释放任何与读取器相关的系统资源
+public override int Read();    // 从输入流中读取下一个字符，并把字符位置往前移一个字符
+public override string ReadLine();    // 从当前流中读取一行字符并将数据作为字符串返回
+public override int Peek();    // 返回下一个可用的字符，但不使用它
+public override void Close();    // 关闭StreamReader对象和基础流，并释放任何与读取器相关的系统资源
 ```
 
 StreamWriter类继承自抽象类TextWriter，表示写入器写入一系列字符，下面列出了StreamWriter类中一些常用的方法。
 
 ```c#
-public override void Write(char value);	// 把一个字符写入到流，其他基本类型有类似方法
-public virtual void WriteLine();	// 把行结束符写入到文本字符串或流
-public override void Flush();	// 清理当前写入器的所有缓冲区，使得所有缓冲数据写入基础流
-public override void Close();	// 关闭当前的StreamWriter对象和基础流
+public override void Write(char value);    // 把一个字符写入到流，其他基本类型有类似方法
+public virtual void WriteLine();    // 把行结束符写入到文本字符串或流
+public override void Flush();    // 清理当前写入器的所有缓冲区，使得所有缓冲数据写入基础流
+public override void Close();    // 关闭当前的StreamWriter对象和基础流
 ```
 
 下面给出一个例子，它按行从一个文件中读取字符打印，并将其存入到另一个文件中。
@@ -890,7 +890,7 @@ for (int i = 0; i < Contents.size; Console.WriteLine(contents[i++])) ;
 ```c#
 class Contents
 {
-	/* xxx */
+    /* xxx */
     public int this[string name]
     {
         get
@@ -976,7 +976,7 @@ public static void Main()
 匿名方法是通过使用delegate关键字创建委托实例来声明的，一个例子如下。
 
 ```c#
-public delegate int IntStringDelegate(string str);	// 委托类型
+public delegate int IntStringDelegate(string str);    // 委托类型
 public static void Main()
 {
     IntStringDelegate isd = delegate (string str)
@@ -1197,7 +1197,7 @@ public static void Main(string[] args)
     ParameterizedThreadStart pts = new ParameterizedThreadStart(bFunc);
     new Thread(pts).Start("Hello World!");
 
-    Thread.Sleep(1000);		// 睡眠主线程1000ms
+    Thread.Sleep(1000);        // 睡眠主线程1000ms
     Console.WriteLine("Main() over");
 }
 ```
@@ -1410,11 +1410,11 @@ System.Math类提供了若干实现不同标准数学函数的静态方法，这
 DataTime类还有如下公共静态属性用来获得当前日期或时间，以及一些实用的方法。
 
 ```c#
-public static DateTime Now { get; }		// 当前日期和时间的对象
-public static DateTime UtcNow { get; }	// 当前UTC日期和时间的对象
-public static DateTime Today { get; }	// 当天日期的一个对象，其时间组成部分设置为00:00:00
-public static bool IsLeapYear(int year);	// 判断指定的年份是否为闰年
-public static int DaysInMonth(int year, int month);		// 返回指定年和月中的天数
+public static DateTime Now { get; }        // 当前日期和时间的对象
+public static DateTime UtcNow { get; }    // 当前UTC日期和时间的对象
+public static DateTime Today { get; }    // 当天日期的一个对象，其时间组成部分设置为00:00:00
+public static bool IsLeapYear(int year);    // 判断指定的年份是否为闰年
+public static int DaysInMonth(int year, int month);        // 返回指定年和月中的天数
 ```
 
 TimeSanp类表示一个时间间隔，范围在Int64.MinValue到Int64.MaxValue之间。它的Milliseconds、Seconds、Minutes、Hours、Days属性表示当前System.TimeSpan结构所表示的时间间隔的对应时间部分；它的TotalMilliseconds、TotalSeconds、TotalMinutes、TotalHours、TotalDays属性表示当前System.TimeSpan结构对应时间间隔表示的总秒数、总天数等。
@@ -1424,11 +1424,11 @@ TimeSanp类表示一个时间间隔，范围在Int64.MinValue到Int64.MaxValue�
 System.Random类用来产生随机数，它的默认构造方法Random()使用依赖于时间的默认种子值，还有一个构造方法Random(int Seed)可以指定种子。Random类的常用方法如下。
 
 ```c#
-public virtual int Next();	// 在[0, System.Int32.MaxValue)之间的随机整数
-public virtual int Next(int minValue, int maxValue);	// 在[minValue, maxValue)之间的随机整数
-public virtual int Next(int maxValue);	// 在[0, maxValue)之间的随机整数
-public virtual double NextDouble();		// 在[0.0, 1.0)之间的双精度浮点数
-protected virtual double Sample();		// 在[0.0, 1.0)之间的双精度浮点数
+public virtual int Next();    // 在[0, System.Int32.MaxValue)之间的随机整数
+public virtual int Next(int minValue, int maxValue);    // 在[minValue, maxValue)之间的随机整数
+public virtual int Next(int maxValue);    // 在[0, maxValue)之间的随机整数
+public virtual double NextDouble();        // 在[0.0, 1.0)之间的双精度浮点数
+protected virtual double Sample();        // 在[0.0, 1.0)之间的双精度浮点数
 ```
 
 ### 4. string类

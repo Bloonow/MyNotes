@@ -52,8 +52,8 @@ ln -s sourcefile targetfile
 1. **依赖关系**
 
 ```makefile
-target : prerequisites		# Annotation. 这两行被认为是一个语句。	用 \ 可以换行
-	command					# 一个命令必须以一个 Tab 缩进开头
+target : prerequisites        # Annotation. 这两行被认为是一个语句。    用 \ 可以换行
+    command                    # 一个命令必须以一个 Tab 缩进开头
 ```
 
 - `:`，分号声明一个依赖关系，左侧是目标，右侧是该目标的依赖列表。
@@ -91,10 +91,10 @@ GNU make可以根据Makefile自动推导（所谓隐晦规则），即自动推�
 一般提供一个`clean`的target，方便清除生成的.o等中间文件；可以通过在编译的语句中依赖这个clean的目标来实现自动删除.o文件。如下这种形式，即只定义一个类似标号label的东西，而不在其后指出prerequisites文件，那么make就不会把它当作要生成的文件。这种形式被称为带伪目标的规则。
 
 ```makefile
-[.PHONY : clean]	# 可选，.PHONY意思表示clean是一个伪目标，更为稳健
+[.PHONY : clean]    # 可选，.PHONY意思表示clean是一个伪目标，更为稳健
 clean :
-	rm *.o			# Windows下可以使用 del *.obj 删除当前目录所以 .obj 文件
-	rm -rf $(OBJ)	# 也可使是宏来指定要删除的文件
+    rm *.o            # Windows下可以使用 del *.obj 删除当前目录所以 .obj 文件
+    rm -rf $(OBJ)    # 也可使是宏来指定要删除的文件
 ```
 
 - 可以使用`-rm`，指示make不理会使用rm命令时会出现的错误，即使出现错误也继续执行。
@@ -109,7 +109,7 @@ PROGRAM = main
 IMPL = main.c a_ini.c b_impl.c
 
 $(PROGRAM) : $(IMPL)
-	$(CC) -o $(PROGRAM) $(IMPL)
+    $(CC) -o $(PROGRAM) $(IMPL)
 ```
 
 - `=`，等号定义一个变量，左侧是变量，右侧是变量的值。
@@ -126,10 +126,10 @@ HEADER = a.h b.h
 OBJ = main.o a_ini.o b_impl.o
 
 $(PROGRAM) : $(OBJ)
-	$(CC) -o $(PROGRAM) $(OBJ)
+    $(CC) -o $(PROGRAM) $(OBJ)
 
-%.o : %.c $(HEADER)		# 自动将所有 .c 文件编译成 .o 文件，且依赖于 $(HEADER) 指定的 .h 文件
-	$(CC) -c $< -o $@
+%.o : %.c $(HEADER)        # 自动将所有 .c 文件编译成 .o 文件，且依赖于 $(HEADER) 指定的 .h 文件
+    $(CC) -c $< -o $@
 ```
 
 - `%.o : %.c`，这是一个模式规则，它是一个特殊的宏。表示所有的.o目标都依赖于同名的.c文件；再使用变量$(HEADER)列出所需的.h头文件，就可以让一个.o目标依赖于它的.c文件和所列的.h文件。
@@ -143,7 +143,7 @@ $(PROGRAM) : $(OBJ)
 函数的调用，很像变量的使用，也是以$来标识的，语法如下：
 
 ```makefile
-$(<function> <arguments>)	# or
+$(<function> <arguments>)    # or
 ${<function> <arguments>}
 ```
 
@@ -173,7 +173,7 @@ $(call <expression>,<param1>,<param2>,...)
 
 ```makefile
 reverse = $(2) $(1)
-foo = $(call reverse,a,b)		# foo = b a
+foo = $(call reverse,a,b)        # foo = b a
 ```
 
 ```makefile
@@ -185,7 +185,7 @@ $(shell <command>)
 ```makefile
 HEADER = $(shell find ./ -name "*.h")
 IMPL = $(shell find ./ -name "*.c")
-OBJ = $(IMPL : %.c = %.o)	# 将IMPL中匹配 %.c 的所以项替换为 %.o 项，返回给OBJ
+OBJ = $(IMPL : %.c = %.o)    # 将IMPL中匹配 %.c 的所以项替换为 %.o 项，返回给OBJ
 ```
 
 ### 6. 引用其他的Makefile
@@ -222,9 +222,9 @@ TARGETS := $(patsubst %.cpp, %, $(SOURCES))
 all: $(TARGETS)
 
 %: %.cpp
-	$(CC) $(CFLAGS) $< -o $@
+    $(CC) $(CFLAGS) $< -o $@
 
 clean:
-	rm -f $(TARGETS)
+    rm -f $(TARGETS)
 ```
 

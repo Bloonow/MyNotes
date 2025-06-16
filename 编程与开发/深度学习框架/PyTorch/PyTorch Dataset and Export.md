@@ -10,7 +10,7 @@ PyTorch数据加载的核心组件是`torch.utils.data.DataLoader`类，它表�
 
 ```python
 class DataLoader(Generic[T_co]):
-	def __init__(self, dataset, batch_size=1, shuffle=False, sampler=None,
+    def __init__(self, dataset, batch_size=1, shuffle=False, sampler=None,
                  batch_sampler=None, num_workers=0, collate_fn=None,
                  pin_memory=False, drop_last=False, timeout=0,
                  worker_init_fn=None, *, prefetch_factor=2,
@@ -495,7 +495,7 @@ Parameter containing:
 tensor([0., 0., 0.,  ..., 0., 0., 0.], requires_grad=True)
 Parameter containing:
 tensor([[ 0.0192,  0.0251,  0.0142,  ...,  0.0043, -0.0100,  0.0124],
-		...,
+        ...,
         [ 0.0075, -0.0271,  0.0269,  ...,  0.0268,  0.0126, -0.0028]],
        requires_grad=True)
 Parameter containing:

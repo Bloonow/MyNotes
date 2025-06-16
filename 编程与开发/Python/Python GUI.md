@@ -14,7 +14,7 @@ PyQt是一个功能强大的Python GUI开发库，基于Qt接口封装而来，�
 
 ```shell
 pip install pyqt5
-pip install pyqt5-tools		# Qt Designer
+pip install pyqt5-tools        # Qt Designer
 ```
 
 PySide2是对标PyQt5的，它们来自于不同的开发商，其中PySide2是由Qt官方开发的，它们只需要很小的修改就可以接口兼容。不同的是PyQt使用的是GPLv3开源协议，即使用PyQt的软件商用必须开源；而PySide2是使用LGPL协议的，使用它的商用软件不必开源。可以使用如下命令安装。

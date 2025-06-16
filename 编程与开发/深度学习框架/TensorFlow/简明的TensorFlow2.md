@@ -742,10 +742,10 @@ print(type(inputs), inputs, type(outputs), outputs, type(model), model, sep='\n'
 """
 <class 'keras.engine.keras_tensor.KerasTensor'>
 KerasTensor(type_spec=TensorSpec(shape=(None, 28, 28, 1), dtype=tf.float32, name='input_1'), 
-			name='input_1', description="created by layer 'input_1'")
+            name='input_1', description="created by layer 'input_1'")
 <class 'keras.engine.keras_tensor.KerasTensor'>
 KerasTensor(type_spec=TensorSpec(shape=(None, 10), dtype=tf.float32, name=None), 
-			name='softmax/Softmax:0', description="created by layer 'softmax'")  
+            name='softmax/Softmax:0', description="created by layer 'softmax'")  
 <class 'keras.engine.functional.Functional'>
 <keras.engine.functional.Functional object at 0x0000023F2ADABF10>
 """

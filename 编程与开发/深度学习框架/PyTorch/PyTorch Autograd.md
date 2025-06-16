@@ -635,7 +635,7 @@ torch.Tensor.is_leaf
 
 ```python
 class Tensor(torch._C._TensorBase):
-	def backward(self, gradient=None, retain_graph=None, create_graph=False, inputs=None)
+    def backward(self, gradient=None, retain_graph=None, create_graph=False, inputs=None)
 ```
 
 计算当前张量的梯度。

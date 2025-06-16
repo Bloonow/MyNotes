@@ -1107,7 +1107,7 @@ def say_hello(name: str):
     print('Hello,', name)
 
 if __name__ == '__main__':
-	print(say_hello.__name__)
+    print(say_hello.__name__)
 """
 wrapper
 """
@@ -1582,7 +1582,7 @@ python的字符串对象的format()方法，`模板字符串.format([逗号分�
 ```python
 str = 'Hello, my {0:-^12}, good morning and give me {1:,.2} dollars please!'
 resultStr = str.format('friend', 3000.275)
-print(resultStr)	# Hello, my ---friend---, good morning and give me 3e+03 dollars please!
+print(resultStr)    # Hello, my ---friend---, good morning and give me 3e+03 dollars please!
 ```
 
   当然，在format()的参数中，也可以传入列表、字典、对象等参数，则模式字符串也要做相应的改变。如：
@@ -1591,12 +1591,12 @@ print(resultStr)	# Hello, my ---friend---, good morning and give me 3e+03 dollar
 myList = ['apple', 'banane', 'watermelon', 'orange']
 str1 = 'I love {0[0]}, and {0[1]} also is my love.'
 resultStr1 = str1.format(myList)
-print(resultStr1)	# I love apple, and banane also is my love.
+print(resultStr1)    # I love apple, and banane also is my love.
 
 myDict = {'name':'Akame', 'job':'student', 'age':24, 'location':'Heaven'}
 str2 = 'Hello everyone, I am a {job} from {location}, and my name is {name}, {age} years old.'
 resultStr2 = str2.format(**myDict)
-print(resultStr2)	# Hello everyone, I am a student from Heaven, and my name is Akame, 24 years old.
+print(resultStr2)    # Hello everyone, I am a student from Heaven, and my name is Akame, 24 years old.
 
 class Studnet:
     def __init__(self, name):
@@ -1604,7 +1604,7 @@ class Studnet:
 aStudent = Studnet('Akame')
 str3 = 'There is a student named {0.name}.'
 resultStr3 = str3.format(aStudent)
-print(resultStr3)	# There is a student named Akame.
+print(resultStr3)    # There is a student named Akame.
 ```
 
 除了上述方法外，还可以直接在模式字符串前使用`f`，如`f'A pattern string.'`，以直接在模式串中使用`{placeholder}`占位符按照已有变量名引用。还可以使用已有对象的属性或方法调用。如下例子。
@@ -1706,8 +1706,8 @@ Match.span(num=0)
 ## 对象序列化存储
 
 ```python
-import _pickle as pickle 	# C实现，效率更快
-# import pickle as pickle 	# Python实现
+import _pickle as pickle     # C实现，效率更快
+# import pickle as pickle     # Python实现
 my_data = get_data_with_someways()
 # 对预处理的数据存储、读取
 with open('mydata.pkl', 'wb') as f:
@@ -2611,10 +2611,10 @@ pbar.close()  # 必须手动关闭
 常用的python图像处理库有PIL（Python Image Library）、OpenCV（Open Source Computer Vision Library）、matplotlib、skimage，它们使用pip安装的方法如下。
 
 ```shell
-pip install pillow			# PIL
-pip install opencv-python	# OpenCV
-pip install matplotlib		# matplotlib
-pip install scikit-image	# skimage
+pip install pillow            # PIL
+pip install opencv-python    # OpenCV
+pip install matplotlib        # matplotlib
+pip install scikit-image    # skimage
 ```
 
 ### 1. 读取与显式
@@ -2646,7 +2646,7 @@ print(type(img), img.shape, img.dtype)
 import cv2
 
 img_path = 'res/000_0.bmp'
-img = cv2.imread(img_path)	# 读取的图片是(B,G,R)格式的
+img = cv2.imread(img_path)    # 读取的图片是(B,G,R)格式的
 """
 print(type(img), img.shape, img.dtype)
 <class 'numpy.ndarray'> (480, 640, 3) uint8
@@ -2674,7 +2674,7 @@ print(type(img), img.shape, img.dtype)
 from skimage import io
 
 img_path = 'res/000_0.bmp'
-img = io.imread(img_path)	# 读取的图片是(R,G,B)格式的
+img = io.imread(img_path)    # 读取的图片是(R,G,B)格式的
 """
 print(type(img), img.shape, img.dtype)
 <class 'numpy.ndarray'> (480, 640, 3) uint8
@@ -2730,7 +2730,7 @@ plt.show()
 import matplotlib.pyplot as plt
 
 img_path = 'res/000_0.bmp'
-img = plt.imread(img_path)		# 读取的图片是(R,G,B)格式的
+img = plt.imread(img_path)        # 读取的图片是(R,G,B)格式的
 plt.imshow(img)
 plt.show()
 ```
@@ -2816,9 +2816,9 @@ Matplotlib在图表Figures（如windows、widgets）上绘制数据，每个Figu
 图表Figure包含了所有子Axes的信息（如标题、图标、坐标轴等）和嵌套的子Figure对象。可以使用`pyplot.subplots()`方法创建一个新的Figure对象。
 
 ```python
-fig = plt.figure()				# 一个空的Figure，不含Axes
-fig, ax = plt.subplots()		# 一个Figure，含一个Axes
-fig, axs = plt.subplots(2, 2)	# 一个Figure，其所含的Axes按(2,2)网格分布
+fig = plt.figure()                # 一个空的Figure，不含Axes
+fig, ax = plt.subplots()        # 一个Figure，含一个Axes
+fig, axs = plt.subplots(2, 2)    # 一个Figure，其所含的Axes按(2,2)网格分布
 ```
 
 可以按如上方法创建含多个Axes的Figure，还可以使用`pyplot.subplots_mosaic()`方法按Axes对象所跨的行数列数创建复杂的布局。下面有一个例子。

@@ -71,14 +71,14 @@ AWT组件的优点是简单、稳定，兼容于任何一个JDK版本，缺点�
 
 ```java
 public static void main(String[] args) {
-    JButton jb = new JButton("Swing Button");	// 创建一个JButton，传参是显示字符串
-    jb.setMnemonic('i');	// 设置快捷键，当按下 Alt+I 时，就相当于选择了该 JButton
-    jb.setToolTipText("Press me");	// 当鼠标移动到JButton区域时显示的提示信息
-    JFrame jf = new JFrame("Hello");	// 创建一个JFrame，参数是标题
-    jf.add(jb);		// 将jb组件添加到jf容器
-    jf.pack();		// 自动确定JFrame的大小
-    jf.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);	// 点击关闭图标，程序结束
-    jf.setVisible(true);	// 设置JFrame可见
+    JButton jb = new JButton("Swing Button");    // 创建一个JButton，传参是显示字符串
+    jb.setMnemonic('i');    // 设置快捷键，当按下 Alt+I 时，就相当于选择了该 JButton
+    jb.setToolTipText("Press me");    // 当鼠标移动到JButton区域时显示的提示信息
+    JFrame jf = new JFrame("Hello");    // 创建一个JFrame，参数是标题
+    jf.add(jb);        // 将jb组件添加到jf容器
+    jf.pack();        // 自动确定JFrame的大小
+    jf.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);    // 点击关闭图标，程序结束
+    jf.setVisible(true);    // 设置JFrame可见
 }
 ```
 
@@ -97,10 +97,10 @@ public static void main(String[] args) {
 
 ```java
 addWindowListener(new WindowAdapter() {
-	@Override
-	public void windowClosing(WindowEvent e) {
-		super.windowClosing(e);
-	}
+    @Override
+    public void windowClosing(WindowEvent e) {
+        super.windowClosing(e);
+    }
 });
 ```
 
@@ -225,12 +225,12 @@ show(Containcr parent, String name);
 GridBagLayout允许容器中各个组件的大小各不相同，还允许单个组件所在的显示区域占据多个网格。使用GridBagLayout布局管理器的步骤如下：
 
 ```java
-GridBagLayout gbl = new GridBagLayout();	// 创建 GridBagLayout 布局管理器
-someContainer.setLayout(bgl);				// 将某容器采用该布局管理器
-GirdBagConstraints gbc = new GirdBagConstraints();		// 创建网格包约束对象
-gbc.gridx = gbc.gridy = gbc.girdwidth = gbc.gridheight = 1;	// 设置约束属性
-gbl.setConstraints(someComponent, gbc);		// 通知布局管理器设置某组件的约束信息
-someContainer.add(someComponent);			// 向容器中添加组件
+GridBagLayout gbl = new GridBagLayout();    // 创建 GridBagLayout 布局管理器
+someContainer.setLayout(bgl);                // 将某容器采用该布局管理器
+GirdBagConstraints gbc = new GirdBagConstraints();        // 创建网格包约束对象
+gbc.gridx = gbc.gridy = gbc.girdwidth = gbc.gridheight = 1;    // 设置约束属性
+gbl.setConstraints(someComponent, gbc);        // 通知布局管理器设置某组件的约束信息
+someContainer.add(someComponent);            // 向容器中添加组件
 ```
 
 - 重复上面4~6行代码的步骤，将每个组件添加到容器中。
@@ -446,9 +446,9 @@ public class DrawPanel extends JPanel {
 
 ```java
 Toolkit tk = Toolkit.getDefaultToolkit();
-Dimension d = tk.getScreenSize();		// 获得屏幕大小
-int screenWidth = (int) d.getWidth();	// 获得屏幕的宽
-int screenHeight = (int) d.getHeight();	// 获得屏幕的高
+Dimension d = tk.getScreenSize();        // 获得屏幕大小
+int screenWidth = (int) d.getWidth();    // 获得屏幕的宽
+int screenHeight = (int) d.getHeight();    // 获得屏幕的高
 ```
 
 ## （五）AWT线程（事件分派线程）
@@ -994,7 +994,7 @@ public class MyUI extends JFrame {
 public class NumberOnlyDocument extends PlainDocument {
     public NumberOnlyDocument() {
     }
-	
+    
     // 覆盖该方法，如果输入 str 满足所需格式，则允许输入，否则不允许
     @Override
     public void insertString(int off, String str, AttributeSet a) throws BadLocationException {
