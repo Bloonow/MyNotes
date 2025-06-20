@@ -3600,7 +3600,7 @@ struct ConvertAndPack {
 
 ## Threadblock Level
 
-在cutlass/gemm/threadblock目录中，提供矩阵乘加操作在Threadblock线程块层级的实现，主要包括双缓冲的实现与多级流水线的实现，这些操作被抽象为gemm::threadblock::MmaPipelined模板类和gemm::threadblock::MmaMultiStage模板类。此外，还提供一些相关的辅助类型，例如默认执行配置等。此外，在线程块级别，负责将数据从全局内存加载到寄存器当中，以及将寄存器中数据写入到共享内存当中，这需要cutlass/transform目录中提供的数据转移器。
+在cutlass/gemm/threadblock目录中，提供矩阵乘加操作在Threadblock线程块层级的实现，主要包括双缓冲的实现与多级流水线的实现，这些操作被抽象为gemm::threadblock::MmaPipelined模板类和gemm::threadblock::MmaMultistage模板类。此外，还提供一些相关的辅助类型，例如默认执行配置等。此外，在线程块级别，负责将数据从全局内存加载到寄存器当中，以及将寄存器中数据写入到共享内存当中，这需要cutlass/transform目录中提供的数据转移器。
 
 ![](CUTLASS模板库.assets/gemm-threadblock.png)
 
@@ -3755,7 +3755,7 @@ struct DefaultMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB
 };
 ```
 
-当使用gemm::threadblock::MmaMultiStage实现时，gemm::threadblock::DefaultMma的实现代码如下所示，这可用CUDA Core或Tensor Core实现。
+当使用gemm::threadblock::MmaMultistage实现时，gemm::threadblock::DefaultMma的实现代码如下所示，这可用CUDA Core或Tensor Core实现。
 
 ```c++
 /// Specialization for row-major output (OperatorClass Simt)
@@ -4427,11 +4427,11 @@ public:
 };
 ```
 
-### MmaMultiStage
+### MmaMultistage
 
-当使用多级流水线实现在Threadblock线程块层级的矩阵乘加操作时，相关实现被抽象为gemm::threadblock::MmaMultiStage模板类。
+当使用多级流水线实现在Threadblock线程块层级的矩阵乘加操作时，相关实现被抽象为gemm::threadblock::MmaMultistage模板类。
 
-在cutlass/gemm/threadblock/mma_multistage.h头文件中，提供gemm::threadblock::MmaMultiStage的定义，如下所示。
+在cutlass/gemm/threadblock/mma_multistage.h头文件中，提供gemm::threadblock::MmaMultistage的定义，如下所示。
 
 ```c++
 /// Structure to compute the matrix product targeting CUDA cores and SIMT math instructions.
